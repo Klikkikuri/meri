@@ -39,6 +39,7 @@
 			"python.formatting.provider": "black",
 			"python.linting.pylintEnabled": true,
 			"python.linting.enabled": true,
+			"python.defaultInterpreterPath": "/home/vscode/venv/bin/python",
 			"[python]": {
 				"editor.rulers": [120]
 			},
