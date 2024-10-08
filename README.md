@@ -1,2 +1,2 @@
 # bigger-boat
-Repository for the Klikkikuri backend service
+Meta repository for the klikkikuri service

@@ -1,0 +1,11 @@
+services:
+  meri:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    volumes:
+      - ..:/app
+    environment:
+      PYTHONDONTWRITEBYTECODE: 1
+
+    command: /bin/bash

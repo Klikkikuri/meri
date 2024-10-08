@@ -1,0 +1,66 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/go
+{
+	"name": "Meri 🌊",
+	"dockerComposeFile": [
+        "docker-compose.yaml"
+    ],
+
+	"overrideCommand": true,
+	"service": "meri",
+	"runServices": [],
+    "shutdownAction": "stopCompose",
+    "workspaceFolder": "/app",
+
+	"features": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+			"moby": true,
+			"installDockerBuildx": true,
+			"version": "latest",
+			"dockerDashComposeVersion": "none"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.isort",
+				"ms-azuretools.vscode-docker",
+				"stkb.rewrap",
+				"tamasfe.even-better-toml",
+				"ms-python.debugpy",
+				"ms-python.black-formatter",
+				"charliermarsh.ruff"
+			]
+		},
+		"settings": {
+			"files.eol": "\n",
+
+			"python.formatting.provider": "black",
+			"python.linting.pylintEnabled": true,
+			"python.linting.enabled": true,
+			"[python]": {
+				"editor.rulers": [120]
+			},
+			"python.experiments.enabled": false,
+
+			"remote.extensionKind": {
+				"ms-azuretools.vscode-docker": "workspace"
+			}
+	},
+
+	// Features to add to the dev container. More info: https://containers.dev/features.
+	// "features": {},
+
+	// Use 'forwardPorts' to make a list of ports inside the container available locally.
+	// "forwardPorts": [],
+
+	// Use 'postCreateCommand' to run commands after the container is created.
+	"postCreateCommand": "pre-commit install --install-hooks"
+
+	// Configure tool-specific properties.
+	// "customizations": {},
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}
