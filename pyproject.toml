@@ -1,14 +1,14 @@
 [tool.poetry]
 name = "meri"
 version = "0.1.0"
-description = "Meri – Klikkikuri backend service for news title generation"
+description = "Meri 🌊 – Klikkikuri backend service for news title unsensationalizer"
 authors = [
 	"Teemu Autto <teemu.a.autto@jyu.fi>",
 	"Juho Tarkkanen <juho.tarkkanen@hotmail.fi>",
 	"Taija Kolehmainen <taija.s.kolehmainen@jyu.fi>"
 ]
 packages = [
-    { include = "valas", from = "src/" },
+	{ include = "valas", from = "src/" },
 	{ include = "meri", from = "src/" }
 ]
 readme = "README.md"
@@ -29,6 +29,7 @@ Jinja2 = "^3.1.4"
 structlog = "^24.4.0"
 opentelemetry-api = "^1.27.0"
 playwright = "^1.47.0"
+opentelemetry-sdk = "^1.27.0"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"
@@ -37,6 +38,16 @@ poetry = "1.8.3"
 isort = "^5.13.2"
 pre-commit = "^4.0.1"
 bandit = "^1.7.10"
+
+[tool.poetry.group.otel]
+# OpenTelemetry dependencies
+optional = true
+
+[tool.poetry.group.otel.dependencies]
+opentelemetry-exporter-otlp = "^1.27.0"
+opentelemetry-instrumentation-asyncio = "^0.48b0"
+opentelemetry-instrumentation-logging = "^0.48b0"
+opentelemetry-instrumentation-requests = "^0.48b0"
 
 [build-system]
 requires = ["poetry-core"]
