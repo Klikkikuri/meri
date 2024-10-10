@@ -1,0 +1,66 @@
+services:
+  meri:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    networks:
+      - meri
+
+  vscode:
+    extends:
+      service: meri
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONDONTWRITEBYTECODE=1
+      - OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED=true
+      - OTEL_METRICS_EXPORTER=otlp
+      - OTEL_LOGS_EXPORTER=otlp
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
+      # - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317  # OpenTelemetry gRPC
+    command: /bin/bash
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+      - COLLECTOR_ZIPKIN_HOST_PORT=:9411
+      # # Storage
+      # - SPAN_STORAGE_TYPE=badger
+      # - BADGER_EPHEMERAL=false
+      # - BADGER_DIRECTORY_VALUE=/badger/data
+      # - BADGER_DIRECTORY_KEY=/badger/key
+    # volumes:
+    #   - jaeger-data:/badger
+    ports:
+      - "16686:16686"  # Jaeger UI
+    expose:
+      - 4317  # OpenTelemetry gRPC
+      - 4318  # OpenTelemetry HTTP
+    networks:
+      - meri
+
+  # rabbitmq:
+  #   image: "rabbitmq:3-management"
+  #   ports:
+  #     - "15672:15672"  # RabbitMQ management UI
+  #     - "5672:5672"    # RabbitMQ AMQP port
+
+  # s3:
+  #   image: "minio/minio"
+  #   command: server /data
+  #   environment:
+  #     - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+  #     - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-password}
+  #   ports:
+  #     - "9000:9000"  # MinIO API port
+  #   volumes:
+  #     - s3-data:/data
+
+networks:
+  meri:
+    name: meri
+
+# volumes:
+  # s3-data: {}
+  # jaeger-data: {}
