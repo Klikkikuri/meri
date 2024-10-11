@@ -12,6 +12,9 @@ packages = [
 	{ include = "meri", from = "src/" }
 ]
 readme = "README.md"
+repository = "https://github.com/Klikkikuri/meri"
+
+[tool.poetry_bumpversion.file."src/meri/__init__.py"]
 
 [tool.black]
 line-length = 120
@@ -19,6 +22,9 @@ line-length = 120
 [tool.isort]
 profile = "black"
 line_length = 120
+
+[tool.ruff]
+ignore = ["E701"]
 
 [tool.poetry.dependencies]
 python = "^3.12"
@@ -30,6 +36,7 @@ structlog = "^24.4.0"
 opentelemetry-api = "^1.27.0"
 playwright = "^1.47.0"
 opentelemetry-sdk = "^1.27.0"
+newspaper4k = "^0.9.3.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"
@@ -38,6 +45,8 @@ poetry = "1.8.3"
 isort = "^5.13.2"
 pre-commit = "^4.0.1"
 bandit = "^1.7.10"
+poetry-bumpversion = "^0.3.2"
+requests-cache = "^1.2.1"
 
 [tool.poetry.group.otel]
 # OpenTelemetry dependencies
