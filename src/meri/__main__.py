@@ -12,7 +12,7 @@ if __name__ == "__main__":
     import tempfile
     # get temp directory
     tmp_dir = tempfile.gettempdir()
-    requests_cache.install_cache('klikkikuri_requests_cache')
+    requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache')
 
     import sys
     if len(sys.argv) == 2:
