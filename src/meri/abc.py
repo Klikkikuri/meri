@@ -1,5 +1,6 @@
 from abc import ABC
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from opentelemetry import trace
 from opentelemetry.semconv.trace import SpanAttributes
 from typing import Any, Optional
@@ -12,13 +13,12 @@ tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 
-class Outlet(ABC):
+# TODO: Make as pydantic model
+class Outlet:
     name: Optional[str] = None
     valid_url = Pattern | list[Pattern]
 
     weight: Optional[int] = 50
-    # TODO: Add frequency
-    frequency: Any
 
     processors: list[callable]
 
@@ -34,9 +34,16 @@ class Outlet(ABC):
     def latest(self) -> list[newspaper.Article]:
         raise NotImplementedError
 
-
     def fetch(self, url: str) -> newspaper.Article:
         raise NotImplementedError
+
+    def frequency(self, dt: datetime | None) -> timedelta:
+        """
+        Get the frequency of the outlet.
+
+        :param dt: Time of the article previously published.
+        """
+        return timedelta(minutes=30)
 
 
 class NewspaperExtractorMixin:
