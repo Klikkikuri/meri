@@ -36,7 +36,7 @@ class Outlet:
 
         logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
 
-    def __getattr__(self, name: str) -> Optional[str]:
+    def __getattr__(self, name: str):
         if name == "name":
             return self.__class__.__name__
         elif name == "weight":
