@@ -1,16 +1,26 @@
+from importlib.metadata import metadata
 from re import Pattern
 from urllib.parse import urlparse
+
 from pydantic import AnyHttpUrl
 from structlog import get_logger
-from opentelemetry import trace
 
-from .extractor import get_extractors
+from meri.settings import settings
 
 from .abc import Outlet
+
 logger = get_logger(__name__)
-tracer = trace.get_tracer(__name__)
+
 
 def extractor(url: AnyHttpUrl) -> Outlet:
+    """
+    Find the extractor for the given URL.
+
+    :param url: The URL of the article.
+    """
+
+    from .extractor import get_extractors
+
     article_url_parts = urlparse(url)
 
     # Find the outlet that matches the URL
@@ -47,3 +57,16 @@ def extractor(url: AnyHttpUrl) -> Outlet:
                 return outlet
 
     raise ValueError(f"No outlet parse found for URL {url!r}")
+
+
+def get_user_agent():
+    """
+    Return the user-agent string to be used for requests.
+    """
+    pkg_info = dict(metadata(__package__))
+    pkg_info.update(
+        BOT_ID=settings.BOT_ID,
+        homepage=settings.BOT_HOMEPAGE
+    )
+
+    return settings.BOT_USER_AGENT.format(**pkg_info)
