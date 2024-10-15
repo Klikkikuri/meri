@@ -10,6 +10,11 @@ logger = get_logger(__package__)
 if __name__ == "__main__":
     import requests_cache
     import tempfile
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    trace.set_tracer_provider(TracerProvider())
+
     # get temp directory
     tmp_dir = tempfile.gettempdir()
     requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
