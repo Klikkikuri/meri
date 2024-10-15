@@ -1,14 +1,14 @@
-from abc import ABC
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
-from typing import Any, Optional
 from re import Pattern
+from typing import Optional
 from urllib.parse import ParseResult
-import newspaper
-from pydantic import AnyHttpUrl
 
+import newspaper
+from opentelemetry import trace
+from pydantic import AnyHttpUrl
+from structlog import get_logger
+
+logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
@@ -16,14 +16,25 @@ type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 # TODO: Make as pydantic model
 class Outlet:
     name: Optional[str] = None
-    valid_url = Pattern | list[Pattern]
+    valid_url: Pattern | list[Pattern]
 
     weight: Optional[int] = 50
 
-    processors: list[callable]
+    processors: list[callable] = []
 
     def __init__(self) -> None:
         self.processors = []
+        # Get classes this instance is a subclass of, and add their processors
+        logger.debug("Adding processors from %s", self.__class__.__name__, extra={"base_classes": self.__class__.__mro__})
+        for cls in self.__class__.__mro__:
+            logger.debug("Checking class %s", cls.__name__)
+            if cls in [Outlet, object]:
+                break
+            if class_processors := cls.__dict__.get("processors"):
+                logger.debug("Adding %d processors from %r", len(class_processors), cls.__name__)
+                self.processors += class_processors
+
+        logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
 
     def __getattr__(self, name: str) -> Optional[str]:
         if name == "name":
@@ -34,59 +45,21 @@ class Outlet:
     def latest(self) -> list[newspaper.Article]:
         raise NotImplementedError
 
-    def fetch(self, url: str) -> newspaper.Article:
-        raise NotImplementedError
-
     def frequency(self, dt: datetime | None) -> timedelta:
         """
         Get the frequency of the outlet.
 
         :param dt: Time of the article previously published.
         """
-        return timedelta(minutes=30)
+        default = timedelta(minutes=30)
+        logger.debug("Outlet %r does not provide a frequency, defaulting to %s", self.name, default)
 
+        return default
 
-class NewspaperExtractorMixin:
-    """
-    Use :class:`newspaper.Article` to extract information from a news article.
-    """
+    def fetch(self, url: AnyHttpUrl) -> newspaper.Article:
+        """
+        Fetch the article from the URL.
 
-    def __init__(self) -> None:
-        if not self.processors:
-            self.processors = []
-
-        self.processors += [
-            _article_canonical_url,
-            _article_url
-        ]
-
-    def fetch(self, url: str) -> newspaper.Article:
-        with tracer.start_as_current_span("child") as span:
-            span.set_attribute(SpanAttributes.HTTP_METHOD, "GET")
-            span.set_attribute(SpanAttributes.HTTP_URL, url)
-
-            article = newspaper.Article(url=url)
-            article.download()
-            article.parse()
-
-            span.set_attribute("article.title", article.title)
-            span.set_attribute("article.canonical_link", article.canonical_link)
-
-        return article
-
-def _article_canonical_url(article: newspaper.Article) -> AnyHttpUrl | None:
-    """
-    Get the canonical URL of the article.
-    """
-    url = article.canonical_link
-    if url and url != article.original_url:
-        return AnyHttpUrl(url)
-    return None
-
-def _article_url(article: newspaper.Article) -> AnyHttpUrl | None:
-    """
-    Get the URL of the article.
-    """
-    if article.url != article.original_url:
-        return AnyHttpUrl(article.url)
-    return None
+        :param url: The URL of the article.
+        """
+        raise NotImplementedError

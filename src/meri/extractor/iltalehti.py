@@ -2,11 +2,10 @@ from datetime import datetime, timedelta
 from pytz import utc
 import requests
 from structlog import get_logger
-from ..abc import Outlet, NewspaperExtractorMixin
+from ..abc import Outlet
+from ._extractors import NewspaperExtractorMixin
 
 from ._common import PolynomialDelayEstimator
-
-from ._processors import article_to_markdown
 
 
 logger = get_logger(__name__)
@@ -28,12 +27,6 @@ class Iltalehti(NewspaperExtractorMixin, Outlet):
         ],
         109.00180688246368,
     )
-
-    def __init__(self) -> None:
-        self.processors = [
-            article_to_markdown,
-        ]
-        super().__init__()
 
     def frequency(self, dt: datetime | None) -> timedelta:
         if dt is None:
