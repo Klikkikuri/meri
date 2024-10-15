@@ -23,16 +23,6 @@ def article_to_markdown(article: newspaper.Article) -> MarkdownStr:
     return html_to_markdown(article.article_html)
 
 
-def article_canonical_url(article: newspaper.Article) -> AnyHttpUrl | None:
-    """
-    Get the canonical URL of the article.
-    """
-    url = article.canonical_link
-    if url:
-        return AnyHttpUrl(url)
-    return None
-
-
 def html_to_markdown(html: str) -> MarkdownStr:
     """
     Convert HTML to markdown.
