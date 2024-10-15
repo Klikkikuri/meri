@@ -3,12 +3,12 @@ import newspaper
 from pydantic import AnyHttpUrl
 from opentelemetry import trace
 from meri.scraper import get_user_agent
-from ._common import RobotsHTTPAdapter
 
 from ._processors import (
     article_url,
     article_canonical_url,
     article_to_markdown,
+    check_robots_txt_access,
 )
 
 tracer = trace.get_tracer(__name__)
@@ -33,13 +33,6 @@ def newspaper_extractor(url: AnyHttpUrl) -> newspaper.Article:
     span.set_attribute("http.timeout", config.request_timeout)
     span.set_attribute("http.user_agent", config.browser_user_agent)
 
-    # Patch the newspaper library to follow robots.txt
-    from newspaper.network import session
-    # Check if custom adapter is already set
-    if not isinstance(session.adapters["http://"], RobotsHTTPAdapter):
-        session.mount("http://", RobotsHTTPAdapter())
-        session.mount("https://", RobotsHTTPAdapter())
-
     article = newspaper.Article(url=url, config=config)
 
     article.download()
@@ -59,6 +52,7 @@ class NewspaperExtractorMixin:
     """
 
     processors: list[callable] = [
+        check_robots_txt_access,
         newspaper_extractor,
         article_canonical_url,
         article_url,
