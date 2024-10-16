@@ -23,13 +23,14 @@ def newspaper_extractor(url: AnyHttpUrl) -> newspaper.Article:
 
     url = str(url)
 
-    span.set_attribute("http.method", "GET")
-    span.set_attribute("http.url", url)
 
     config = newspaper.configuration.Configuration()
     config.fetch_images = False
     config.browser_user_agent = get_user_agent()
     config.request_timeout = randint(5, 12)  # nosec: B311
+
+    span.set_attribute("http.method", "GET")
+    span.set_attribute("http.url", url)
     span.set_attribute("http.timeout", config.request_timeout)
     span.set_attribute("http.user_agent", config.browser_user_agent)
 
