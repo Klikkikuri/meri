@@ -34,9 +34,9 @@
 			],
 			"settings": {
 				"files.eol": "\n",
-				
+
 				// Python settings
-				"python.defaultInterpreterPath": "/home/vscode/venv/bin/python",
+				"python.defaultInterpreterPath": "/opt/venv/bin/python",
 				"python.formatting.provider": "black",
 				"python.analysis.importFormat": "relative",
 				"python.analysis.supportDocstringTemplate": true,
@@ -65,6 +65,10 @@
 		}
 	},
 
+	"mounts": [
+		"source=${localEnv:HOME}/.wakatime.cfg,target=/home/vscode/.wakatime.cfg,type=bind,consistency=delegated"
+	],
+
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	// "features": {},
 
@@ -72,11 +76,11 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pre-commit install --install-hooks"
+	"postCreateCommand": "pre-commit install --install-hooks",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
 
 	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
-	// "remoteUser": "root"
+	"remoteUser": "vscode"
 }
