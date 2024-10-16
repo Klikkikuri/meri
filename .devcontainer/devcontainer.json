@@ -75,12 +75,11 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
-	// Use 'postCreateCommand' to run commands after the container is created.
-	"postCreateCommand": "pre-commit install --install-hooks",
+	// Change venv to be owned by vscode user, and install pre-commit hooks.
+	"postCreateCommand": "sudo chown -R 1000:1000 /opt/venv/; pre-commit install --install-hooks",
 
 	// Configure tool-specific properties.
 	// "customizations": {},
 
-	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
 	"remoteUser": "vscode"
 }
