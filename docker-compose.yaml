@@ -19,6 +19,16 @@ services:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318/v1/traces
       # - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317  # OpenTelemetry gRPC
     command: /bin/bash
+    # depends_on:
+    #   - serviceName: jaeger
+    #     condition: service_healthy
+
+  redis:
+    image: "redis:7.4"
+    ports:
+      - "6379:6379"  # Redis port
+    networks:
+      - meri
 
   jaeger:
     image: jaegertracing/all-in-one:1.62.0
@@ -39,6 +49,7 @@ services:
       - 4318  # OpenTelemetry HTTP
     networks:
       - meri
+
 
   # rabbitmq:
   #   image: "rabbitmq:3-management"
