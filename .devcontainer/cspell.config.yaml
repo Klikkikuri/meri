@@ -3,7 +3,15 @@ ignorePaths: []
 dictionaryDefinitions: []
 dictionaries: []
 words:
+  - dataframe
+  - dotenv
+  - dtype
+  - Iltalehti
+  - Instrumentor
   - Klikkikuri
+  - markdownify
+  - opentelemetry
+  - pydantic
 ignoreWords:
   - Meri
   - Valas
