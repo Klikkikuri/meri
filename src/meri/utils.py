@@ -1,6 +1,6 @@
 import logging
 from opentelemetry import trace
-
+from .settings import settings
 
 def add_open_telemetry_spans(_, __, event_dict):
     span = trace.get_current_span()
@@ -54,8 +54,9 @@ def setup_logging(debug=False):
 
     root_logger = logging.getLogger()
     root_logger.addHandler(handler)
-    # Set the root level output to INFO
-    root_logger.setLevel(logging.INFO)
+
+    log_level = settings.LOGGING_LEVEL
+    root_logger.setLevel(log_level)
 
     # Set the top-level module to DEBUG if debug is True
     if debug:
