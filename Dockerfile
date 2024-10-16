@@ -17,7 +17,8 @@ RUN equivs-control libgl1-mesa-dri \
 FROM mcr.microsoft.com/devcontainers/python:1-${PYTHON_VERSION}
 
 LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
-    org.opencontainers.image.source="https://github.com/Klikkikuri/meri"
+    org.opencontainers.image.source="https://github.com/Klikkikuri/meri" \
+    org.opencontainers.image.url="https://github.com/Klikkikuri"
 
 # Set up configurable non-root user
 ENV PUID=1000 \
@@ -35,6 +36,9 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH="/opt/venv/bin/:${PATH}" \
     VIRTUAL_ENV="/opt/venv" \
     PLAYWRIGHT_BROWSERS_PATH="/opt/playwright"
+
+# More traceable shell
+SHELL [ "/bin/bash", "-exo", "pipefail", "-c" ]
 
 # Install playwright fake dependencies, saves about 40MB
 COPY --from=deb-builder --link /libgl1-mesa-dri.deb /libgl1-mesa-dri.deb
