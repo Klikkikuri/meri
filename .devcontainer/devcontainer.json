@@ -23,9 +23,9 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
+				"DavidAnson.vscode-markdownlint",
 				"ms-python.python",
 				"ms-python.isort",
-				"ms-azuretools.vscode-docker",
 				"stkb.rewrap",
 				"tamasfe.even-better-toml",
 				"ms-python.debugpy",
@@ -66,7 +66,11 @@
 	},
 
 	"mounts": [
-		"source=${localEnv:HOME}/.wakatime.cfg,target=/home/vscode/.wakatime.cfg,type=bind,consistency=delegated"
+		{
+            "source": "./.devcontainer/bash_history",
+            "target": "/home/vscode/.bash_history",
+            "type": "bind"
+        }
 	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
