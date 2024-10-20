@@ -8,11 +8,11 @@ authors = [
 	"Taija Kolehmainen <taija.s.kolehmainen@jyu.fi>"
 ]
 packages = [
-	{ include = "valas", from = "src/" },
 	{ include = "meri", from = "src/" }
 ]
 readme = "README.md"
 repository = "https://github.com/Klikkikuri/meri"
+license = "AGPL-3.0-only"
 
 [tool.poetry_bumpversion.file."src/meri/__init__.py"]
 
