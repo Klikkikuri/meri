@@ -37,6 +37,10 @@ ENV PATH="/opt/venv/bin/:${PATH}" \
     VIRTUAL_ENV="/opt/venv" \
     PLAYWRIGHT_BROWSERS_PATH="/opt/playwright"
 
+# Disable telemetry
+ENV HAYSTACK_TELEMETRY_ENABLED="False" \
+    ANONYMIZED_TELEMETRY="False"
+
 # More traceable shell
 SHELL [ "/bin/bash", "-exo", "pipefail", "-c" ]
 
