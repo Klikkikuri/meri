@@ -1,4 +1,4 @@
-from typing import Any, get_type_hints
+from typing import Annotated, Any, List, Type, TypeVar, get_args, get_origin, get_type_hints
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 import newspaper
@@ -17,6 +17,9 @@ from ..abc import Outlet
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+
+T = TypeVar('T')
+""" Type variable for generic types. """
 
 
 class MarkdownStr(str):
@@ -153,14 +156,10 @@ def process(outlet: Outlet, url: AnyHttpUrl) -> list[Any]:
 
         # Match the types of the parameters to the results
         for expected_type in param_types:
-            for t in reversed(result_stack):
-                # logger.debug("Checking %r against %r", type(t), expected_type)
-                if isinstance(t, expected_type):
-                    logger.debug("Matched %r with %r", type(t), expected_type)
-                    args.append(t)
-                    break
-            else:
+            entity = _get_from_stack(result_stack, expected_type)
+            if not entity:
                 raise ValueError(f"Could not find a matching result for {processor.__name__}({expected_type})")
+            args.append(entity)
         return args
 
     result_stack: list[Any] = [AnyHttpUrl(url)]
@@ -182,3 +181,35 @@ def process(outlet: Outlet, url: AnyHttpUrl) -> list[Any]:
         result_stack.append(ret)
 
     return result_stack
+
+
+def _is_instance_of(item, item_type: Type[T]) -> bool:
+    """
+    Checks if an item is an instance of the specified Pydantic or Annotated type.
+    """
+    origin = get_origin(item_type)
+    if origin is None:
+        return isinstance(item, item_type)
+    elif origin is Annotated:  # Special handling for Annotated Pydantic types
+        base_type = get_args(item_type)[0]  # Unwrap the base type from Annotated
+        return isinstance(item, base_type)
+    return False
+
+
+def _types_from_stack(stack: List, item_type: Type[T]) -> List[T]:
+    """
+    Get items of a specific type from the stack.
+    """
+    logger.debug("Getting items of type %r from stack", item_type)
+    # Use isinstance to filter items by the provided item_type
+    return [item for item in stack if _is_instance_of(item, item_type)]
+
+
+def _get_from_stack(stack: List, item_type: Type[T]) -> T:
+    """
+    Get the last item of a specific type from the stack.
+    """
+    matching_items = _types_from_stack(stack, item_type)
+    if matching_items:
+        return matching_items[-1]
+    raise ValueError(f"No items of type {item_type} found in stack.")
