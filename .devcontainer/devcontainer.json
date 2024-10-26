@@ -30,7 +30,8 @@
 				"tamasfe.even-better-toml",
 				"ms-python.debugpy",
 				"ms-python.black-formatter",
-				"charliermarsh.ruff"
+				"charliermarsh.ruff",
+				"njpwerner.autodocstring"
 			],
 			"settings": {
 				"files.eol": "\n",
@@ -52,6 +53,10 @@
 				},
 				// No A/B testing
 				"python.experiments.enabled": false,
+
+				// Common AutoDocstring settings
+				"autoDocstring.docstringFormat": "sphinx",
+				"autoDocstring.startOnNewLine": true,
 
 				"cSpell.language": "en-GB,en,fi",
 				"cSpell.import": [
