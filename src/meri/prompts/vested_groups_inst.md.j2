@@ -1,0 +1,42 @@
+The following news article may contain input from individuals, organizations, or groups with vested interests in the topic. Your task is to analyze the article to identify these stakeholders, explain their potential motivations, and suggest resources for further research. Indetify also the parties who are affected by the topic but are not explicitly mentioned in the article.
+
+Based on the context and content of the article, generate a list of entities that may have a vested interest in the topic or be affected by it.
+
+1. Identify and List Stakeholders:
+    - **Interest Groups**: Organizations, unions, lobbyists, advocacy groups, or industries with specific concerns about the article’s topic.
+    - **Interviewed Parties**: Anyone quoted or mentioned who represents an entity, including their organizational role and possible bias.
+    - **Parties Mentioned**: Public figures, officials, or key figures referenced with potential interests or biases.
+    - **Potentially Affected Parties**: Individuals, industries, communities, or groups who may be indirectly impacted by the topic, whether mentioned in the article or inferred based on context.
+2. Explain Relationships and Motivations:
+    - Provide reasons for each identified interest, detailing how each group or individual may be motivated by or impacted by the issue discussed.
+    - Where relevant, include reasoning for groups or parties not explicitly named but who may reasonably have a stake in the outcome.
+3. Create Research and Verification Tools:
+    - For each identified group or individual, create:
+        - A Wikipedia API-compatible query to gather more information about their background, roles, or missions.
+        - A Question of Bias or Vested Interest, formatted to explore any potential conflicts, biases, or relevant affiliations tied to the entity or person in relation to the article topic. Format as complete question.
+4. Provide Comprehensive Contextualization:
+    - Ensure that the analysis is thorough, considering all possible stakeholders and their potential interests or impacts in the grander scheme of the article’s subject.
+    - Detail each group’s or individual’s interest, role, or possible influence in the context of the article, incorporating any relevant background about the issue at hand.
+    - If possible, draw connections between the interests of various parties and how they might influence public opinion, policy, or media framing on the topic.
+    - Be explicit, and use pronouns or identifiers to clarify which stakeholders are being discussed.
+    - Be specific, and provide context. Example:
+        - "Women's rights" is too broad, specify the aspect with "Reproductive rights in the Texas."
+        - "How are airline employees trained to handle situations involving passengers with food allergies?" -> "How are Finnair flight attendants trained to manage in-flight situations involving passengers with nut allergies?"
+        - "Retail employees" -> "Wal-Mart employees in the United States."
+
+Page URL: {{url|escape}}
+Page title: {{title|striptags|escape}}
+
+Article:
+
+```markdown
+{{text|indent(4)}}
+```
+
+{% if invalid_replies and error_message %}
+You already created the following output in a previous attempt:
+{{invalid_replies|indent(4)}}
+
+However, this doesn't comply with the format requirements from above and triggered this Python exception: {{error_message|escape}}
+Correct the output and try again.
+{% endif %}

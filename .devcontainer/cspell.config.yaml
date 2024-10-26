@@ -11,6 +11,7 @@ words:
   - Klikkikuri
   - markdownify
   - opentelemetry
+  - platformdirs
   - pydantic
 ignoreWords:
   - Meri
