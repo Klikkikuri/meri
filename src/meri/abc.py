@@ -81,6 +81,7 @@ class VestedGroup(BaseModel):
             "What role does <lobbying group or business entity> play in influencing public opinion on <topic>?",
             "How does <individual or group> benefit from public perception of <issue>?",
             "Why was <organization> included in the discussion of <issue>?",
+            "Why is <interviewed person or organization> in the news?",
             "What possible interests does <corporation or interest group> have in the outcomes of <related topic>?",
         ],
     )
@@ -91,7 +92,7 @@ class ArticleContext(BaseModel):
     """
     Response from the vested interest extraction model.
 
-    If the article context is missing, too short or not suitable in any other way, the :attr:`ok` field will be `False`.
+    If the article content is missing, too short or not suitable in any other way, the :attr:`ok` field should be `False`.
 
     `<angle brackets>` in examples indicate placeholders for actual values.
     """
