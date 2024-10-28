@@ -3,7 +3,8 @@ from importlib.resources import files
 import json
 import logging
 from pathlib import Path
-from typing import Annotated, List, Optional, TypeVar, Type, get_args, get_origin
+import re
+from typing import  Dict, List, Optional
 
 import newspaper
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
@@ -26,20 +27,22 @@ Then, you MUST format response following this JSON schema, but only return the a
 ```
 """
 
-LLM_INST_USE_LANGUAGE = {
-    "en": "Write the response in English (British).",
+LLM_INST_USE_LANGUAGE: Dict[str, str] = {
+    "en": "Write the response in English.",
     "fi": "Kirjoita vastaus suomeksi.",
 }
+""" Instructions for LLM to use a specific language. """
 
 PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
 
-RE_JSON_BLOCK = r"```json\n(.*?)\n```"
+RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
+""" Regular expression to extract JSON block from the response. """
+
+logger = logging.getLogger(__name__)
+
 
 class LLMGenerators(Enum):
     OPENAI = "OpenAIGenerator"
-
-
-logger = logging.getLogger(__name__)
 
 
 def get_prompt_template(template_name) -> str:
@@ -70,7 +73,6 @@ def get_generator():
 @component
 class ModelOutputValidator:
     """
-    
     Based on <https://haystack.deepset.ai/tutorials/28_structured_output_with_loop>
     """
     def __init__(self, pydantic_model: BaseModel):
@@ -87,7 +89,9 @@ class ModelOutputValidator:
         try:
             response = extract_json(replies[0])
             if response is None:
-                raise ValueError("No JSON block found in the response.")
+                logger.debug("No JSON block found in the response.")
+                # Hope that the response is valid JSON
+                response = replies[0]
             self.pydantic_model.model_validate_json(response)
             logger.debug("OutputValidator at Iteration %d: Valid JSON from LLM - No need for looping", self.iteration_counter, extra={"replies": replies})
             return {"valid_replies": replies}
@@ -96,11 +100,11 @@ class ModelOutputValidator:
         except (ValueError, ValidationError) as e:
             logger.warning(
                 "OutputValidator at Iteration %d: Invalid JSON from LLM - Let's try again.\n"
-                "Output from LLM:\n %s \n"
+                "Output from LLM:\n%s\n"
                 "Error from OutputValidator: %s",
                 self.iteration_counter, replies[0], e
             )
-            return {"invalid_replies": replies, "error_message": str(e)}
+            return {"invalid_replies": replies[0], "error_message": str(e)}
 
 
 def extract_interest_groups(stack: List):
@@ -118,9 +122,13 @@ def extract_interest_groups(stack: List):
     url = article.original_url
     text = _get_from_stack(stack, MarkdownStr)
 
+    # TODO: See issue #5
     content_lang = article.meta_lang or "en"
+    content_lang, *_ = content_lang.lower().split("-")
     if content_lang in LLM_INST_USE_LANGUAGE:
         template += LLM_INST_USE_LANGUAGE[content_lang]
+    else:
+        logger.warning("Language '%s' not supported for LLM instructions. Using English.", content_lang)
 
     prompt_builder = PromptBuilder(template)
     llm = get_generator()
@@ -133,7 +141,6 @@ def extract_interest_groups(stack: List):
 
     p.connect("prompt_builder", "llm")
     p.connect("llm", "output_validator")
-    # If a component has more than one output or input, explicitly specify the connections:
     p.connect("output_validator.invalid_replies", "prompt_builder.invalid_replies")
     p.connect("output_validator.error_message", "prompt_builder.error_message")
 
@@ -153,8 +160,7 @@ def extract_json(response: str):
     """
     Extract JSON from response.
     """
-    import re
-    m = re.search(RE_JSON_BLOCK, response, flags=re.MULTILINE | re.DOTALL)
+    m = re.search(RE_JSON_BLOCK, response)
     if m:
         return m.group(1)
     return None

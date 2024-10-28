@@ -91,8 +91,14 @@ class ArticleContext(BaseModel):
     """
     Response from the vested interest extraction model.
 
-    Example items in `<angle brackets>` are placeholders for actual values.
+    If the article context is missing, too short or not suitable in any other way, the :attr:`ok` field will be `False`.
+
+    `<angle brackets>` in examples indicate placeholders for actual values.
     """
+
+    reasoning: str = Field(..., description="Message detailing the reasoning.")
+    ok: bool = Field(..., description="Flag to indicate if the extraction was successful.")
+
     wikipedia_keywords: List[str | None] = Field(
         [],
         description="List of (Wikipedia) article keywords that helps to understand the context of the article.",
@@ -111,4 +117,4 @@ class ArticleContext(BaseModel):
             "<notable event>",
         ],
     )
-    groups: List[VestedGroup] = Field([], description="List of entities identified from the article.")
+    groups: List[VestedGroup | None] = Field([], description="List of entities identified from the article.")
