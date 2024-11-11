@@ -24,14 +24,16 @@ from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, Settings
 from importlib.metadata import metadata, PackageNotFoundError
 from platformdirs import user_config_dir, site_config_dir
 
+_pkg_name: str = __package__
 try:
-    _pkg_name = __name__.split(".")[0]
-    _bot_metadata = dict(metadata(_pkg_name))
+    _pkg_name, *_ = __package__.split(".")
+    _pkg_metadata = dict(metadata(_pkg_name))
 except (IndexError, PackageNotFoundError):
-    _pkg_name = "meri"
-    _bot_metadata = dict(metadata(_pkg_name))
+    _pkg_name = __package__
+    _pkg_metadata = dict(metadata(_pkg_name))
 
-_bot_metadata.setdefault("homepage", _bot_metadata.get("repository", ""))
+_pkg_metadata.setdefault("Home-page", _pkg_metadata.get("repository", ""))
+
 
 # Locations to look for the settings file
 _settings_file_location: list[Path] = [
@@ -72,17 +74,22 @@ class Settings(BaseSettings):
         description="Enable debug mode.",
     )
 
+    TRACING_ENABLED: bool = Field(
+        True,
+        description="Enable OpenTelemetry tracing.",
+    )
+
     # Crawler settings
     BOT_ID: str = Field(
         "Klikkikuri",
         description="The name of the bot.",
     )
     BOT_HOMEPAGE: str = Field(
-        _bot_metadata["homepage"],
+        _pkg_metadata["Home-page"],
         description="The homepage of the bot.",
     )
     BOT_USER_AGENT: str = Field(
-        r"Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{homepage}",
+        r"Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})",
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
@@ -115,11 +122,12 @@ class Settings(BaseSettings):
         secrets_dir='/run/secrets',
         yaml_file=_settings_file_location,
         yaml_file_encoding="utf-8",
+        env_prefix="KLIKKIKURI_",
     )
 
 settings = Settings()
 
-del _pkg_name, _bot_metadata, _settings_file_location, _conf_file
+del _pkg_name, _pkg_metadata, _settings_file_location, _conf_file
 
 if __name__ == "__main__":
     # Test for the settings file
