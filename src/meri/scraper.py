@@ -1,4 +1,5 @@
 from importlib.metadata import metadata
+import logging
 from re import Pattern
 from urllib.parse import urlparse
 
@@ -64,9 +65,10 @@ def get_user_agent():
     Return the user-agent string to be used for requests.
     """
     pkg_info = dict(metadata(__package__))
-    pkg_info.update(
-        BOT_ID=settings.BOT_ID,
-        homepage=settings.BOT_HOMEPAGE
-    )
+
+    pkg_info.update({
+        "BOT_ID": settings.BOT_ID,
+       "Home-page": settings.BOT_HOMEPAGE
+    })
 
     return settings.BOT_USER_AGENT.format(**pkg_info)
