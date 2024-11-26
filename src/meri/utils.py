@@ -1,21 +1,23 @@
-from importlib import import_module
 import logging
 import os
+from importlib import import_module
+from importlib.metadata import metadata
+
+import structlog
+from langdetect import detect
 from opentelemetry import trace
+from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk.resources import (
-    Resource,
     SERVICE_NAME,
     SERVICE_VERSION,
-    get_aggregated_resources
-
+    Resource,
+    get_aggregated_resources,
 )
 from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from .settings import settings
-import structlog
+from url_normalize import url_normalize
 
-from importlib.metadata import metadata
+from .settings import settings
 
 logger = structlog.get_logger(__name__)
 
@@ -34,6 +36,29 @@ EXTRA_INSTRUMENTOR = [
     # SQLAlchemyInstrumentor is not included here, it's included in the `get_db` function
 ]
 """ List of extra instrumentors to use, if available. """
+
+
+def detect_language(body: str) -> str:
+    """
+    Detect the language of the text.
+
+    TODO: See issue #5
+    """
+    content_lang = detect(body) or "en"
+    content_lang, *_ = content_lang.lower().split("-")
+    return content_lang
+
+
+def clean_url(url: str) -> str:
+    """
+    Clean the URL to a normalized form.
+
+    ..todo:: Implement common URL cleaning methods for Paatti and Meri.
+
+    :param url: URL to clean
+    """
+    return url_normalize(url)
+
 
 def add_open_telemetry_spans(_, __, event_dict):
     span = trace.get_current_span()
@@ -134,7 +159,9 @@ def setup_tracing(name: str = __package__):
     # Setup exporter to send traces to otel endpoint
     # TODO: Move to config file
     if otel_endpoint := os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter,
+        )
         logger.debug("Setting tracing target to %s", otel_endpoint)
         exporter = OTLPSpanExporter(endpoint=otel_endpoint)
         span_processor = BatchSpanProcessor(exporter)
@@ -145,7 +172,7 @@ def setup_tracing(name: str = __package__):
     trace.set_tracer_provider(trace_provider)
     tracer = trace.get_tracer(name, pkg_metadata["version"], tracer_provider=trace_provider)
 
-    with tracer.start_as_current_span(f"{name}.tracing.auto_enable") as span:
+    with tracer.start_as_current_span(f"{name}.tracing.auto_instrumentation") as span:
         if isinstance(span, trace.NonRecordingSpan):
             return None
 
@@ -153,8 +180,7 @@ def setup_tracing(name: str = __package__):
             try:
                 mod = import_module(instrumentor_pkg)
                 instrumentor_cls = getattr(mod, cls)
-                instance = instrumentor_cls().instrument()
-                logger.debug("Instrumentor %s.%s loaded", instrumentor_pkg, cls, extra={"instance": instance})
+                instrumentor_cls().instrument()
             except ImportError as e:
                 logger.debug("Instrumentor %s.%s not found: %s", instrumentor_pkg, cls, e)
                 pass
