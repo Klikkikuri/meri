@@ -1,17 +1,23 @@
 from datetime import datetime, timedelta
+from enum import Enum
 from re import Pattern
-from typing import List, Optional
+from typing import Annotated, List, Optional
+from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
 import newspaper
 from opentelemetry import trace
-from pydantic import AnyHttpUrl, BaseModel, Field
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field
 from structlog import get_logger
+
+from .utils import clean_url
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
+type PyObjectId = Annotated[str, BeforeValidator(str)]
+
 
 # TODO: Make as pydantic model
 class Outlet:
@@ -63,6 +69,65 @@ class Outlet:
         :param url: The URL of the article.
         """
         raise NotImplementedError
+
+
+class LinkLabel(str, Enum):
+    LINK_CANONICAL   = "com.github.klikkikuri/link-rel=canonical"
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#canonical"
+
+    LINK_MOVED       = "com.github.klikkikuri/link-rel=moved"
+
+    LINK_ALTERNATE   = "com.github.klikkikuri/link-rel=alternate"
+    "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#alternate"
+
+
+class ArticleLabels(str, Enum):
+    """
+    Labels for article types.
+    """
+    TYPE_OPINION        = "com.github.klikkikuri/article-type=opinion"
+    TYPE_REVIEW         = "com.github.klikkikuri/article-type=review"
+    TYPE_PRESS_RELEASE  = "com.github.klikkikuri/article-type=press-release"
+    TYPE_ADVERTISEMENT  = "com.github.klikkikuri/article-type=advertisement"
+    TYPE_VIDEO          = "com.github.klikkikuri/article-type=video"
+    AI_SLOP             = "com.github.klikkikuri/ai-slop=true"
+
+
+class ArticleUrl(BaseModel):
+    """
+    Article URL.
+    """
+    href: AnyHttpUrl = Field(...)
+    labels: list[LinkLabel] = Field(default_factory=list)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    def __str__(self):
+        return self.href
+
+
+class ArticleMeta(TypedDict, total=False):
+    title: Optional[str]
+    " Title of the article. Should be the same as the <title> tag in the HTML document. "
+    authors: List[str] = Field(default_factory=list)
+    id: Optional[str]
+    language: Optional[str]
+    "Language of the article (ISO 639-1 code)."
+
+
+class Article(BaseModel):
+    """
+    Article model
+    """
+    #id: Optional[PyObjectId] = Field(None, alias="_id")
+
+    text: str = Field(...)
+    meta: ArticleMeta = Field(default_factory=ArticleMeta)
+    labels: list[ArticleLabels] = Field(default_factory=list)
+    urls: list[ArticleUrl] = Field(default_factory=list)
+
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class VestedGroup(BaseModel):
@@ -118,4 +183,25 @@ class ArticleContext(BaseModel):
             "<notable event>",
         ],
     )
-    groups: List[VestedGroup | None] = Field([], description="List of entities identified from the article.")
+    groups: List[VestedGroup] = Field([], description="List of entities identified from the article.")
+
+
+class Link(BaseModel):
+    labels: list[str | LinkLabel]
+    url: AnyHttpUrl
+    title: str
+
+
+class Dataset(BaseModel):
+    ok: bool
+    message: str
+    
+    data: list[Link]
+
+
+def article_url(href: AnyHttpUrl, /, **kwargs) -> ArticleUrl:
+    """
+    Create an ArticleUrl object from a URL.
+    """
+    url = clean_url(href)
+    return ArticleUrl(href=url, **kwargs)

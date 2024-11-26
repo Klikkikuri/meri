@@ -45,6 +45,8 @@ lxml = {extras = ["html-clean"], version = "^5.3.0"}
 celery = {extras = ["redis"], version = "^5.4.0"}
 click = "^8.1.7"
 haystack-ai = "^2.6.1"
+url-normalize = "^1.4.3"
+langdetect = "^1.0.9"
 
 [tool.poetry.group.dev.dependencies]
 black = "^24.8.0"

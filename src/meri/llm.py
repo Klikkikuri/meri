@@ -1,37 +1,26 @@
 from enum import Enum
+from functools import singledispatch
 from importlib.resources import files
 import json
 import logging
 from pathlib import Path
 import re
-from typing import  Dict, List, Optional
+from typing import  Any, Dict, List, Optional, overload
 
 import newspaper
 from pydantic import AnyHttpUrl, BaseModel, ValidationError
 
-from .extractor._processors import MarkdownStr, _get_from_stack
+from .utils import detect_language
+
+from .extractor._processors import MarkdownStr, _get_from_stack, article_to_markdown
 from .settings import settings
-from .abc import ArticleContext, VestedGroup
+from .abc import ArticleContext, VestedGroup, Article
 
 from platformdirs import user_data_dir
 
 from haystack import Pipeline, component
 from haystack.components.generators import OpenAIGenerator
 from haystack.components.builders import PromptBuilder
-
-LLM_INST_GEN_JSON = r"""
-Respond by providing a reasoning first.
-Then, you MUST format response following this JSON schema, but only return the actual instances without any additional schema definition:
-```json
-{{schema}}
-```
-"""
-
-LLM_INST_USE_LANGUAGE: Dict[str, str] = {
-    "en": "Write the response in English.",
-    "fi": "Kirjoita vastaus suomeksi.",
-}
-""" Instructions for LLM to use a specific language. """
 
 PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
 
@@ -80,7 +69,7 @@ class ModelOutputValidator:
         self.iteration_counter = 0
 
     # Define the component output
-    @component.output_types(valid_replies=List[str], invalid_replies=Optional[List[str]], error_message=Optional[str])
+    @component.output_types(valid_replies=List[str], invalid_replies=Optional[List[str]], error_message=Optional[str], model=Optional[BaseModel])
     def run(self, replies: List[str]):
         self.iteration_counter += 1
 
@@ -92,9 +81,12 @@ class ModelOutputValidator:
                 logger.debug("No JSON block found in the response.")
                 # Hope that the response is valid JSON
                 response = replies[0]
-            self.pydantic_model.model_validate_json(response)
+            model = self.pydantic_model.model_validate_json(response)
             logger.debug("OutputValidator at Iteration %d: Valid JSON from LLM - No need for looping", self.iteration_counter, extra={"replies": replies})
-            return {"valid_replies": replies}
+            return {
+                "valid_replies": replies,
+                "model_output": model
+            }
 
         # If the LLM's reply is corrupted or not valid, return "invalid_replies" and the "error_message" for LLM to try again
         except (ValueError, ValidationError) as e:
@@ -107,7 +99,7 @@ class ModelOutputValidator:
             return {"invalid_replies": replies[0], "error_message": str(e)}
 
 
-def extract_interest_groups(stack: List):
+def extract_interest_groups(article: Article) -> ArticleContext:
     """
     Extract interest groups from text.
     """
@@ -115,22 +107,18 @@ def extract_interest_groups(stack: List):
         logging.getLogger("canals.pipeline.pipeline").setLevel(logging.DEBUG)
 
     template = get_prompt_template("vested_groups_inst")
-    template += LLM_INST_GEN_JSON
+    # Variables to be used in the template
+    template_vars = list(
+            article.model_dump().keys()
+        ) + [
+            # Schema validation
+            "invalid_replies",
+            "error_message",
+            # Schema for response
+            "response_schema"
+        ]
 
-    article = _get_from_stack(stack, newspaper.Article)
-    title = article.title
-    url = article.original_url
-    text = _get_from_stack(stack, MarkdownStr)
-
-    # TODO: See issue #5
-    content_lang = article.meta_lang or "en"
-    content_lang, *_ = content_lang.lower().split("-")
-    if content_lang in LLM_INST_USE_LANGUAGE:
-        template += LLM_INST_USE_LANGUAGE[content_lang]
-    else:
-        logger.warning("Language '%s' not supported for LLM instructions. Using English.", content_lang)
-
-    prompt_builder = PromptBuilder(template)
+    prompt_builder = PromptBuilder(template, variables=template_vars)
     llm = get_generator()
     output_validator = ModelOutputValidator(pydantic_model=ArticleContext)
 
@@ -144,16 +132,14 @@ def extract_interest_groups(stack: List):
     p.connect("output_validator.invalid_replies", "prompt_builder.invalid_replies")
     p.connect("output_validator.error_message", "prompt_builder.error_message")
 
+    prompt_vars = article.model_dump()
+    prompt_vars["response_schema"] = ArticleContext.schema_json(indent=2)
+
     results = p.run({
-        "prompt_builder": {
-            "url": str(url),
-            "title": str(title),
-            "text": str(text),
-            "schema": ArticleContext.schema_json(indent=2),
-        }
+        "prompt_builder": prompt_vars
     })
 
-    return results
+    return results['output_validator']['model_output']
 
 
 def extract_json(response: str):

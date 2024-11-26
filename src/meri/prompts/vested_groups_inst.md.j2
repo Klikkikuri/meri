@@ -1,39 +1,64 @@
-The following news article may contain input from individuals, organizations, or groups with vested interests in the topic. Your task is to analyze the article to identify these stakeholders, explain their potential motivations, and suggest resources for further research. Indetify also the parties who are affected by the topic but are not explicitly mentioned in the article.
+## Task Description
+
+The following news article may contain input from individuals, organizations, or groups with vested interests in the topic. Your task is to analyze the article to identify these stakeholders, explain their potential motivations, and suggest resources for further research. Identify also the parties who are affected by the topic but are not explicitly mentioned in the article.
 
 Based on the context and content of the article, generate a list of entities that may have a vested interest in the topic or be affected by it.
 
 1. Identify and List Stakeholders:
-    - **Interest Groups**: Organizations, unions, lobbyists, advocacy groups, or industries with specific concerns about the article’s topic.
+    - **Interest Groups**: Organizations, unions, lobbyists, advocacy groups, industries with specific concerns about the article’s topic.
     - **Interviewed Parties**: Anyone quoted or mentioned who represents an entity, including their organizational role and possible bias.
     - **Parties Mentioned**: Public figures, officials, or key figures referenced with potential interests or biases.
     - **Potentially Affected Parties**: Individuals, industries, communities, or groups who may be indirectly impacted by the topic, whether mentioned in the article or inferred based on context.
+    {# Finnish newspapers like to include social media content for easy outrage bait #}
+    - **Social Media Influencers and Agitators**: Individuals or groups who may have a significant following or influence on public opinion regarding the topic.
 2. Explain Relationships and Motivations:
-    - Provide reasons for each identified interest, detailing how each group or individual may be motivated by or impacted by the issue discussed.
-    - Where relevant, include reasoning for groups or parties not explicitly named but who may reasonably have a stake in the outcome.
+    - Provide reasoning for each identified stakeholder, detailing how each group or individual may be motivated by or impacted by the issue discussed.
+    - Where relevant, include reasoning for groups or parties not explicitly named but who may reasonably have a stake or be affected by the outcome.
 3. Create Research and Verification Tools:
     - For each identified group or individual, create:
         - A Wikipedia API-compatible query to gather more information about their background, roles, or missions.
         - A Question of Bias or Vested Interest, formatted to explore any potential conflicts, biases, or relevant affiliations tied to the entity or person in relation to the article topic. Format as complete question.
 4. Provide Comprehensive Contextualization:
     - Ensure that the analysis is thorough, considering all possible stakeholders and their potential interests or impacts in the grander scheme of the article’s subject.
-    - Detail each group’s or individual’s interest, role, or possible influence in the context of the article, incorporating any relevant background about the issue at hand.
+    - Detail each group's or individual's interest, role, or possible influence in the context of the article, incorporating any relevant background about the issue at hand.
     - If possible, draw connections between the interests of various parties and how they might influence public opinion, policy, or media framing on the topic.
     - Be explicit, and use pronouns or identifiers to clarify which stakeholders are being discussed.
     - Be specific, and provide context. Example:
+        {# TODO: Examples based on recent event's, please update as necessary #}
         - "Women's rights" is too broad, specify the aspect with "Reproductive rights in the Texas."
         - "How are airline employees trained to handle situations involving passengers with food allergies?" -> "How are Finnair flight attendants trained to manage in-flight situations involving passengers with nut allergies?"
         - "Retail employees" -> "Wal-Mart employees in the United States."
 
+## Article
+
 Page URL: {{url|escape}}
 Page title: {{title|striptags|escape}}
-
-Article:
+{% if meta['authors'] %}
+{% for author in meta['authors'] %}
+Author: {{author|escape}}
+{% endfor %}
+{% endif %}
 
 ```markdown
 {{text|indent(4)}}
 ```
 
+## Additional Instructions
+
+Respond by providing a reasoning first.
+Then, you MUST format response following this JSON schema, but only return the actual instances without any additional schema definition:
+```json
+{{response_schema}}
+```
+
+{# Language-specific instructions #}
+{%if meta['language'] == "fi" %}
+**HUOMAA:** Kirjoita vastaus suomeksi.
+{% endif %}
+
 {% if invalid_replies and error_message %}
+### Invalid Output on Previous Attempt
+
 You already created the following output in a previous attempt:
 {{invalid_replies|indent(4)}}
 
