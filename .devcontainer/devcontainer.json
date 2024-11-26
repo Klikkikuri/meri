@@ -44,6 +44,7 @@
 				"python.testing.pytestEnabled": true,
 				"ruff.enable": true,
 				"python.linting.enabled": true,
+				"isort.check": true,
 				"autopep8.importStrategy": "fromEnvironment",
 				"black-formatter.importStrategy": "fromEnvironment",
 				"isort.importStrategy": "fromEnvironment",
@@ -72,7 +73,7 @@
 
 	"mounts": [
 		{
-            "source": "./.devcontainer/bash_history",
+            "source": "${workspaceFolder}/.devcontainer/bash_history",
             "target": "/home/vscode/.bash_history",
             "type": "bind"
         }
