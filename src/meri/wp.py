@@ -29,8 +29,40 @@ class WikiDocumentMeta(TypedDict, total=False):
 
 logger = logging.getLogger(__name__)
 
+SECTIONS_TO_IGNORE: Dict[str, Set] = {
+    "en": set(
+        (
+            "See also",
+            "References",
+            "External links",
+            "Further reading",
+            "Footnotes",
+            "Bibliography",
+            "Sources",
+            "Citations",
+            "Literature",
+            "Footnotes",
+            "Notes and references",
+            "Photo gallery",
+            "Works cited",
+            "Photos",
+            "Gallery",
+            "Notes",
+            "References",
+            "References and sources",
+            "References and notes",
+        )
+    ),
+    "fi": set(
+        (
+            "Lähteet",
+            "Aiheesta muualla",
+        )
+    ),
+}
 
-def split_markdown_documents(content) -> List[str]:
+
+def split_markdown_documents(content: str) -> List[str]:
     """
     Document splitting function for Markdown documents.
     """
@@ -40,12 +72,22 @@ def split_markdown_documents(content) -> List[str]:
     matches = list(heading_pattern.finditer(content))
 
     previous_headings = []
+    summary = ""
+
+    # TODO: Make it locale aware
+    ignored_sections = SECTIONS_TO_IGNORE["en"] | SECTIONS_TO_IGNORE["fi"]
+
     docs = []
 
+    # Iterate over headings
     for i, match in enumerate(matches):
         heading_level = len(match.group(1))  # Number of # characters
         heading_text = match.group(2).strip()
-        
+
+        if heading_text in ignored_sections:
+            logger.debug("Skipping section skippable section %r", heading_text)
+            continue
+
         # Update the previous headings context
         if heading_level > len(previous_headings):
             previous_headings.append(heading_text)
@@ -57,21 +99,27 @@ def split_markdown_documents(content) -> List[str]:
         start_pos = match.end()
         end_pos = matches[i + 1].start() if i + 1 < len(matches) else len(content)
         section_content = content[start_pos:end_pos].strip()
-        
+
         if not section_content:  # Skip empty sections
-            print(f"Skipping empty section {heading_text!r}")
+            logger.debug("Skipping empty section %r", heading_text)
             continue
+
+        if heading_level == 1:
+            summary = section_content
 
         page_content = ""
 
         # Generate headings
         for l, heading in enumerate(previous_headings):
             page_content += f"{'#' * (l + 1)} {heading}\n\n"
-            # TODO: Add section intro
-            
+
+            # Include the summary in the first subsection
+            if l == 0 and summary and heading_level > 1:
+                page_content += f"{summary}\n\n"
+
         page_content += section_content
         docs.append(page_content)
-    
+
     return docs
 
 
