@@ -18,6 +18,31 @@ tracer = trace.get_tracer(__name__)
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 type PyObjectId = Annotated[str, BeforeValidator(str)]
 
+type ContemplatorType = Annotated[
+    List[str],
+    Field(description="""
+        - Begin with small, foundational observations
+        - Question each step thoroughly
+        - Show natural thought progression
+        - Express doubts and uncertainties
+        - Revise and backtrack if you need to
+        - Continue until natural resolution
+        """,
+        examples=[
+            [
+                "Hmm... let me think about this...",
+                "Wait, that doesn't seem right...",
+                "Maybe I should approach this differently...",
+                "Going back to what I thought earlier..."
+            ], [
+                "Starting with the basics...",
+                "Building on that last point...",
+                "This connects to what I noticed earlier...",
+                "Let me break this down further..."
+            ]
+        ]
+    )
+]
 
 # TODO: Make as pydantic model
 class Outlet:
@@ -81,16 +106,78 @@ class LinkLabel(str, Enum):
     "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#alternate"
 
 
-class ArticleLabels(str, Enum):
+class ArticleTypeLabels(str, Enum):
     """
     Labels for article types.
     """
+
+    TYPE_ARTICLE        = "com.github.klikkikuri/article-type=article"
+    """
+    A factual and concise news report that delivers essential details about a recent event or development. 
+    Focuses on the core questions: who, what, where, when, why, and how.
+    """
+
+    TYPE_ANALYSIS       = "com.github.klikkikuri/article-type=analysis"
+    """
+    An article that goes beyond reporting news to provide deeper insights and understanding of recent events.
+    Includes background information, context, and analysis.
+    """
+
+    TYPE_FEATURE        = "com.github.klikkikuri/article-type=feature"
+    """
+    A creative, narrative-driven article that explores a topic, person, or event in depth.  and profiles (for example, an article about a movie actor starring in a recently-released film).
+    Includes human-interest stories, profiles, and exploratory pieces aimed at engaging the reader.
+    """
+
     TYPE_OPINION        = "com.github.klikkikuri/article-type=opinion"
+    """
+    A subjective piece offering the author's perspective, judgment, or argument on a specific topic. 
+    Often includes persuasive language and is intended to provoke thought or debate.
+    """
+
     TYPE_REVIEW         = "com.github.klikkikuri/article-type=review"
+    """
+    A critical evaluation of a cultural or consumer product, such as a book, film, performance, or technology. 
+    Highlights strengths, weaknesses, and overall value to help readers form their own opinions.
+    """
+
     TYPE_PRESS_RELEASE  = "com.github.klikkikuri/article-type=press-release"
+    """
+    A formal announcement from an organization or business, crafted to inform the media and public about an event, product launch, or other newsworthy update. 
+    Typically promotional in nature.
+    """
+
     TYPE_ADVERTISEMENT  = "com.github.klikkikuri/article-type=advertisement"
-    TYPE_VIDEO          = "com.github.klikkikuri/article-type=video"
+    """
+    Paid content designed to promote a product, service, or brand.
+    """
+
+    TYPE_ANNOUNCEMENT = "com.github.klikkikuri/article-type=announcement"
+    """
+    A public notice issued by a government, organization, or authority to share important information, updates, or warnings. 
+    """
+
+    TYPE_MULTIMEDIA     = "com.github.klikkikuri/article-type=multimedia"
+    """
+    A video article or news segment. 
+    May include news reports, interviews, documentaries, and other video content.
+    """
+
     AI_SLOP             = "com.github.klikkikuri/ai-slop=true"
+    """
+    Content created or significantly influenced by artificial intelligence tools, such as automated text generation or data-driven article writing. 
+    """
+
+
+class TypeResponse(BaseModel):
+    contemplator: ContemplatorType
+    types: List[ArticleTypeLabels] = Field([])
+
+    # "evidence": {
+    #     "content": "The article presents a detailed account of the event, including quotes from officials and eyewitnesses, and provides context and background information to inform the reader.",
+    #     "tone": "The tone is neutral and informative, focusing on facts and analysis rather than promoting a specific viewpoint or agenda.",
+    #     "structure": "The article follows a typical news format, presenting the who, what, when, where, why, and how of the event, without personal commentary or subjective interpretation."
+    # }
 
 
 class ArticleUrl(BaseModel):
@@ -123,7 +210,7 @@ class Article(BaseModel):
 
     text: str = Field(...)
     meta: ArticleMeta = Field(default_factory=ArticleMeta)
-    labels: list[ArticleLabels] = Field(default_factory=list)
+    labels: list[ArticleTypeLabels] = Field(default_factory=list)
     urls: list[ArticleUrl] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
