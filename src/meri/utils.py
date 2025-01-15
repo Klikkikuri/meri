@@ -5,6 +5,7 @@ from importlib.metadata import metadata
 
 import structlog
 from langdetect import detect
+from langdetect.detector import Detector
 from opentelemetry import trace
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 from opentelemetry.sdk.resources import (
@@ -18,6 +19,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from url_normalize import url_normalize
 
 from .settings import settings
+from .exceptions import UnknownLanguageException
 
 logger = structlog.get_logger(__name__)
 
@@ -40,11 +42,26 @@ EXTRA_INSTRUMENTOR = [
 
 def detect_language(body: str) -> str:
     """
-    Detect the language of the text.
+    Detect the language of the text from text body.
 
-    TODO: See issue #5
+    This function uses the langdetect library to detect the language of the given text.
+    Raises :class:`UnknownLanguageException` if the language could not be detected.
+
+    :param body: The text body to detect the language from.
+    :return: The detected language code.
+    :raises LangDetectException: Error in langdetect library.
+    :raises UnknownLanguageException: Language could not be detected.
     """
-    content_lang = detect(body) or "en"
+    content_lang = detect(body)
+
+    # Fail if the language could not be detected
+    if content_lang == Detector.UNKNOWN_LANG:
+        logger.error("Could not detect language")
+        raise UnknownLanguageException("Could not detect language")
+
+    logger.debug("Detected language %r", content_lang)
+
+    # Normalize the language code
     content_lang, *_ = content_lang.lower().split("-")
     return content_lang
 
