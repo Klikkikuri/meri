@@ -14,7 +14,7 @@ from .utils import detect_language
 
 from .extractor._processors import MarkdownStr, _get_from_stack, article_to_markdown
 from .settings import settings
-from .abc import ArticleContext, VestedGroup, Article
+from .abc import ArticleContext, TypeResponse, VestedGroup, Article
 
 from platformdirs import user_data_dir
 
@@ -23,6 +23,7 @@ from haystack.components.generators import OpenAIGenerator
 from haystack.components.builders import PromptBuilder
 
 PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
+PROMPT_TEMPLATE_NEWS_TYPE = "news_article_type.md.j2"
 
 RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 """ Regular expression to extract JSON block from the response. """
@@ -34,7 +35,7 @@ class LLMGenerators(Enum):
     OPENAI = "OpenAIGenerator"
 
 
-def get_prompt_template(template_name) -> str:
+def get_prompt_template(template_name: str) -> str:
     """
     Get the prompt text based on the template name.
 
@@ -43,7 +44,10 @@ def get_prompt_template(template_name) -> str:
 
     PROMPT_ENCODING = "utf-8"
 
-    prompt_file_name = PROMPT_TEMPLATE_VESTED_GROUPS
+    # Hack-ish approach; append md.j2 if necessary"
+    prompt_file_name = template_name
+    if not template_name.endswith(".md.j2"):
+        prompt_file_name += ".md.j2"
     user_prompt_dir = Path(user_data_dir(__package__), "prompts")
 
     user_prompt_file = user_prompt_dir / prompt_file_name
@@ -56,7 +60,11 @@ def get_prompt_template(template_name) -> str:
 
 
 def get_generator():
-    return OpenAIGenerator()
+    generation_kwargs = {
+        "temperature": 0.1,
+        "max_tokens": 4000,
+    }
+    return OpenAIGenerator(generation_kwargs=generation_kwargs)
 
 
 @component
@@ -69,7 +77,7 @@ class ModelOutputValidator:
         self.iteration_counter = 0
 
     # Define the component output
-    @component.output_types(valid_replies=List[str], invalid_replies=Optional[List[str]], error_message=Optional[str], model=Optional[BaseModel])
+    @component.output_types(valid_replies=List[str], invalid_replies=Optional[List[str]], error_message=Optional[str], model_output=Optional[BaseModel])
     def run(self, replies: List[str]):
         self.iteration_counter += 1
 
@@ -134,6 +142,52 @@ def extract_interest_groups(article: Article) -> ArticleContext:
 
     prompt_vars = article.model_dump()
     prompt_vars["response_schema"] = ArticleContext.schema_json(indent=2)
+
+    results = p.run({
+        "prompt_builder": prompt_vars
+    })
+
+    return results['output_validator']['model_output']
+
+
+def predict_article_type(article: Article) -> TypeResponse:
+    """
+    Predict the type of news article.
+    """
+
+    if settings.DEBUG:
+        logging.getLogger("canals.pipeline.pipeline").setLevel(logging.DEBUG)
+
+    template = get_prompt_template("news_article_type")
+    # Variables to be used in the template
+    template_vars = list(
+            article.model_dump().keys()
+        ) + [
+            # Schema validation
+            "invalid_replies",
+            "error_message",
+            # Schema for response
+            "response_schema"
+        ]
+
+    prompt_builder = PromptBuilder(template, variables=template_vars)
+    llm = get_generator()
+    output_validator = ModelOutputValidator(pydantic_model=TypeResponse)
+
+    p = Pipeline(max_runs_per_component=1)
+    p.add_component("prompt_builder", prompt_builder)
+    p.add_component("llm", llm)
+    p.add_component(instance=output_validator, name="output_validator")
+
+    p.connect("prompt_builder", "llm")
+    p.connect("llm", "output_validator")
+    p.connect("output_validator.invalid_replies", "prompt_builder.invalid_replies")
+    p.connect("output_validator.error_message", "prompt_builder.error_message")
+
+    prompt_vars = article.model_dump()
+    prompt_vars["response_schema"] = TypeResponse.schema_json(indent=2)
+
+    logger.debug("Prompt variables: %s", prompt_vars)
 
     results = p.run({
         "prompt_builder": prompt_vars
