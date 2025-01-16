@@ -46,28 +46,6 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
     _settings_file_location.insert(0, Path(_conf_file))
 
 
-class CelerySettings(BaseSettings):
-    """
-    Configuration settings for Celery.
-
-    Celery is a distributed task queue system for Python that allows you to run
-    tasks asynchronously. This class defines the settings related to Celery.
-    """
-
-    broker_url: AnyUrl = Field("redis://redis/0")
-    """
-    The URL of the message broker used by Celery. Message broker is responsible for storing and delivering messages
-    between the Celery worker processes and the main application.
-    .. seealso:: https://docs.celeryq.dev/en/stable/getting-started/backends-and-brokers/index.html
-    """
-
-    backend: Optional[AnyUrl] = Field(None)
-    """
-    The URL of the result backend used by Celery. The result backend is responsible for storing the results of the
-    tasks executed by the Celery worker processes.
-    """
-
-
 class Settings(BaseSettings):
     DEBUG: bool = Field(
         False,
@@ -99,8 +77,6 @@ class Settings(BaseSettings):
         "INFO",
         description="Logging level.",
     )
-
-    celery: CelerySettings = CelerySettings()
 
     @classmethod
     def settings_customise_sources(cls,
