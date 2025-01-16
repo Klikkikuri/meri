@@ -9,11 +9,12 @@ from markdownify import markdownify
 from inspect import signature
 from opentelemetry import trace
 from opentelemetry.semconv.trace import SpanAttributes
+from langdetect import detect as detect_language
 
 from meri.settings import settings
 
 
-from ..abc import Outlet
+from ..abc import Outlet, Article
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -35,6 +36,19 @@ class NotAllowedByRobotsTxt(RequestException):
     pass
 
 
+def article_language_from_text(article: Article) -> Article:
+    """
+    Detect the article language from content, if not already detected.
+    """
+    if not article.meta['language']:
+        lang = detect_language(article.text)
+        logger.debug("Detected language %r", lang)
+        article.meta['language'] = lang
+    else:
+        logger.debug("Language already detected %r", article.meta['language'])
+    return article
+
+
 def article_to_markdown(article: newspaper.Article) -> MarkdownStr:
     # Convert the article to markdown
     return html_to_markdown(article.article_html)
@@ -49,7 +63,8 @@ def html_to_markdown(html: str) -> MarkdownStr:
     md = markdownify(html,
                        heading_style="ATX",
                        escape_misc=True,
-                       autolinks=False,
+                       escape_underscores=False,
+                       autolinks=True,
                        default_title=False).strip()
     return MarkdownStr(md)
 
@@ -64,7 +79,7 @@ def article_canonical_url(article: newspaper.Article) -> AnyHttpUrl | None:
     return None
 
 
-def article_url(article: newspaper.Article) -> AnyHttpUrl | None:
+def extract_article_url(article: newspaper.Article) -> AnyHttpUrl | None:
     """
     Get the URL of the article.
     """
