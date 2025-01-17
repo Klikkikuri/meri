@@ -1,20 +1,38 @@
-[tool.poetry]
+[project]
 name = "meri"
 version = "0.1.0"
 description = "Meri 🌊 – Klikkikuri backend service for news title unsensationalizer"
 authors = [
-	"Teemu Autto <teemu.a.autto@jyu.fi>",
-	"Juho Tarkkanen <juho.tarkkanen@hotmail.fi>",
-	"Taija Kolehmainen <taija.s.kolehmainen@jyu.fi>"
-]
-packages = [
-	{ include = "meri", from = "src/" }
+	{name="Teemu Autto", email="klikkikuri@teemu.rautakuu.org"},
+	{name="Juho Tarkkanen", email="juho.tarkkanen@hotmail.fi"},
+	{name="Taija Kolehmainen", email="taija.s.kolehmainen@jyu.fi"}
 ]
 readme = "README.md"
-repository = "https://github.com/Klikkikuri/meri"
 license = "AGPL-3.0-only"
+license-files = ["LICENSE.txt"]
+dependencies = [
+    "click>=8.1.8",
+    "haystack-ai>=2.9.0",
+    "langdetect>=1.0.9",
+    "lxml[html-clean]>=5.3.0",
+    "markdownify>=0.14.1",
+    "newspaper4k>=0.9.3.1",
+    "opentelemetry-instrumentation-logging>=0.50b0",
+    "opentelemetry-sdk>=1.29.0",
+    "platformdirs>=4.3.6",
+    "pydantic>=2.10.5",
+    "pydantic-settings>=2.7.1",
+    "python-dotenv>=1.0.1",
+    "requests>=2.32.3",
+    "structlog>=25.1.0",
+    "trafilatura>=2.0.0",
+    "url-normalize>=1.4.3",
+]
+requires-python = ">=3.12"
 
-[tool.poetry_bumpversion.file."src/meri/__init__.py"]
+[project.urls]
+homepage = "https://github.com/Klikkikuri"
+repository = "https://github.com/Klikkikuri/meri"
 
 [tool.black]
 line-length = 120
@@ -26,62 +44,28 @@ line_length = 120
 [tool.ruff]
 ignore = ["E701"]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-pydantic-settings = "^2.5.2"
-python-dotenv = "^1.0.1"
-openai = "^1.51.1"
-Jinja2 = "^3.1.4"
-structlog = "^24.4.0"
-opentelemetry-api = "^1.27.0"
-playwright = "^1.47.0"
-markdownify = "^0.13.1"
-opentelemetry-sdk = "^1.27.0"
-opentelemetry-instrumentation-logging = "^0.48b0"
-newspaper4k = "^0.9.3.1"
-platformdirs = "^4.3.6"
-# Needed for newspaper4k
-lxml = {extras = ["html-clean"], version = "^5.3.0"}
-celery = {extras = ["redis"], version = "^5.4.0"}
-click = "^8.1.7"
-haystack-ai = "^2.6.1"
-url-normalize = "^1.4.3"
-langdetect = "^1.0.9"
+[tool.uv]
+dev-dependencies = [
+    "black>=24.10.0",
+    "ruff>=0.9.2",
+    "bandit>=1.8.2",
+    "debugpy>=1.8.12",
+    "isort>=5.13.2",
+    "requests-cache>=1.2.1",
+    "autopep8>=2.3.2",
+    "ipykernel>=6.29.5",
+    "ipywidgets>=8.1.5",
+]
+[tool.uv.sources]
+# suola = { workspace = true }
+# karikko = { workspace = true }
+meri = { path = "./src/meri" }
 
-[tool.poetry.group.dev.dependencies]
-black = "^24.8.0"
-ruff = "^0.6.9"
-poetry = "1.8.3"
-isort = "^5.13.2"
-pre-commit = "^4.0.1"
-bandit = "^1.7.10"
-poetry-bumpversion = "^0.3.2"
-requests-cache = "^1.2.1"
-debugpy = "^1.8.7"
-
-[tool.poetry.group.otel]
-# OpenTelemetry dependencies
-optional = true
-
-[tool.poetry.group.otel.dependencies]
-opentelemetry-exporter-otlp = "^1.27.0"
-opentelemetry-instrumentation-asyncio = "^0.48b0"
-opentelemetry-instrumentation-logging = "^0.48b0"
-opentelemetry-instrumentation-requests = "^0.48b0"
-opentelemetry-instrumentation-celery = "^0.48b0"
-opentelemetry-instrumentation-system-metrics = "^0.48b0"
-opentelemetry-instrumentation-sqlalchemy = "^0.48b0"
-opentelemetry-instrumentation-jinja2 = "^0.48b0"
-opentelemetry-instrumentation-openai = "^0.33.3"
-
-[tool.poetry.group.analysis]
-optional = true
-
-[tool.poetry.group.analysis.dependencies]
-ipykernel = "^6.29.5"
-ipywidgets = "^8.1.5"
-scikit-learn = "^1.5.2"
+[tool.uv.workspace]
+members = ["src/*"]
+# Exclude self from workspace
+exclude = ["src/meri"]
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["hatchling"]
+build-backend = "hatchling.build"

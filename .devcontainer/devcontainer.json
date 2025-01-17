@@ -7,7 +7,7 @@
     ],
 
 	"overrideCommand": true,
-	"service": "vscode",
+	"service": "development",
 	"runServices": [],  // ["jaeger"],
     "shutdownAction": "stopCompose",
     "workspaceFolder": "/app",
@@ -37,7 +37,7 @@
 				"files.eol": "\n",
 
 				// Python settings
-				"python.defaultInterpreterPath": "/opt/venv/bin/python",
+				"python.defaultInterpreterPath": "/app/.venv/bin/python",
 				"python.formatting.provider": "black",
 				"python.analysis.importFormat": "relative",
 				"python.analysis.supportDocstringTemplate": true,
@@ -52,6 +52,8 @@
 				"[python]": {
 					"editor.rulers": [120]
 				},
+				"rewrap.wrappingColumn": 120,
+
 				// No A/B testing
 				"python.experiments.enabled": false,
 
@@ -72,11 +74,6 @@
 	},
 
 	"mounts": [
-		{
-            "source": "${workspaceFolder}/.devcontainer/bash_history",
-            "target": "/home/vscode/.bash_history",
-            "type": "bind"
-        }
 	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
@@ -86,7 +83,7 @@
 	// "forwardPorts": [],
 
 	// Change venv to be owned by vscode user, and install pre-commit hooks.
-	"postCreateCommand": "sudo chown -R 1000:1000 /opt/venv/; pre-commit install --install-hooks",
+	"postCreateCommand": "which pre-commit && pre-commit install --install-hooks",
 
 	// Configure tool-specific properties.
 	// "customizations": {},

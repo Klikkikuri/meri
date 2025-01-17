@@ -1,41 +1,27 @@
-#FROM python:3.12-slim AS valas
 ARG PYTHON_VERSION=3.12
+ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}
 
-# Build fake depedencies for playwright
-FROM mcr.microsoft.com/devcontainers/python:1-${PYTHON_VERSION} AS deb-builder
+ARG VIRTUAL_ENV="/app/.venv"
 
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get --no-install-recommends install -y equivs
-
-RUN equivs-control libgl1-mesa-dri \
-    && printf 'Section: misc\nPriority: optional\nStandards-Version: 3.9.2\nPackage: libgl1-mesa-dri\nVersion: 99.0.0\nDescription: Dummy package for libgl1-mesa-dri\n' >> libgl1-mesa-dri \
-    && equivs-build libgl1-mesa-dri \
-    && mv libgl1-mesa-dri_*.deb /libgl1-mesa-dri.deb
-
-
-FROM mcr.microsoft.com/devcontainers/python:1-${PYTHON_VERSION}
+FROM ${PYTHON_BASE_IMAGE} AS build
 
 LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
     org.opencontainers.image.source="https://github.com/Klikkikuri/meri" \
     org.opencontainers.image.url="https://github.com/Klikkikuri"
 
-# Set up configurable non-root user
-ENV PUID=1000 \
-    PGID=1000
+ARG VIRTUAL_ENV
 
-# Poetry settings
-ENV POETRY_VERSION=1.8.3 \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=0
+ENV UV_VERSION="0.5.20" \
+    UV_COMPILE_BYTECODE=1 \
+    # Copy from the cache instead of linking since it's a mounted volume
+    UV_LINK_MODE=copy
 
 # Python settings
 ENV PYTHONUNBUFFERED=1
 
 # Virtual environment settings
-ENV PATH="/opt/venv/bin/:${PATH}" \
-    VIRTUAL_ENV="/opt/venv" \
-    PLAYWRIGHT_BROWSERS_PATH="/opt/playwright"
+ENV VIRTUAL_ENV=${VIRTUAL_ENV} \
+    PATH="${VIRTUAL_ENV}/bin/:${PATH}"
 
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
@@ -44,51 +30,65 @@ ENV HAYSTACK_TELEMETRY_ENABLED="False" \
 # More traceable shell
 SHELL [ "/bin/bash", "-exo", "pipefail", "-c" ]
 
-# Install playwright fake dependencies, saves about 40MB
-COPY --from=deb-builder --link /libgl1-mesa-dri.deb /libgl1-mesa-dri.deb
-RUN dpkg -i /libgl1-mesa-dri.deb && rm /libgl1-mesa-dri.deb
-
-# Install git and bash-completion
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get --no-install-recommends install -y git bash-completion
+    apt-get update && apt-get --no-install-recommends install -y \
+        # Install dumb-init for preventing zombie process lingering
+        dumb-init gosu
 
-# Install dumb-init for preventing zombie process lingering
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    apt-get update && apt-get --no-install-recommends install -y dumb-init gosu
+# Install UV
+VOLUME [ "${VIRTUAL_ENV}" ]
+
+COPY --from=ghcr.io/astral-sh/uv:0.5.20 /uv /uvx ${VIRTUAL_ENV}/bin/
 
 WORKDIR /app
 
 # Create a virtual environment
-RUN python -mvenv ${VIRTUAL_ENV} --system-site-packages && \
-    echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
-
-# Install poetry
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip --disable-pip-version-check install -U "poetry==$POETRY_VERSION" && \
-    poetry completions bash >> /etc/bash_completion
+RUN uv venv --allow-existing --seed "${VIRTUAL_ENV}" && \
+echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
 # Install dependencies
-COPY pyproject.toml poetry.lock ./
-RUN --mount=type=cache,target=/root/.cache/pypoetry \
-    poetry install -v --no-root
-
-### Install playwright
-RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-    --mount=type=cache,target=/var/lib/apt,sharing=locked \
-    poetry run playwright install chromium --with-deps
+RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=type=bind,source=uv.lock,target=uv.lock \
+    --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
+    uv sync --frozen --no-install-project --no-dev
 
 # Install the application
-COPY . .
-RUN --mount=type=cache,target=/root/.cache/poetry \
-    poetry install -v --with otel
+COPY . /app
 
-# # Install pre-commit hooks in throwaway git repository, so that the hooks are available in the container
-# RUN git init . && \
-#     pre-commit install-hooks && \
-#     rm -rf .git
+# Sync the project
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
-CMD ["poetry", "run", "bash"]
+# Development stage
+
+FROM mcr.microsoft.com/devcontainers/python:${PYTHON_VERSION} AS development
+
+ARG VIRTUAL_ENV
+
+WORKDIR /app
+
+COPY --chown=vscode:vscode --from=build /app /app
+
+ENV UV_LINK_MODE=copy
+
+ENV VIRTUAL_ENV=$VIRTUAL_ENV \
+    PATH="${VIRTUAL_ENV}/bin/:${PATH}"
+
+RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
+
+# Not needed since the base image already has these installed
+# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+#     --mount=type=cache,target=/var/lib/apt,sharing=locked \
+#     apt-get update && apt-get --no-install-recommends install -y \
+#         # Install git and bash-completion
+#         git bash-completion
+
+# Install development dependencies
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-install-project --dev && \
+    chown -R vscode:vscode /app/.venv
+
+USER vscode

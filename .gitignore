@@ -174,3 +174,4 @@ teemu/
 
 # Local History for devcontainer
 .devcontainer/bash_history
+.venv/
