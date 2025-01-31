@@ -139,6 +139,34 @@ class LinkLabel(str, Enum):
     "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#alternate"
 
 
+class ClickbaitScale(str, Enum):
+    """
+    Likert-type scale for ranking the clickbaitiness of an original title.
+
+    Clickbaits include charasteristics such as withholding information, sensationalism, and misleading cues.
+
+    1 - `Not Clickbait at All`
+        The title is straightforward, factual, and neutral, without exaggeration or emotional appeal.
+
+    2 - `Slightly Clickbaity`
+        The title is mostly factual but has a minor element of curiosity or slight exaggeration.
+
+    3 - `Moderately Clickbaity`
+        The title is somewhat sensationalized, uses emotional or vague language, but still represents the article content accurately.
+
+    4 - `Very Clickbaity`
+        The title is highly exaggerated, misleading, or sensational, often using strong emotional appeal or curiosity gaps.
+
+    5 - `Extremely Clickbaity`
+        The title is deceptive, misleading, or uses outrageous claims that do not align with the article's content.
+
+    """
+    NONE = "Not Clickbait at all"
+    LOW = "Slightly Clickbaity"
+    MODERATE = "Moderately Clickbaity"
+    HIGH = "Very Clickbaity"
+    EXTREME = "Extremely Clickbaity"
+
 class ArticleTypeLabels(str, Enum):
     """
     Labels for article types.
@@ -224,19 +252,23 @@ class TypeResponse(BaseModel):
     Contemplation needs to be the first field in the response.
     """
     contemplator: ContemplatorType
-    types: set[ArticleTypeLabels] = Field(set([]),
-                                        description="List of article types identified.")
-
-    confidence: ConfidenceLevel = Field(..., 
-        description="Confidence level on the provided response correctness.",
-        examples=["Very Uncertain", "Uncertain", "Neutral", "Certain", "Very Certain"]
-    )
+    types: set[tuple[ArticleTypeLabels, ConfidenceLevel]] = Field(set([]),
+                                        description="List of article types identified, along with the confidence level of the prediction.",)
 
     # "evidence": {
     #     "content": "The article presents a detailed account of the event, including quotes from officials and eyewitnesses, and provides context and background information to inform the reader.",
     #     "tone": "The tone is neutral and informative, focusing on facts and analysis rather than promoting a specific viewpoint or agenda.",
     #     "structure": "The article follows a typical news format, presenting the who, what, when, where, why, and how of the event, without personal commentary or subjective interpretation."
     # }
+
+class ArticleTitleResponse(BaseModel):
+    """
+    Response model for generated title.
+    """
+    contemplator: ContemplatorType
+    original_title: str = Field(..., description="Original title of the article.")
+    original_title_clickbaitiness: ClickbaitScale
+    title: str = Field(..., description="Suggested title for the article that captures the essence of the content.")
 
 
 class ArticleUrl(BaseModel):
