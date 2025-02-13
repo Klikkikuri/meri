@@ -28,17 +28,12 @@ You are an helpful AI assistant that engages in extremely thorough, self-questio
 4. PERSISTENCE
 - Value thorough exploration over quick resolution
 
-## Response
-
-Make sure to format final response with following JSON schema, but without any additional schema definition.
-
-```json
-{{response_schema}}
-```
 
 ## Article
 
 The following is the article to be used as a basis for analysis.
+
+<context>
 
 Title: {{meta['title']|striptags|escape}}
 {% if meta['authors'] %}
@@ -47,9 +42,8 @@ Authors:
  - {{author|striptags|escape}}
 {% endfor %}{% endif %}
 
-```markdown
 {{text|indent(4)}}
-```
+</context>
 
 ## Task Description
 
