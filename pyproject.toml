@@ -16,10 +16,10 @@ dependencies = [
     "langdetect>=1.0.9",
     "lxml[html-clean]>=5.3.0",
     "markdownify>=0.14.1",
-    "newspaper4k>=0.9.3.1",
     "opentelemetry-instrumentation-logging>=0.50b0",
     "opentelemetry-sdk>=1.29.0",
     "platformdirs>=4.3.6",
+    "pycurl>=7.45.4",
     "pydantic>=2.10.5",
     "pydantic-settings>=2.7.1",
     "python-dotenv>=1.0.1",
@@ -27,12 +27,13 @@ dependencies = [
     "structlog>=25.1.0",
     "trafilatura>=2.0.0",
     "url-normalize>=1.4.3",
+    "zstandard>=0.23.0",
 ]
 requires-python = ">=3.12"
 
 [project.urls]
 homepage = "https://github.com/Klikkikuri"
-repository = "https://github.com/Klikkikuri/meri"
+source = "https://github.com/Klikkikuri/meri"
 
 [tool.black]
 line-length = 120
@@ -57,9 +58,9 @@ dev-dependencies = [
     "ipywidgets>=8.1.5",
 ]
 [tool.uv.sources]
-# suola = { workspace = true }
-# karikko = { workspace = true }
-meri = { path = "./src/meri" }
+#suola = { workspace = true }
+karikko = { workspace = true }
+#meri = { path = "./src/meri" }
 
 [tool.uv.workspace]
 members = ["src/*"]
