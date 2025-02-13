@@ -19,7 +19,7 @@ Order of precedence:
 import os
 from pathlib import Path
 from typing import Literal, Optional, Type
-from pydantic import AnyUrl, Field
+from pydantic import AnyHttpUrl, Field, root_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
 from importlib.metadata import metadata, PackageNotFoundError
 from platformdirs import user_config_dir, site_config_dir
@@ -44,6 +44,37 @@ _settings_file_location: list[Path] = [
 ]
 if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
     _settings_file_location.insert(0, Path(_conf_file))
+
+
+class GeneratorProviderError(ValueError):
+    """
+    Error raised when an unknown provider is specified.
+    """
+    pass
+
+class GeneratorSettings(BaseSettings):
+    name: str = Field(..., description="Name of the generator.", required=True)
+    provider: Literal["openai", "mistral", "deepseek"] = Field(..., description="Provider of the generator.", required=True)
+
+class OpenAISettings(GeneratorSettings):
+    """
+    OpenAI settings.
+
+    ..seealso:: https://docs.haystack.deepset.ai/docs/openaigenerator
+    """
+    provider: str = Field("openai")
+    api_key: str = Field(..., description="OpenAI API key.", required=True)
+    model: Optional[str]
+    api_base_url: Optional[AnyHttpUrl]
+    temperature: float = Field(0.)
+
+
+class MistralSettings(GeneratorSettings):
+    provider: str = Field("mistral")
+    api_key: str = Field(..., description="Mistral API key.", required=True)
+    model: str = Field(..., description="Mistral model.")
+
+
 
 
 class Settings(BaseSettings):
@@ -78,6 +109,30 @@ class Settings(BaseSettings):
         description="Logging level.",
     )
 
+    PROMPT_DIR: Path = Field(Path(user_config_dir("meri"), "prompts"), description="Directory to store prompt templates.")
+
+    llms: list[OpenAISettings] = Field(default_factory=list, description="List of language models to use.")
+
+
+    @root_validator(pre=True)
+    def parse_llm_settings(cls, values):
+        llm_list = values.get('llm', [])
+
+        # Map provider literal to class
+        provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
+
+        # Load the settings using the provider class
+        settings = []
+        for llm in llm_list:
+            provider = llm['provider']
+            settings_class = provider_to_class.get(provider, None)
+            if not settings_class:
+                raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
+            settings.append(settings_class(**llm))
+
+        values['llms'] = settings
+        return values
+
     @classmethod
     def settings_customise_sources(cls,
         settings_cls: Type[BaseSettings],
@@ -100,6 +155,7 @@ class Settings(BaseSettings):
         yaml_file_encoding="utf-8",
         env_prefix="KLIKKIKURI_",
     )
+
 
 settings = Settings()
 
