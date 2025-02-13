@@ -14,15 +14,33 @@ Order of precedence:
         - System wide settings ($XDG_CONFIG_DIRS)
         - Local settings: `./config.yaml`
         - Docker settings: `/config/config.yaml`
+        - Devcontainer user settings: `/app/config.yaml`
 
 """
+from importlib.resources import files
+import logging
 import os
+from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 from typing import Literal, Optional, Type
+
+from platformdirs import site_config_dir, user_config_dir
 from pydantic import AnyHttpUrl, Field, root_validator
-from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
-from importlib.metadata import metadata, PackageNotFoundError
-from platformdirs import user_config_dir, site_config_dir
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    YamlConfigSettingsSource,
+)
+
+from .llms import (
+    GeneratorProviderError,
+    GeneratorSettings,
+    MistralSettings,
+    OpenAISettings,
+)
+
+logger = logging.getLogger(__name__)
 
 _pkg_name: str = __package__
 try:
@@ -31,12 +49,14 @@ try:
 except (IndexError, PackageNotFoundError):
     _pkg_name = __package__
     _pkg_metadata = dict(metadata(_pkg_name))
-
-_pkg_metadata.setdefault("Home-page", _pkg_metadata.get("repository", ""))
+finally:
+    # Set the homepage from the metadata
+    _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
 
 
 # Locations to look for the settings file
 _settings_file_location: list[Path] = [
+    Path("/app/config.yaml"),  # Devcontainer user settings
     Path("/config/config.yaml"),  # Docker settings
     Path.cwd() / "config.yaml",  # Local settings
     Path(site_config_dir("meri")) / "config.yaml",  # System wide settings
@@ -44,37 +64,6 @@ _settings_file_location: list[Path] = [
 ]
 if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
     _settings_file_location.insert(0, Path(_conf_file))
-
-
-class GeneratorProviderError(ValueError):
-    """
-    Error raised when an unknown provider is specified.
-    """
-    pass
-
-class GeneratorSettings(BaseSettings):
-    name: str = Field(..., description="Name of the generator.", required=True)
-    provider: Literal["openai", "mistral", "deepseek"] = Field(..., description="Provider of the generator.", required=True)
-
-class OpenAISettings(GeneratorSettings):
-    """
-    OpenAI settings.
-
-    ..seealso:: https://docs.haystack.deepset.ai/docs/openaigenerator
-    """
-    provider: str = Field("openai")
-    api_key: str = Field(..., description="OpenAI API key.", required=True)
-    model: Optional[str]
-    api_base_url: Optional[AnyHttpUrl]
-    temperature: float = Field(0.)
-
-
-class MistralSettings(GeneratorSettings):
-    provider: str = Field("mistral")
-    api_key: str = Field(..., description="Mistral API key.", required=True)
-    model: str = Field(..., description="Mistral model.")
-
-
 
 
 class Settings(BaseSettings):
@@ -111,15 +100,17 @@ class Settings(BaseSettings):
 
     PROMPT_DIR: Path = Field(Path(user_config_dir("meri"), "prompts"), description="Directory to store prompt templates.")
 
-    llms: list[OpenAISettings] = Field(default_factory=list, description="List of language models to use.")
+    llms: list[OpenAISettings | MistralSettings] = Field(default_factory=list, description="List of language models to use.")
 
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
-        llm_list = values.get('llm', [])
+        logger.info(f"Values: {values}")
+        llm_list = values.get('llms', [])
 
         # Map provider literal to class
         provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
+        logger.info(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
         settings = []
@@ -130,6 +121,7 @@ class Settings(BaseSettings):
                 raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
             settings.append(settings_class(**llm))
 
+        logger.info(f"Settings: {settings}")
         values['llms'] = settings
         return values
 
