@@ -58,7 +58,7 @@ COPY . /app
 
 # Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --frozen --no-dev --package meri
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
@@ -88,7 +88,7 @@ RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
 # Install development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --dev && \
+    uv sync --frozen --dev --package meri && \
     chown -R vscode:vscode /app/.venv
 
 USER vscode
