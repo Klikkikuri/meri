@@ -59,7 +59,7 @@ dev-dependencies = [
 ]
 [tool.uv.sources]
 #suola = { workspace = true }
-karikko = { workspace = true }
+#karikko = { workspace = true }
 #meri = { path = "./src/meri" }
 
 [tool.uv.workspace]
