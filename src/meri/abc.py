@@ -7,7 +7,6 @@ from typing import Annotated, Final, List, Literal, NewType, Optional, TypeAlias
 from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
-import newspaper
 from opentelemetry import trace
 from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, WithJsonSchema
 from pydantic.json import pydantic_encoder
@@ -25,11 +24,11 @@ ContemplatorType = Annotated[
     str,
     Field(
         "",
-        description="""
-        The contemplator to describe the thought process and internal monologue of the model when generating a
-        contemplation response.
+        description=dedent("""
+        Describes the thought process and internal monologue of the model when generating a
+        response requiring contemplation. 
 
-        The contemplator should provide insight into the model's internal reasoning and decision-making process.
+        The contemplator should provide insight into internal reasoning and decision-making process.
 
         Contemplation should be extensive, and be structured as follow:
         - Begin with small, foundational observations
@@ -38,7 +37,7 @@ ContemplatorType = Annotated[
         - Express doubts and uncertainties
         - Revise and backtrack if you need to
         - Continue until natural resolution
-        """,
+        """),
         examples=map(dedent, [
             """
             Hmm... let me think about this...
@@ -106,7 +105,7 @@ class Outlet:
         elif name == "weight":
             return 50
 
-    def latest(self) -> list[newspaper.Article]:
+    def latest(self) -> list:
         raise NotImplementedError
 
     def frequency(self, dt: datetime | None) -> timedelta:
@@ -120,7 +119,7 @@ class Outlet:
 
         return default
 
-    def fetch(self, url: AnyHttpUrl) -> newspaper.Article:
+    def fetch(self, url: AnyHttpUrl):
         """
         Fetch the article from the URL.
 
@@ -245,6 +244,29 @@ class ArticleTypeLabels(str, Enum):
     # Content created or significantly influenced by artificial intelligence tools, such as automated text generation or data-driven article writing. 
     # """
 
+
+class TitleQuorumLabel(str, Enum):
+    """
+    Indicates the level of agreement among LLMs when generating a title.
+
+    Labels:
+    - `com.github.klikkikuri/title-quorum=unanimous`:
+
+        All LLMs generated the same – or very similar – title.
+    
+    - `com.github.klikkikuri/title-quorum=supermajority`:
+        A significant majority of LLMs generated the same – or very similar – title.
+    
+    - `com.github.klikkikuri/title-quorum=consensus`:
+        A general agreement among LLMs, but with some variation in phrasing in the generated titles.
+
+    - `com.github.klikkikuri/title-quorum=supermajority`:
+        A significant majority of LLMs generated similar titles.
+    """
+    UNANIMOUS = "com.github.klikkikuri/title-quorum=unanimous"
+    CONSENSUS = "com.github.klikkikuri/title-quorum=consensus"
+    SUPERMAJORITY = "com.github.klikkikuri/title-quorum=supermajority"
+
 class TypeResponse(BaseModel):
     """
     Response model for article type classification task.
@@ -261,13 +283,30 @@ class TypeResponse(BaseModel):
     #     "structure": "The article follows a typical news format, presenting the who, what, when, where, why, and how of the event, without personal commentary or subjective interpretation."
     # }
 
+class ArticleEvidenceResponse(BaseModel):
+    """
+    Response model for evidence extraction task.
+
+    Short analysis summarizing the content, tone, and structure of the article.
+    """
+    content: str = Field(..., description="Summary of the main content of the article.")
+    tone: str = Field(..., description="Description of the tone of the article.")
+    structure: str = Field(..., description="Description of the structure of the article.")
+
 class ArticleTitleResponse(BaseModel):
     """
     Response model for generated title.
+
+    Order of fields:
+     - Contemplation needs to be the first field in the response.
     """
     contemplator: ContemplatorType
+
+    evidence: ArticleEvidenceResponse = Field(..., description="Analysis of the content, tone, and structure of the article.")
+
     original_title: str = Field(..., description="Original title of the article.")
     original_title_clickbaitiness: ClickbaitScale
+
     title: str = Field(..., description="Suggested title for the article that captures the essence of the content.")
 
 
