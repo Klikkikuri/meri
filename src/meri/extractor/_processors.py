@@ -1,7 +1,6 @@
 from typing import Annotated, Any, List, Type, TypeVar, get_args, get_origin, get_type_hints
 from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
-import newspaper
 from pydantic import AnyHttpUrl
 from requests.exceptions import RequestException
 from structlog import get_logger
@@ -49,7 +48,7 @@ def article_language_from_text(article: Article) -> Article:
     return article
 
 
-def article_to_markdown(article: newspaper.Article) -> MarkdownStr:
+def article_to_markdown(article) -> MarkdownStr:
     # Convert the article to markdown
     return html_to_markdown(article.article_html)
 
@@ -69,7 +68,7 @@ def html_to_markdown(html: str) -> MarkdownStr:
     return MarkdownStr(md)
 
 
-def article_canonical_url(article: newspaper.Article) -> AnyHttpUrl | None:
+def article_canonical_url(article) -> AnyHttpUrl | None:
     """
     Get the canonical URL of the article.
     """
@@ -79,7 +78,7 @@ def article_canonical_url(article: newspaper.Article) -> AnyHttpUrl | None:
     return None
 
 
-def extract_article_url(article: newspaper.Article) -> AnyHttpUrl | None:
+def extract_article_url(article) -> AnyHttpUrl | None:
     """
     Get the URL of the article.
     """

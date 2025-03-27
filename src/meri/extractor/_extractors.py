@@ -1,6 +1,5 @@
 from copy import deepcopy
 from random import randint
-import newspaper
 from pydantic import AnyHttpUrl
 from opentelemetry import trace
 
@@ -21,7 +20,7 @@ tracer = trace.get_tracer(__name__)
 
 
 @tracer.start_as_current_span(name="newspaper_extractor", kind=trace.SpanKind.CLIENT)
-def newspaper_extractor(url: AnyHttpUrl) -> newspaper.Article:
+def newspaper_extractor(url: AnyHttpUrl):
     """
     Extract the article using the newspaper library.
     """
@@ -85,13 +84,15 @@ def trafilatura_extractor(url: AnyHttpUrl) -> Article:
 
     article = Article(
         meta=ArticleMeta(
-            title=document['title'],
-            language=document['language'] or detect_language(document['text']),
-            authors=[] if not document['author'] else [document['author']],
+            title=document.title,
+            language=document.language or detect_language(document.text),
+            authors=[] if not document.author else [document.author],
+            date=document.date,
         ),
-        text=document['text'],
+        text=document.text,
+        html=downloaded,
         urls=[
-            article_url(document['url'], type=LinkLabel.LINK_CANONICAL),
+            article_url(document.url, type=LinkLabel.LINK_CANONICAL),
             article_url(url, type=LinkLabel.LINK_MOVED),
         ],
     )

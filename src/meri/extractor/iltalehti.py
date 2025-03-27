@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
+import lxml
 from pytz import utc
 import requests
 from structlog import get_logger
-from ..abc import Outlet
-from ._extractors import NewspaperExtractorMixin
+from ..abc import ArticleTypeLabels, Outlet
+from ._extractors import TrafilaturaExtractorMixin
 
 from ._common import PolynomialDelayEstimator
 
@@ -11,7 +12,7 @@ from ._common import PolynomialDelayEstimator
 logger = get_logger(__name__)
 
 
-class Iltalehti(NewspaperExtractorMixin, Outlet):
+class Iltalehti(TrafilaturaExtractorMixin, Outlet):
     name = "Iltalehti"
     valid_url = r"//www.iltalehti.fi/"
     weight = 50
