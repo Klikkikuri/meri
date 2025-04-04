@@ -1,5 +1,4 @@
-from importlib.metadata import metadata
-import logging
+import os
 from re import Pattern
 from urllib.parse import urlparse
 
@@ -7,6 +6,7 @@ from pydantic import AnyHttpUrl
 from structlog import get_logger
 
 from meri.settings import settings
+from platformdirs import user_cache_dir
 
 from .abc import Outlet
 
@@ -66,3 +66,32 @@ def get_user_agent():
     """
 
     return settings.BOT_USER_AGENT
+
+
+def try_setup_requests_cache():
+    """
+    Try to setup requests cache.
+
+    This function will check if the :py:mod:`requests_cache` module is installed, and if it is, it will
+    setup the cache for the requests library.
+    """
+
+    try:
+        import requests_cache
+    except ImportError:
+        logger.warning("requests_cache is not installed, skipping cache setup. Install it with `pip install requests_cache`.")
+        return
+
+    # Check if the cache is already set up
+    if requests_cache.is_installed():
+        logger.debug("Cache already set up, skipping setup")
+        return
+
+    # Setup the cache
+    temp_dir = user_cache_dir(__package__)
+    cache_path = os.path.join(temp_dir, "requests-cache")
+
+    requests_cache.install_cache(
+        cache_name=cache_path,
+    )
+    logger.debug("Cache set up at %s", cache_path)
