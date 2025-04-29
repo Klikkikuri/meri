@@ -17,15 +17,14 @@ Order of precedence:
         - Devcontainer user settings: `/app/config.yaml`
 
 """
-from importlib.resources import files
 import logging
 import os
 from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
-from typing import Literal, Optional, Type
+from typing import Literal, Type
 
 from platformdirs import site_config_dir, user_config_dir
-from pydantic import AnyHttpUrl, Field, root_validator
+from pydantic import Field, root_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -42,6 +41,8 @@ from .llms import (
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_BOT_ID = "Klikkikuri"
+
 _pkg_name: str = __package__
 try:
     _pkg_name, *_ = __package__.split(".")
@@ -55,6 +56,7 @@ finally:
 
 
 # Locations to look for the settings file
+# notice: order is reversed to give precedence to the user defined settings
 _settings_file_location: list[Path] = [
     Path("/app/config.yaml"),  # Devcontainer user settings
     Path("/config/config.yaml"),  # Docker settings
@@ -77,17 +79,11 @@ class Settings(BaseSettings):
         description="Enable OpenTelemetry tracing.",
     )
 
-    # Crawler settings
-    BOT_ID: str = Field(
-        "Klikkikuri",
-        description="The name of the bot.",
-    )
-    BOT_HOMEPAGE: str = Field(
-        _pkg_metadata["Home-page"],
-        description="The homepage of the bot.",
-    )
+
+    BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
+
     BOT_USER_AGENT: str = Field(
-        r"Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})",
+        "Mozilla/5.0 (compatible;)",
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
@@ -105,12 +101,13 @@ class Settings(BaseSettings):
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
-        logger.info(f"Values: {values}")
+        _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
+        _logger.debug(f"Values: {values}")
         llm_list = values.get('llms', [])
 
         # Map provider literal to class
         provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
-        logger.info(f"Provider to class: {provider_to_class}")
+        _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
         settings = []
@@ -121,8 +118,19 @@ class Settings(BaseSettings):
                 raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
             settings.append(settings_class(**llm))
 
-        logger.info(f"Settings: {settings}")
+        _logger.debug(f"Settings: {settings}")
         values['llms'] = settings
+        return values
+
+    @root_validator(pre=True)
+    def _compute_user_agent(cls, values):
+        """
+        Compute the user-agent string.
+        """
+        bot_info = _pkg_metadata.copy()
+        bot_info.setdefault("BOT_ID", values.get("BOT_ID", DEFAULT_BOT_ID))
+        user_agent = "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})".format(**bot_info)
+        values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
     @classmethod
@@ -150,8 +158,6 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-
-del _pkg_name, _pkg_metadata, _settings_file_location, _conf_file
 
 if __name__ == "__main__":
     # Test for the settings file
