@@ -4,31 +4,25 @@ WikiPedia Loader
 Based on the WikipediaLoader from the langchain_community package, this loader fetches the complete content of the
 Wikipedia page, and formats them into sections.
 
-TODO: Make into context aware splitter
 """
 
-from copy import deepcopy
-import re
-from haystack import Document
-import mwclient.page
-
-from meri.utils import detect_language
-
-import getpass
 import logging
-import os
-from typing import Any, Callable, Dict, Iterator, List, Optional, Set, Tuple, TypedDict
+import re
+from copy import deepcopy
+from typing import Dict, List, Optional, Set, TypedDict
 
 import mwclient
-
-from trafilatura import load_html
-from trafilatura.htmlprocessing import prune_unwanted_nodes
+import mwclient.page
+from haystack import Document
 from lxml.etree import XPath  # nosec
-from trafilatura.htmlprocessing import tree_cleaning, convert_tags
+from pydantic import AnyHttpUrl
+from trafilatura import load_html
 from trafilatura.core import Extractor
+from trafilatura.htmlprocessing import convert_tags, prune_unwanted_nodes
 from trafilatura.xml import xmltotxt
 
 from .scraper import get_user_agent
+from .utils import detect_language
 
 
 class WikiDocumentMeta(TypedDict, total=False):
@@ -68,7 +62,64 @@ SECTIONS_TO_IGNORE: Dict[str, Set] = {
 }
 
 
-def fetch_revision(page: mwclient.page.Page) -> Document:
+def _generate_page_query(page: mwclient.page.Page) -> Dict:
+    """
+    Generate the query parameters for the MediaWiki API to fetch page information.
+    """
+    args = {}
+    match page:
+        case mwclient.page.Page(revision=revision):
+            args['revids'] = revision
+        case mwclient.page.Page(pageid=pageid, ns=0):
+            args['pageids'] = pageid
+        case mwclient.page.Page(title=title, ns=0):
+            args['titles'] = title
+        case _:
+            raise ValueError("Unsupported page type, expected Page with revision, pageid, or title")
+        
+    return args
+
+
+def _fetch_page_url(page: mwclient.page.Page) -> AnyHttpUrl:
+    """
+    Fetch the canonical URL of the page from the MediaWiki API.
+    """
+
+    if 'canonicalurl' not in page._info:
+        args = _generate_page_query(page)
+        info = page.site.get('query', **args, prop='info', inprop='url')
+
+        # Merge new info into page._info
+        info = next(iter(info['query']['pages'].values()))
+        if 'canonicalurl' not in info:
+            raise ValueError("Failed to fetch page URL - no canonicalurl found for %r", args)
+
+        page._info.update(info)
+
+    return AnyHttpUrl(page._info['canonicalurl'])
+
+
+def _fetch_page_extract(page: mwclient.page.Page) -> str:
+    """
+    Fetch the extract of the page from the MediaWiki API.
+    """
+
+    if 'extract' not in page._info:
+        args = _generate_page_query(page)
+        info = page.site.get('query', **args, prop='extracts', explaintext=1, exsentences=3)
+
+        # Merge new info into page._info
+        info = next(iter(info['query']['pages'].values()))
+        if 'extract' not in info:
+            raise ValueError("Failed to fetch page extract - no extract found for %r", args)
+
+        page._info.update(info)
+
+    return str(page._info['extract'])
+
+
+
+def page_to_document(page: mwclient.page.Page) -> Document:
     """
     Fetch wikipedia page revision.
 
@@ -96,29 +147,36 @@ def fetch_revision(page: mwclient.page.Page) -> Document:
         raise ValueError("Failed to fetch page revision - no parse data found.")
 
     # Construct the HTML document, trafilatura expect document to have a <body>.
-    html = "\n".join(
-        [
-            data["parse"]["headhtml"]["*"],
-            '<main id="content" class="mw-body"><div id="bodyContent" class="content">',
-            f'<h1>{data["parse"]["title"]}</h1>',
-            data["parse"]["text"]["*"],
-            "</div></main>",
-            "</body></html>",
-        ]
-    )
+    html = "\n".join([
+        data["parse"]["headhtml"]["*"],
+        '<main id="content" class="mw-body"><div id="bodyContent" class="content">',
+        f'<h1>{data["parse"]["title"]}</h1>',
+        data["parse"]["text"]["*"],
+        "</div></main>",
+        "</body></html>",
+    ])
+
+    # Add the canonical URL to the document
+    url = _fetch_page_url(page)
+    summary = _fetch_page_extract(page)
 
     doc = Document(
+        id=str(url),  # Use the canonical URL as the document ID
         content=html,
         meta={
+            "modified": page.touched,
             "title": page.base_title,
             "language": page.pagelanguage,
+            "revision": page.revision,
+            "url": url,
+            "summary": summary,
         },
     )
 
     return doc
 
 
-def structured_html_to_markdown(doc: Document, extractor_args={}) -> Document:
+def mediawiki_html_to_markdown(doc: Document, extractor_args={}) -> Document:
     """
     Special Wikipedia-optimized HTML to Markdown conversion.
 
@@ -164,19 +222,19 @@ def structured_html_to_markdown(doc: Document, extractor_args={}) -> Document:
                 "//form",
                 "//input",
                 "//button",
-                '//*[contains(@class, "noprint") or contains(@class, "ambox-notice")]',  # Remove "noprint" classed content
             ]
         ],
     )
 
-    # # Remove links for pages that don't exist
+    # WikiPedia specific cleanup
+    # Remove links for pages that don't exist
     html = prune_unwanted_nodes(
         html,
         [
             XPath(x)
             for x in [
-                # Remove "mw-redirect" and "new" classed content
-                '//a[contains(@class, "mw-redirect") or contains(@class, "new")]',
+                '//a[contains(@class, "mw-redirect") or contains(@class, "new")]',  # Remove "mw-redirect" and "new" classed content
+                '//*[contains(@class, "noprint") or contains(@class, "ambox-notice")]',  # Remove "noprint" classed content
             ]
         ],
     )
@@ -229,7 +287,8 @@ class MarkdownChunker:
 
         self.content = content
         self.language = language or detect_language(content)
-        self.ignored_sections: Set | List = SECTIONS_TO_IGNORE.get(language, set())
+        self.ignored_sections: Set | List = SECTIONS_TO_IGNORE.get(self.language, set())
+
         self.heading_pattern = re.compile(r"^(#{1,6})\s+(.*)", re.MULTILINE)
 
         # Set the root node of the document. Has a side effect that only one main level heading is allowed.
@@ -255,6 +314,8 @@ class MarkdownChunker:
         for i, match in enumerate(matches):
             level = len(match.group(1))
             title = match.group(2).strip()
+
+            logger.debug("Found section %r at level %d", title, level)
 
             if title in self.ignored_sections:
                 logger.info("Skipping ignored section %r", title)
