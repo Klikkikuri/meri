@@ -31,7 +31,10 @@
 				"ms-python.debugpy",
 				"ms-python.black-formatter",
 				"charliermarsh.ruff",
-				"njpwerner.autodocstring"
+				"njpwerner.autodocstring",
+				"GitHub.vscode-pull-request-github",
+				"ms-toolsai.datawrangler",
+				"samuelcolvin.jinjahtml"
 			],
 			"settings": {
 				"files.eol": "\n",
