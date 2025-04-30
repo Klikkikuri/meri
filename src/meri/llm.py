@@ -1,23 +1,23 @@
+import inspect
+import logging
+import re
 from enum import Enum
 from importlib.resources import files
-import json
-import logging
 from pathlib import Path
-import re
-from typing import  Any, Dict, List, Optional, overload
 
-from pydantic import AnyHttpUrl, BaseModel, ValidationError
-
-from .pydantic_llm import FORMAT_INSTRUCTIONS, PydanticOutputParser
-
-from .settings import settings
-from .abc import ArticleContext, ArticleTitleResponse, TypeResponse, VestedGroup, Article
-
-from platformdirs import user_data_dir
-
-from haystack import Pipeline, component
-from haystack.components.generators import OpenAIGenerator
+from haystack import Pipeline
 from haystack.components.builders import PromptBuilder
+from haystack.utils.auth import Secret as HaystackSecret
+from platformdirs import user_data_dir
+from pydantic import BaseModel
+
+from .abc import Article, ArticleContext, ArticleTitleResponse, TypeResponse
+from .pydantic_llm import FORMAT_INSTRUCTIONS, PydanticOutputParser
+from .settings import (
+    Settings,
+    settings,
+)
+from .settings.llms import GeneratorSettings
 
 PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
 PROMPT_TEMPLATE_NEWS_TYPE = "news_article_type.md.j2"
@@ -29,8 +29,55 @@ RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 logger = logging.getLogger(__name__)
 
 
-class LLMGenerators(Enum):
-    OPENAI = "OpenAIGenerator"
+class PipelineType(Enum):
+    """
+    Enum for pipeline types.
+    """
+    DEFAULT = "default"
+
+
+def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings):
+    """
+    Get the generator based on the pipeline type and settings.
+    
+    The generator is selected based on the provider specified in the settings.
+    """
+
+    if len(settings.llm) == 0:
+        raise ValueError("No LLM settings found in the configuration.")
+
+    # from haystack.components.generators import (OpenAIGenerator)
+    # return OpenAIGenerator(model="gpt-4o-mini")
+
+    pipeline_llm: GeneratorSettings
+
+    match pipeline:
+        case PipelineType.DEFAULT:
+            # Check if "default" is in the list of LLMs
+            # TODO: Implement pipeline selection
+
+            # Fall back to the first LLM in the list
+            pipeline_llm = settings.llm[0]
+            logger.debug("Using default LLM: %s", pipeline_llm.name)
+
+
+    module, class_name = pipeline_llm._generator.rsplit(".", 1)
+    # Create the generator instance
+    generator_class = getattr(__import__(module, fromlist=[class_name]), class_name)
+    generator_args = pipeline_llm.model_dump(exclude={"provider", "_generator", "name"})
+
+    # Haystack has some stupid design choices that are forced upon others.
+    # Check the types of the arguments, and convert to Haystack secrets if necessary.
+    signature = inspect.signature(generator_class.__init__)
+    for param in signature.parameters.values():
+        if param.name not in generator_args: continue
+
+        if param.annotation == HaystackSecret:
+            generator_args[param.name] = HaystackSecret.from_token(generator_args[param.name])
+
+    # Create the generator instance
+    r = generator_class(**generator_args)
+    return r
 
 
 def get_prompt_template(template_name: str) -> str:
@@ -55,14 +102,6 @@ def get_prompt_template(template_name: str) -> str:
     # Check from package data directory
     resource = f"prompts/{prompt_file_name}"
     return files(__package__).joinpath(resource).read_text(encoding=PROMPT_ENCODING)
-
-
-def get_generator():
-    generation_kwargs = {
-        "temperature": 0.1,
-        "max_tokens": 4000,
-    }
-    return OpenAIGenerator(generation_kwargs=generation_kwargs)
 
 
 def extract_interest_groups(article: Article) -> ArticleContext:
@@ -123,3 +162,4 @@ def prepare_pipeline(article: Article, output_model: BaseModel):
         "prompt_builder": prompt_vars
     })
     return results['output_validator']['model_output']
+

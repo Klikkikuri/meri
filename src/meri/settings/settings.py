@@ -19,6 +19,7 @@ Order of precedence:
 """
 import logging
 import os
+from contextvars import ContextVar
 from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 from typing import Literal, Type
@@ -35,9 +36,12 @@ from pydantic_settings import (
 from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
-    MistralSettings,
+    OllamaSettings,
     OpenAISettings,
+    detect_generators,
 )
+
+LLMSetting = OpenAISettings | OllamaSettings | GeneratorSettings
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +59,10 @@ finally:
     _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
 
 
+# User defined settings
+_user_config_path = Path(user_config_dir("meri"), "config.yaml")
+DEFAULT_CONFIG_PATH = _user_config_path
+
 # Locations to look for the settings file
 # notice: order is reversed to give precedence to the user defined settings
 _settings_file_location: list[Path] = [
@@ -62,10 +70,22 @@ _settings_file_location: list[Path] = [
     Path("/config/config.yaml"),  # Docker settings
     Path.cwd() / "config.yaml",  # Local settings
     Path(site_config_dir("meri")) / "config.yaml",  # System wide settings
-    Path(user_config_dir("meri")) / "config.yaml"  # User defined settings
+    _user_config_path
 ]
 if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
-    _settings_file_location.insert(0, Path(_conf_file))
+    _conf_file = Path(_conf_file)
+    _settings_file_location.insert(0, _conf_file)
+    DEFAULT_CONFIG_PATH = _conf_file
+
+# Check if requests_cache is available, since it is not a hard dependency and not installed by default
+_requests_cache_available: bool = False
+
+try:
+    import requests_cache
+    _requests_cache_available = True
+except ImportError:
+    _requests_cache_available = False
+    pass
 
 
 class Settings(BaseSettings):
@@ -81,7 +101,6 @@ class Settings(BaseSettings):
 
 
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
-
     BOT_USER_AGENT: str = Field(
         "Mozilla/5.0 (compatible;)",
         description="User agent as f-string template for requests. Can be formatted with "
@@ -94,16 +113,18 @@ class Settings(BaseSettings):
         description="Logging level.",
     )
 
+    REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
+
     PROMPT_DIR: Path = Field(Path(user_config_dir("meri"), "prompts"), description="Directory to store prompt templates.")
 
-    llms: list[OpenAISettings | MistralSettings] = Field(default_factory=list, description="List of language models to use.")
-
+    llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
+    pipelines: list[str] = Field([], description="List of pipeline definitions.")
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
         _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
         _logger.debug(f"Values: {values}")
-        llm_list = values.get('llms', [])
+        llm_list = values.get('llm', [])
 
         # Map provider literal to class
         provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
@@ -118,9 +139,13 @@ class Settings(BaseSettings):
                 raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
             settings.append(settings_class(**llm))
 
-        _logger.debug(f"Settings: {settings}")
-        values['llms'] = settings
+        if len(settings) == 0:
+            settings += detect_generators(values)
+
+        _logger.debug("Validated LLM provider settings with %d provider", len(settings), extra={"settings": settings})
+        values['llm'] = settings
         return values
+
 
     @root_validator(pre=True)
     def _compute_user_agent(cls, values):
@@ -132,6 +157,7 @@ class Settings(BaseSettings):
         user_agent = "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})".format(**bot_info)
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
+
 
     @classmethod
     def settings_customise_sources(cls,
@@ -153,12 +179,12 @@ class Settings(BaseSettings):
         secrets_dir='/run/secrets',
         yaml_file=_settings_file_location,
         yaml_file_encoding="utf-8",
-        env_prefix="KLIKKIKURI_",
+        env_prefix="",
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore',  # If dotenv contains extra keys, ignore them
     )
 
 
-settings = Settings()
-
-if __name__ == "__main__":
-    # Test for the settings file
-    print(settings.model_dump())
+settings_var: ContextVar[Settings] = ContextVar(f"{__package__}.settings_var", default=Settings())
+settings = settings_var.get()

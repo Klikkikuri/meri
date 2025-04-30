@@ -1,3 +1,6 @@
-from .settings import settings
+from .settings import (
+    settings,
+    Settings,
+)
 
-__ALL__ = [settings]
+__ALL__ = [settings, Settings]
