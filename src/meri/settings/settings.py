@@ -37,11 +37,12 @@ from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
     OllamaSettings,
+    GoogleGeminiSettings,
     OpenAISettings,
     detect_generators,
 )
 
-LLMSetting = OpenAISettings | OllamaSettings | GeneratorSettings
+LLMSetting = OpenAISettings | OllamaSettings | GoogleGeminiSettings | GeneratorSettings
 
 logger = logging.getLogger(__name__)
 

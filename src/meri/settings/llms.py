@@ -42,7 +42,7 @@ class GeneratorSettings(BaseSettings, ABC):
     @model_validator(mode='after')
     def _check_generator_class(self) -> Self:
         if not self._class_exists(self._generator):
-            raise MissingGeneratorError(f"Generator class {self._generator} not found.")
+            raise MissingGeneratorError(f"Generator class {self._generator!r} not found.")
         return self
 
 
@@ -82,11 +82,24 @@ class OllamaSettings(GeneratorSettings):
     model: str = Field(..., description="Ollama model.")
 
     url: AnyHttpUrl = Field('http://ollama:11434/api', description="Ollama API base URL.")
+    timeout: Optional[int] = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
     generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
 
     _generator: str = "haystack_integrations.components.generators.ollama.OllamaGenerator"
+
+
+class GoogleGeminiSettings(GeneratorSettings):
+    provider: str = Field("google")
+    api_key: str = Field(..., description="Google Gemini API key.")
+    model: str = Field('gemini-2.0-flash', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
+    generation_config: Optional[dict] = Field({
+        "temperature": 0.0,
+    }, description="Google Gemini generation arguments.")
+    # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
+
+    _generator: str = "haystack_integrations.components.generators.google_ai.GoogleAIGeminiGenerator"
 
 
 # class MistralSettings(GeneratorSettings):
@@ -113,6 +126,7 @@ def detect_generators(values: dict):
 
     # Try different API keys to for different providers
     values.setdefault("openai_api_key", os.getenv("OPENAI_API_KEY"))
+    values.setdefault("gemini_api_key", os.getenv("GEMINI_API_KEY"))
     values.setdefault("ollama_host", os.getenv("OLLAMA_HOST"))
     values.setdefault("ollama_host", os.getenv("OLLAMA_BASE_URL"))  # open-webui compatible
     values.setdefault("ollama_model", os.getenv("OLLAMA_MODEL"))
@@ -120,16 +134,26 @@ def detect_generators(values: dict):
     if api_key := values.get("openai_api_key"):
         logger.debug("Using OpenAI API key from environment variable")
         settings.append(OpenAISettings(
-            name="Auto detected OpenAI",
+            name="OpenAI",
             api_key=api_key,
         ))
+
+    if api_key := values.get("gemini_api_key"):
+        try:
+            settings.append(GoogleGeminiSettings(
+                name="Gemini",
+                api_key=api_key,
+            ))
+        except MissingGeneratorError as e:
+            logger.error("Found GEMINI_API_KEY but gemini generator not found: %s", e)
+            logger.info("Please install the required generator class `google-ai-haystack`")
 
     if api_base_url := values.get("ollama_host"):
         # Try to detect the model from the environment variable first
         model = values.get("ollama_model") or _pull_default_ollama_model(api_base_url)
         if model:
             try:
-                name = f"Auto detected Ollama {model}"
+                name = f"{model} (Ollama)"
                 settings.append(OllamaSettings(
                     name=name,
                     url=api_base_url,
