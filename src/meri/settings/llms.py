@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
+
 class GeneratorProviderError(ValueError):
     """
     Error raised when an unknown provider is specified.
@@ -26,22 +27,36 @@ class GeneratorSettings(BaseSettings, ABC):
     name: str = Field(..., description="Name of the generator.")
     provider: str = Field(..., description="Provider of the generator.")
 
+
     _generator: str
+    """ Generator class to use. """
+
+    @classmethod
+    def check_generator_class(cls) -> bool:
+        """
+        Get the generator class to use.
+        """
+        return cls._check_generator_class(cls._generator)
+
 
     @model_validator(mode='after')
     def _check_generator_class(self) -> Self:
+        if not self._class_exists(self._generator):
+            raise MissingGeneratorError(f"Generator class {self._generator} not found.")
+        return self
+
+
+    @staticmethod
+    def _class_exists(generator_class) -> bool:
         """
         Check if the generator class is valid and exists.
         """
-        module, class_name = self._generator.rsplit(".", 1)
+        module, class_name = generator_class.rsplit(".", 1)
         try:
             __import__(module, fromlist=[class_name])
-            logger.debug("Using generator class: %s for provider %s", self._generator, self.provider)
+            return True
         except ImportError:
-            raise MissingGeneratorError(f"Unknown / Not installed generator class: {self._generator}")
-
-        return self
-
+            return False
 
 
 class OpenAISettings(GeneratorSettings):
@@ -71,7 +86,7 @@ class OllamaSettings(GeneratorSettings):
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
 
-    _generator: str = "haystack.components.generators.OllamaGenerator"
+    _generator: str = "haystack_integrations.components.generators.ollama.OllamaGenerator"
 
 
 # class MistralSettings(GeneratorSettings):
@@ -84,7 +99,6 @@ class OllamaSettings(GeneratorSettings):
 #     provider: str = Field("together")
 #     api_key: str = Field(..., description="Together API key.")
 #     model: str = Field(..., description="Together model.")
-
 
 
 def detect_generators(values: dict):
@@ -111,16 +125,19 @@ def detect_generators(values: dict):
         ))
 
     if api_base_url := values.get("ollama_host"):
-
-        # Try to detect the model from the environment variable
+        # Try to detect the model from the environment variable first
         model = values.get("ollama_model") or _pull_default_ollama_model(api_base_url)
         if model:
-            name = f"Auto detected Ollama {model}"
-            settings.append(OllamaSettings(
-                name=name,
-                url=api_base_url,
-                model=model,
-            ))
+            try:
+                name = f"Auto detected Ollama {model}"
+                settings.append(OllamaSettings(
+                    name=name,
+                    url=api_base_url,
+                    model=model,
+                ))
+            except MissingGeneratorError as e:
+                logger.error("Found OLLAMA_HOST but ollama generator not found: %s", e)
+                logger.info("Please install the required generator class `ollama-haystack`")
 
     return settings
 

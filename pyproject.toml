@@ -59,6 +59,8 @@ dev-dependencies = [
     "ipywidgets>=8.1.5",
     "rich>=13.9.4",
     "rich-click>=1.8.8",
+    "pre-commit>=4.2.0",
+    "ollama-haystack>=2.4.1",
 ]
 [tool.uv.sources]
 #suola = { workspace = true }
