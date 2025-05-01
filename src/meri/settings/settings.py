@@ -17,6 +17,7 @@ Order of precedence:
         - Devcontainer user settings: `/app/config.yaml`
 
 """
+from importlib.util import find_spec
 import logging
 import os
 from contextvars import ContextVar
@@ -79,14 +80,7 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
     DEFAULT_CONFIG_PATH = _conf_file
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
-_requests_cache_available: bool = False
-
-try:
-    import requests_cache
-    _requests_cache_available = True
-except ImportError:
-    _requests_cache_available = False
-    pass
+_requests_cache_available: bool = find_spec("requests_cache") is not None
 
 
 class Settings(BaseSettings):
