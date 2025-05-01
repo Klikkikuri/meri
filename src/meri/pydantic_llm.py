@@ -12,35 +12,10 @@ from haystack import component
 from pydantic_core import from_json
 
 
-FORMAT_INSTRUCTIONS = r"""
-## Format Instructions
-{% raw %}
-The output should be formatted as a JSON instance that conforms to the JSON schema below, but only return the actual instances without any additional schema definition.
-As an example, for the schema `{"properties": {"foo": {"title": "Foo", "description": "a list of strings", "type": "array", "items": {"type": "string"}}}, "required": ["foo"]}`
-the object `{"foo": ["bar", "baz"]}` is a well-formatted instance of the schema. The object `{"properties": {"foo": ["bar", "baz"]}}` is not well-formatted.
-{% endraw %}
-
-Here is the output schema:
-```json
-{{response_schema}}
-```
-{% if invalid_replies %}
-!!!error
-    Invalid Output on Previous Attempt
-
-You already created the following output in a previous attempt:
-{{invalid_replies|indent(4)}}
-
-{% if error_message %}
-However, this doesn't comply with the format requirements from above and triggered this Python exception: {{error_message|escape}}
-{% endif %}
-Correct the output and try again.
-{% endif %}
-"""
-
 RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 """ Regular expression to extract JSON block from the response. """
 
+RE_THINK_BLOCK = re.compile(r"(<think>(.*?)</think>)", re.MULTILINE | re.DOTALL)
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +24,12 @@ def extract_json(response: str):
     """
     Extract JSON from response.
     """
-    m = re.search(RE_JSON_BLOCK, response)
+    # Find all and 
+
+    # m = re.search(RE_JSON_BLOCK, response)
+    m = re.findall(RE_JSON_BLOCK, response)
     if m:
-        return m.group(1)
+        return m[-1]
     return None
 
 
@@ -77,11 +55,22 @@ class PydanticOutputParser:
             response = extract_json(replies[0])
             if response is None:
                 logger.debug("No JSON block found in the response, trying to parse the whole response.")
-                # Hope that the response is valid JSON
-                response = replies[0]
+
+                # Remove the <think> block from the response, and hope that the response is valid JSON
+                response = re.sub(RE_THINK_BLOCK, "", replies[0])
 
             json = from_json(response, allow_partial=True)
             model = self.pydantic_model.model_validate(json)
+
+            # If model is thinking model, and we're missing contemplator, add it
+            if hasattr(model, "contemplator") and not model.contemplator:
+                # Extract the <thinking> block from the response
+                think_block = re.search(RE_THINK_BLOCK, replies[0])
+                if think_block:
+                    logger.debug("Found <think> block in the response, using it as contemplator", self.iteration_counter)
+                    think_text = think_block.group(2).strip()
+                    # Add it to the model
+                    model.contemplator = think_text
 
             logger.debug("OutputValidator at Iteration %d: Valid JSON from LLM - No need for looping", self.iteration_counter, extra={"replies": replies})
 
