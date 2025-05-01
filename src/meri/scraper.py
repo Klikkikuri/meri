@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from re import Pattern
 from urllib.parse import urlparse
 
@@ -76,6 +77,10 @@ def try_setup_requests_cache():
     setup the cache for the requests library.
     """
 
+    if not settings.REQUESTS_CACHE:
+        logger.debug("Requests cache is disabled, skipping setup")
+        return
+
     try:
         import requests_cache
     except ImportError:
@@ -88,10 +93,9 @@ def try_setup_requests_cache():
         return
 
     # Setup the cache
-    temp_dir = user_cache_dir(__package__)
-    cache_path = os.path.join(temp_dir, "requests-cache")
+    cache_path = Path(user_cache_dir(__package__), "requests-cache")
 
     requests_cache.install_cache(
-        cache_name=cache_path,
+        cache_name=str(cache_path),
     )
     logger.debug("Cache set up at %s", cache_path)
