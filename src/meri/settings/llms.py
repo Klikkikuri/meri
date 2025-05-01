@@ -111,7 +111,6 @@ def detect_generators(values: dict):
         ))
 
     if api_base_url := values.get("ollama_host"):
-        print(f"Using Ollama API base URL from environment variable: {api_base_url}")
 
         # Try to detect the model from the environment variable
         model = values.get("ollama_model") or _pull_default_ollama_model(api_base_url)
@@ -148,7 +147,6 @@ def _pull_default_ollama_model(api_base_url: str) -> Optional[str]:
             response = requests.get(url, timeout=5)
             if response.ok:
                 data = response.json().get("models", [])
-                print(data)
                 if data:
                     return data[0].get("model")
         except requests.RequestException as e:
