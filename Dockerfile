@@ -77,6 +77,10 @@ ENV UV_LINK_MODE=copy
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}"
 
+# Disable telemetry
+ENV HAYSTACK_TELEMETRY_ENABLED="False" \
+    ANONYMIZED_TELEMETRY="False"
+
 RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
 # Not needed since the base image already has these installed
