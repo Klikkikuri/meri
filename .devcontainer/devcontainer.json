@@ -31,7 +31,10 @@
 				"ms-python.debugpy",
 				"ms-python.black-formatter",
 				"charliermarsh.ruff",
-				"njpwerner.autodocstring"
+				"njpwerner.autodocstring",
+				"GitHub.vscode-pull-request-github",
+				"ms-toolsai.datawrangler",
+				"samuelcolvin.jinjahtml"
 			],
 			"settings": {
 				"files.eol": "\n",
@@ -82,7 +85,7 @@
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	// "forwardPorts": [],
 
-	// Change venv to be owned by vscode user, and install pre-commit hooks.
+	// Install pre-commit hooks.
 	"postCreateCommand": "which pre-commit && pre-commit install --install-hooks",
 
 	// Configure tool-specific properties.
