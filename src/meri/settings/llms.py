@@ -139,14 +139,13 @@ def detect_generators(values: dict):
         ))
 
     if api_key := values.get("gemini_api_key"):
-        try:
-            settings.append(GoogleGeminiSettings(
-                name="Gemini",
-                api_key=api_key,
-            ))
-        except MissingGeneratorError as e:
-            logger.error("Found GEMINI_API_KEY but gemini generator not found: %s", e)
-            logger.info("Please install the required generator class `google-ai-haystack`")
+        # Use OpenAI api endpoint, so we can use the same generator class
+        settings.append(OpenAISettings(
+            name="Gemini",
+            api_key=api_key,
+            model="gemini-2.0-flash",
+            api_base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        ))
 
     if api_base_url := values.get("ollama_host"):
         # Try to detect the model from the environment variable first
