@@ -91,6 +91,12 @@ class OllamaSettings(GeneratorSettings):
 
 
 class GoogleGeminiSettings(GeneratorSettings):
+    """
+    Google Gemini settings.
+
+    Alternatively, you can use the OpenAI compatibility to access Gemini models.
+    https://ai.google.dev/gemini-api/docs/openai
+    """
     provider: str = Field("google")
     api_key: str = Field(..., description="Google Gemini API key.")
     model: str = Field('gemini-2.0-flash', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
