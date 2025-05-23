@@ -12,7 +12,6 @@ from meri.settings import settings
 from .common import StructuredPipeline
 
 logger = logging.getLogger(__name__)
- 
 
 class InterestGroupPredictor(StructuredPipeline):
 
@@ -26,7 +25,7 @@ class InterestGroupPredictor(StructuredPipeline):
         "output_format": get_prompt_template(PROMPT_TEMPLATE_OUTPUT_FORMAT),
     }
 
-    def run(self, article):
+    def run(self, article) -> ArticleContext:
 
         prompt_vars = article.model_dump()
 
