@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, ClassVar, Optional
 from haystack import Pipeline
 from haystack.components.builders import PromptBuilder
 from opentelemetry import trace
@@ -22,7 +22,7 @@ class StructuredPipeline:
     pipeline: Optional[Pipeline]
     output_model: BaseModel
 
-    PIPELINE_NAME: str = "default"
+    PIPELINE_NAME: ClassVar[str] = "default"
 
     prompt_templates: dict[str, str] = {}
 
