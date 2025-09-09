@@ -28,7 +28,7 @@ services:
 
     volumes:
       - .:/app:cached
-      - /app/.venv
+      - /app/.venv  # Anonymous volume for the virtual environment
 
     # develop:
     #   # Create a `watch` configuration to update the app
