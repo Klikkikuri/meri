@@ -3,6 +3,7 @@ ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}
 
 ARG VIRTUAL_ENV="/app/.venv"
 
+
 FROM ${PYTHON_BASE_IMAGE} AS build
 
 LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
@@ -51,14 +52,23 @@ echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --dev
 
 # Install the application
 COPY . /app
 
-# Sync the project
+ENV UV_LINK_MODE=copy
+
+ENV VIRTUAL_ENV=$VIRTUAL_ENV \
+    PATH="${VIRTUAL_ENV}/bin/:${PATH}"
+
+# Disable telemetry
+ENV HAYSTACK_TELEMETRY_ENABLED="False" \
+    ANONYMIZED_TELEMETRY="False"
+
+# Install development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package meri
+    uv sync --frozen --dev --package meri
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

@@ -66,7 +66,7 @@ def trafilatura_extractor(url: AnyHttpUrl) -> Article:
     config["DEFAULT"].setdefault("DOWNLOAD_TIMEOUT", randint(5, 12))
     config["DEFAULT"].setdefault("SLEEP_TIME", randint(1, 5))
 
-    url = clean_url(url)
+    url = clean_url(str(url))
 
     downloaded = fetch_url(url, config=config)
 

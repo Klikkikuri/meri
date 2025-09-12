@@ -42,6 +42,14 @@ def fetch(url=None):
     """
     Fetch article from URL.
     """
+
+    # NOTE HACK: Manually set the env variable in container based on .env file.
+    with open(".env", "r") as fp:
+        lines = fp.readlines()
+        kps = { s.split("=")[0] : s.split("=")[1] for s in lines }
+        print(kps)
+        os.environ["OPENAI_API_KEY"] = kps["OPENAI_API_KEY"]
+
     if not url:
         with tracer.start_as_current_span(f"{__name__}.fetch.latest"):
             url = "https://www.iltalehti.fi/"
@@ -62,8 +70,21 @@ def fetch(url=None):
         logger.debug("Processed %d", len(processed), processed=processed)
 
         from rich.pretty import pprint
-        from .llm import extract_interest_groups
-        pprint(extract_interest_groups(processed))
+        # FIXME: This function does not exist.
+        #from .llm import extract_interest_groups
+        #pprint(extract_interest_groups(processed))
+    from .extractor.iltalehti import Iltalehti
+    from .pipelines.title import TitlePredictor
+    processor = Iltalehti()
+    links = processor.latest()
+    pprint(links)
+    trafilatura_extractor = processor.processors[1]
+    article_object = trafilatura_extractor(links[0])
+    pprint(article_object)
+    predictor = TitlePredictor()
+    result = predictor.run(article_object)
+    pprint(result)
+
 
 
 if __name__ == "__main__":
