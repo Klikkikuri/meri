@@ -71,9 +71,6 @@ ENV HAYSTACK_TELEMETRY_ENABLED="False" \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --dev --package meri
 
-# Install GitPython manually as just adding it to pyproject.toml did not seem to work.
-RUN python -m pip install GitPython
-
 ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Development stage

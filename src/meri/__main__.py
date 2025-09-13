@@ -1,11 +1,12 @@
+import base64
 import logging
 import os
 import json
 
 import dotenv
-from git import Repo
 from pydantic import AnyHttpUrl, AnyUrl
 from rich.pretty import pprint
+import requests
 
 from .extractor._processors import MarkdownStr
 from meri.settings import settings
@@ -38,33 +39,50 @@ def cli(cache: bool):
         requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
 
 
-def commit_run(data):
+def store_results(data):
     """
-    Locally commit the data of a processing run into the Rahti storage.
+    Store the result data of a processing run into the Rahti storage.
     """
-    rahti_path = f"{os.environ['HOME']}/rahti"
-    try:
-        repo = Repo.clone_from(
-            f"https://github.com/Klikkikuri/rahti.git",
-            rahti_path,
-        )
-    except Exception as e:
-        print()
-        pprint(e)
-        import sys
-        sys.exit(1)
-    # Add the new data to Rahti.
-    with open(f"{rahti_path}/data.json", "r") as fp:
-        old_data = json.load(fp)
-        # TODO: Decide on some fitting datetimed format for organizing
-        # processing run results.
-        data["old"] = old_data
-    with open(f"{rahti_path}/data.json", "w") as fp:
-        json.dump(data, fp)
-    repo.index.add(["data.json"])
-    # TODO: Decide on some fitting git commit message format with run related info.
-    repo.index.commit("test: Add new titles")
+    old_data_file_obj = requests.get(
+        "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
+        headers={
+            "Accept": "application/vnd.github.object",
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+    ).json()
+
+    old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
+    pprint(old_data)
+    data["old"] = old_data["old"]
+    del old_data["old"]
+    data["old"] = {data}
     pprint(data)
+
+    # Push the data to Rahti, finishing the processing run.
+    res = requests.put(
+        "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        json={
+            "message":"chore: Test committing via Github API",
+            "committer":
+                {
+                    "name": "Tessa Testaaja",
+                    "email":"klikkikuri@protonmail.com",
+                },
+            "content": base64.b64encode(bytes(json.dumps(data, indent=2), encoding="utf-8")).decode("utf-8"),
+            "sha": old_data_file_obj["sha"],
+        }
+    )
+
+    res_json = res.json()
+
+    if not res.ok:
+        raise Exception(f"Failed updating rahti: {res.status_code} - {json.dumps(res_json)}")
 
 
 @cli.command()
@@ -74,11 +92,12 @@ def fetch(url=None):
     """
     Fetch article from URL.
     """
+    store_results({"foo": "bar"})
+    return
     # NOTE HACK: Manually set the env variable in container based on .env file.
     with open(".env", "r") as fp:
         lines = fp.readlines()
-        kps = { s.split("=")[0] : s.split("=")[1] for s in lines }
-        print(kps)
+        kps = dict(map(lambda s: tuple([x.strip() for x in s.split("=", 1)]), lines))
         for k,v in kps.items():
             # OPENAI_API_KEY, GITHUB_USER, GITHUB_PASSWORD
             os.environ[k] = v
@@ -140,9 +159,7 @@ def fetch(url=None):
         # TODO: Handle the linking to repeated articles with differing normalized URLs e.g.:
         # { "1Ex15T": { ... }, "1AmN3W": { "canonical": "1Ex15T" }, }
     pprint(data)
-    commit_run(data)
-
-    # TODO: Push the data to rahti.
+    store_results(data)
 
 
 
