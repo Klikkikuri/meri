@@ -79,11 +79,36 @@ def fetch(url=None):
     links = processor.latest()
     pprint(links)
     trafilatura_extractor = processor.processors[1]
-    article_object = trafilatura_extractor(links[0])
+
+    data = {}
+    # TODO: Run for all links.
+    link = links[0]
+    article_object = trafilatura_extractor(link)
     pprint(article_object)
     predictor = TitlePredictor()
     result = predictor.run(article_object)
     pprint(result)
+    # TODO: Convert results into the public Klikkikuri data format.
+    # TODO: Figure out this Wasm mess.
+    #suola = Instantiate("./suola/build/wasi.wasm")
+    for x in [(result, link)]:
+        # TODO: Wasm thingy.
+        #link_hash = suola.exports.GetSignature(link)
+        import hashlib
+        m = hashlib.sha256(bytes(link, encoding="utf-8"))
+        link_hash = m.hexdigest()
+        if link_hash not in data:
+            data[link_hash] = {
+                "title": result.title,
+                "reason": result.evidence.content,
+                "labels": [], # TODO: Put the Article's labels here?
+            }
+        else:
+            raise Exception(f"Hash for article {link} already exists for article {data[link_hash]}")
+        # TODO: Handle the linking to repeated articles with differing normalized URLs e.g.:
+        # { "1Ex15T": { ... }, "1AmN3W": { "canonical": "1Ex15T" }, }
+    pprint(data)
+    # TODO: Push the data to rahti.
 
 
 
