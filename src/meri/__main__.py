@@ -1,8 +1,11 @@
 import logging
 import os
+import json
 
 import dotenv
+from git import Repo
 from pydantic import AnyHttpUrl, AnyUrl
+from rich.pretty import pprint
 
 from .extractor._processors import MarkdownStr
 from meri.settings import settings
@@ -35,6 +38,35 @@ def cli(cache: bool):
         requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
 
 
+def commit_run(data):
+    """
+    Locally commit the data of a processing run into the Rahti storage.
+    """
+    rahti_path = f"{os.environ['HOME']}/rahti"
+    try:
+        repo = Repo.clone_from(
+            f"https://github.com/Klikkikuri/rahti.git",
+            rahti_path,
+        )
+    except Exception as e:
+        print()
+        pprint(e)
+        import sys
+        sys.exit(1)
+    # Add the new data to Rahti.
+    with open(f"{rahti_path}/data.json", "r") as fp:
+        old_data = json.load(fp)
+        # TODO: Decide on some fitting datetimed format for organizing
+        # processing run results.
+        data["old"] = old_data
+    with open(f"{rahti_path}/data.json", "w") as fp:
+        json.dump(data, fp)
+    repo.index.add(["data.json"])
+    # TODO: Decide on some fitting git commit message format with run related info.
+    repo.index.commit("test: Add new titles")
+    pprint(data)
+
+
 @cli.command()
 @click.argument("url", required=False, type=AnyUrl)
 @tracer.start_as_current_span("fetch")
@@ -42,13 +74,14 @@ def fetch(url=None):
     """
     Fetch article from URL.
     """
-
     # NOTE HACK: Manually set the env variable in container based on .env file.
     with open(".env", "r") as fp:
         lines = fp.readlines()
         kps = { s.split("=")[0] : s.split("=")[1] for s in lines }
         print(kps)
-        os.environ["OPENAI_API_KEY"] = kps["OPENAI_API_KEY"]
+        for k,v in kps.items():
+            # OPENAI_API_KEY, GITHUB_USER, GITHUB_PASSWORD
+            os.environ[k] = v
 
     if not url:
         with tracer.start_as_current_span(f"{__name__}.fetch.latest"):
@@ -69,7 +102,6 @@ def fetch(url=None):
         processed = process(outlet, url)
         logger.debug("Processed %d", len(processed), processed=processed)
 
-        from rich.pretty import pprint
         # FIXME: This function does not exist.
         #from .llm import extract_interest_groups
         #pprint(extract_interest_groups(processed))
@@ -88,7 +120,7 @@ def fetch(url=None):
     predictor = TitlePredictor()
     result = predictor.run(article_object)
     pprint(result)
-    # TODO: Convert results into the public Klikkikuri data format.
+    # Convert results into the public Klikkikuri data format.
     # TODO: Figure out this Wasm mess.
     #suola = Instantiate("./suola/build/wasi.wasm")
     for x in [(result, link)]:
@@ -108,6 +140,8 @@ def fetch(url=None):
         # TODO: Handle the linking to repeated articles with differing normalized URLs e.g.:
         # { "1Ex15T": { ... }, "1AmN3W": { "canonical": "1Ex15T" }, }
     pprint(data)
+    commit_run(data)
+
     # TODO: Push the data to rahti.
 
 

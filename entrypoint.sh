@@ -12,5 +12,7 @@ else
     echo "-!- Running as root, dropping privileges to ${PUID}:${PGID}"
     groupadd -o -g ${PGID} user
     useradd -o -u ${PUID} -g ${PGID} -s /bin/bash -d /home/user user
+    mkdir /home/user
+    chown user:user /home/user
     dumb-init -- gosu ${PUID}:${PGID} "$@"
 fi
