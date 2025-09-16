@@ -1,4 +1,6 @@
 import base64
+from datetime import datetime, timezone
+import hashlib
 import logging
 import os
 import json
@@ -10,6 +12,8 @@ import requests
 
 from .extractor._processors import MarkdownStr
 from meri.settings import settings
+from meri.extractor._processors import process
+from meri.abc import ArticleTitleResponse
 from .utils import setup_logging, setup_tracing
 from structlog import get_logger
 from .scraper import extractor
@@ -38,10 +42,52 @@ def cli(cache: bool):
         tmp_dir = tempfile.gettempdir()
         requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
 
+ArticleTitleData = tuple[str, ArticleTitleResponse]
+"""Means (article_url, obj)"""
 
-def store_results(data):
+RahtiEntry = ...
+"""Placeholder for future"""
+
+
+def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
+    """Convert results into the public Klikkikuri data format"""
+    # TODO: Figure out this Wasm mess.
+    #suola = Instantiate("./suola/build/wasi.wasm")
+    entries = []
+    for url, title_obj in results:
+        # TODO: Wasm thingy.
+        #sign = suola.exports.GetSignature(link)
+        sign = hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
+        updated = str(datetime.now(timezone.utc))
+        title = title_obj.title
+        clickbaitiness = title_obj.original_title_clickbaitiness
+
+        entries.append({
+            "updated": updated,
+            "urls": [
+                # TODO: Gather all article's urls here.
+                {
+                    "labels": [
+                        # TODO: Replace this default.
+                        "com.github.klikkikuri/link-rel=canonical"
+                    ],
+                    "sign": sign,
+                }
+            ],
+            "title": title,
+            "clickbaitiness": clickbaitiness,
+            "labels": [
+                # TODO: Replace this default.
+                "com.github.klikkikuri/article-type=article"
+            ],
+        })
+
+    return entries
+
+
+def store_results(new_entries: list[RahtiEntry]):
     """
-    Store the result data of a processing run into the Rahti storage.
+    Add the result data of a processing run into the existing Rahti storage.
     """
     old_data_file_obj = requests.get(
         "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
@@ -54,12 +100,20 @@ def store_results(data):
 
     old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
     pprint(old_data)
-    data["old"] = old_data["old"]
-    del old_data["old"]
-    data["old"] = {data}
+    entries = old_data["entries"] + new_entries
+
+    updated = str(datetime.now(timezone.utc))
+    data = {
+        "status": "ok",
+        "updated": updated,
+        "schema_version": "0.1.0",
+        "entries": entries
+    }
     pprint(data)
 
     # Push the data to Rahti, finishing the processing run.
+    encoded_file_content = base64.b64encode(bytes(json.dumps(data, indent=2), encoding="utf-8")).decode("utf-8")
+    file_hash = old_data_file_obj["sha"]
     res = requests.put(
         "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
         headers={
@@ -68,14 +122,14 @@ def store_results(data):
             "X-GitHub-Api-Version": "2022-11-28",
         },
         json={
-            "message":"chore: Test committing via Github API",
+            "message": "chore: Reset data structure to resemble newest format",
             "committer":
                 {
                     "name": "Tessa Testaaja",
-                    "email":"klikkikuri@protonmail.com",
+                    "email": "klikkikuri@protonmail.com",
                 },
-            "content": base64.b64encode(bytes(json.dumps(data, indent=2), encoding="utf-8")).decode("utf-8"),
-            "sha": old_data_file_obj["sha"],
+            "content": encoded_file_content,
+            "sha": file_hash,
         }
     )
 
@@ -92,75 +146,29 @@ def fetch(url=None):
     """
     Fetch article from URL.
     """
-    store_results({"foo": "bar"})
-    return
-    # NOTE HACK: Manually set the env variable in container based on .env file.
-    with open(".env", "r") as fp:
-        lines = fp.readlines()
-        kps = dict(map(lambda s: tuple([x.strip() for x in s.split("=", 1)]), lines))
-        for k,v in kps.items():
-            # OPENAI_API_KEY, GITHUB_USER, GITHUB_PASSWORD
-            os.environ[k] = v
-
-    if not url:
-        with tracer.start_as_current_span(f"{__name__}.fetch.latest"):
-            url = "https://www.iltalehti.fi/"
-            logger.info("Pulling latest from %r", url)
-            source = extractor(url)
-            latest = source.latest()
-            logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
-
-            url = latest[0]
-
-    with tracer.start_as_current_span(f"{__name__}.fetch.article") as span:
-        url = str(url)
-        span.set_attribute("url", url)
-        logger.info("Fetching article from %r", url)
-        from meri.extractor._processors import process
-        outlet = extractor(url)
-        processed = process(outlet, url)
-        logger.debug("Processed %d", len(processed), processed=processed)
-
-        # FIXME: This function does not exist.
-        #from .llm import extract_interest_groups
-        #pprint(extract_interest_groups(processed))
     from .extractor.iltalehti import Iltalehti
     from .pipelines.title import TitlePredictor
+    from meri.extractor._extractors import trafilatura_extractor
+
+    # NOTE: Needed env variables:
+    # OPENAI_API_KEY, GITHUB_USER, GITHUB_PASSWORD
     processor = Iltalehti()
     links = processor.latest()
     pprint(links)
-    trafilatura_extractor = processor.processors[1]
 
-    data = {}
     # TODO: Run for all links.
-    link = links[0]
-    article_object = trafilatura_extractor(link)
-    pprint(article_object)
-    predictor = TitlePredictor()
-    result = predictor.run(article_object)
-    pprint(result)
-    # Convert results into the public Klikkikuri data format.
-    # TODO: Figure out this Wasm mess.
-    #suola = Instantiate("./suola/build/wasi.wasm")
-    for x in [(result, link)]:
-        # TODO: Wasm thingy.
-        #link_hash = suola.exports.GetSignature(link)
-        import hashlib
-        m = hashlib.sha256(bytes(link, encoding="utf-8"))
-        link_hash = m.hexdigest()
-        if link_hash not in data:
-            data[link_hash] = {
-                "title": result.title,
-                "reason": result.evidence.content,
-                "labels": [], # TODO: Put the Article's labels here?
-            }
-        else:
-            raise Exception(f"Hash for article {link} already exists for article {data[link_hash]}")
-        # TODO: Handle the linking to repeated articles with differing normalized URLs e.g.:
-        # { "1Ex15T": { ... }, "1AmN3W": { "canonical": "1Ex15T" }, }
-    pprint(data)
-    store_results(data)
+    results = []
+    for url in links[:1]:
+        article_object = trafilatura_extractor(url)
+        pprint(article_object)
+        predictor = TitlePredictor()
+        result = predictor.run(article_object)
+        results.append((url, result))
+    pprint(results)
 
+    new_entries = convert_for_publish(results)
+    pprint(new_entries)
+    store_results(new_entries)
 
 
 if __name__ == "__main__":
