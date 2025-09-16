@@ -94,6 +94,11 @@ def try_setup_requests_cache():
 
     # Setup the cache
     cache_path = Path(user_cache_dir(__package__), "requests-cache")
+    try:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+    except Exception as e:
+        logger.error("Could not create cache directory at %s: %s", cache_path, e)
+        return
 
     requests_cache.install_cache(
         cache_name=str(cache_path),

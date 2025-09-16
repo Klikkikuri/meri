@@ -1,9 +1,11 @@
 ARG PYTHON_VERSION=3.12
 ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}
+ARG DEBIAN_VERSION=bookworm
 
 ARG VIRTUAL_ENV="/app/.venv"
+ARG WASMTIME_HOME=/usr/local/wasmtime
 
-FROM ${PYTHON_BASE_IMAGE} AS build
+FROM ${PYTHON_BASE_IMAGE}-${DEBIAN_VERSION} AS build
 
 LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
     org.opencontainers.image.source="https://github.com/Klikkikuri/meri" \
@@ -27,6 +29,8 @@ ENV VIRTUAL_ENV=${VIRTUAL_ENV} \
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
     ANONYMIZED_TELEMETRY="False"
 
+ENV WASMTIME_HOME=${WASMTIME_HOME}
+
 # More traceable shell
 SHELL [ "/bin/bash", "-exo", "pipefail", "-c" ]
 
@@ -43,9 +47,20 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.20 /uv /uvx ${VIRTUAL_ENV}/bin/
 
 WORKDIR /app
 
+# Install wasmtime
+ARG WASMTIME_HOME
+ADD https://wasmtime.dev/install.sh /tmp/install-wasmtime.sh
+RUN chmod +x /tmp/install-wasmtime.sh && \
+    echo "Installing wasmtime to ${WASMTIME_HOME}" && \
+    /tmp/install-wasmtime.sh --version v33.0.0 && \
+    echo "export PATH=\$PATH:${WASMTIME_HOME}/bin" >> /etc/profile.d/wasmtime.sh && \
+    chmod +x /etc/profile.d/wasmtime.sh && \
+    rm -f /tmp/install-wasmtime.sh
+
+
 # Create a virtual environment
 RUN uv venv --allow-existing --seed "${VIRTUAL_ENV}" && \
-echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
+    echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
 # Install dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -64,9 +79,12 @@ ENTRYPOINT ["/app/entrypoint.sh"]
 
 # Development stage
 
-FROM mcr.microsoft.com/devcontainers/python:${PYTHON_VERSION} AS development
+FROM mcr.microsoft.com/devcontainers/python:${PYTHON_VERSION}-${DEBIAN_VERSION} AS development
 
 ARG VIRTUAL_ENV
+
+ARG WASMTIME_HOME
+ENV WASMTIME_HOME=${WASMTIME_HOME}
 
 WORKDIR /app
 
@@ -82,6 +100,9 @@ ENV HAYSTACK_TELEMETRY_ENABLED="False" \
     ANONYMIZED_TELEMETRY="False"
 
 RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
+
+COPY --from=build /etc/profile.d/wasmtime.sh /etc/profile.d/wasmtime.sh
+COPY --from=build ${WASMTIME_HOME} ${WASMTIME_HOME}
 
 # Not needed since the base image already has these installed
 # RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
