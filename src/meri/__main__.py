@@ -58,6 +58,7 @@ def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
         # TODO: Wasm thingy.
         #sign = suola.exports.GetSignature(link)
         sign = hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
+        # FIXME: This should be the article's publish/edit time, now Meri processing time.
         updated = str(datetime.now(timezone.utc))
         title = title_obj.title
         clickbaitiness = title_obj.original_title_clickbaitiness
@@ -88,6 +89,9 @@ def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
 def store_results(new_entries: list[RahtiEntry]):
     """
     Add the result data of a processing run into the existing Rahti storage.
+
+    NOTE that any matching signatures of entries in existing and new list will
+    be replaced by the ones with the latest time stamp.
     """
     old_data_file_obj = requests.get(
         "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
@@ -100,7 +104,31 @@ def store_results(new_entries: list[RahtiEntry]):
 
     old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
     pprint(old_data)
-    entries = old_data["entries"] + new_entries
+
+    old_entries = old_data["entries"]
+    # When signatures match, use the newer-released article's entry.
+    # TODO: Do this filtering __BEFORE__ passing to title prediction.
+    # Initially assume that we are just saving the old article already stored
+    # and now pulled from storage for possible update.
+    entries = old_entries
+    old_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in old_entries]
+    new_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in new_entries]
+    pprint(old_signatures)
+    pprint(new_signatures)
+    for i, news in enumerate(new_signatures):
+        for j, olds in enumerate(old_signatures):
+            if olds & news:
+                # Signature match! Dealing with an article already once processed.
+                if datetime.fromisoformat(new_entries[i]["updated"]) > datetime.fromisoformat(old_entries[j]["updated"]):
+                    # The new object has an updated version of the article, so
+                    # select that instead.
+                    entries[j] = new_entries[i]
+                break
+        else:
+            # If this new object has no signatures matching any old one, the
+            # entry is totally new.
+            entries.append(new_entries[i])
+    pprint(entries)
 
     updated = str(datetime.now(timezone.utc))
     data = {
@@ -122,7 +150,7 @@ def store_results(new_entries: list[RahtiEntry]):
             "X-GitHub-Api-Version": "2022-11-28",
         },
         json={
-            "message": "chore: Reset data structure to resemble newest format",
+            "message": "feat: Add results of newest processing run",
             "committer":
                 {
                     "name": "Tessa Testaaja",
@@ -158,7 +186,7 @@ def fetch(url=None):
 
     # TODO: Run for all links.
     results = []
-    for url in links[:1]:
+    for url in links[:5]:
         article_object = trafilatura_extractor(url)
         pprint(article_object)
         predictor = TitlePredictor()
