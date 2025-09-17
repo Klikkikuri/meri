@@ -46,6 +46,38 @@ def cli(cache: bool):
         tmp_dir = tempfile.gettempdir()
         requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
 
+
+@cli.command()
+@click.argument("url", required=False, type=AnyUrl)
+@tracer.start_as_current_span("fetch")
+def fetch(url=None):
+    """
+    Fetch article from URL.
+    """
+    if not url:
+        with tracer.start_as_current_span(f"{__name__}.fetch.latest"):
+            url = "https://www.iltalehti.fi/"
+            logger.info("Pulling latest from %r", url)
+            source = extractor(url)
+            latest = source.latest()
+            logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
+
+            url = latest[0]
+
+    with tracer.start_as_current_span(f"{__name__}.fetch.article") as span:
+        url = str(url)
+        span.set_attribute("url", url)
+        logger.info("Fetching article from %r", url)
+        from meri.extractor._processors import process
+        outlet = extractor(url)
+        processed = process(outlet, url)
+        logger.debug("Processed %d", len(processed), processed=processed)
+
+        from rich.pretty import pprint
+        from .llm import extract_interest_groups
+        pprint(extract_interest_groups(processed))
+
+
 ArticleTitleData = tuple[Article, ArticleTitleResponse]
 """Needed for passing article URLs along with title processing results"""
 
@@ -229,15 +261,16 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
 
 
 @cli.command()
-@click.argument("url", required=False, type=AnyUrl)
-@tracer.start_as_current_span("fetch")
-def fetch(url=None):
+@click.argument("article_limit", required=False, type=int)
+def run(article_limit=None):
     """
-    Fetch article from URL.
+    Run the Meri title processing routine once.
     """
     # NOTE: Needed env variables:
     # OPENAI_API_KEY, GITHUB_TOKEN
     articles = fetch_articles()
+    if article_limit:
+        articles = articles[:article_limit]
     print("ARTICLES:"); pprint(articles); print("\n")
 
     hash_of_stored_file, old_data = fetch_old_data()
@@ -249,8 +282,7 @@ def fetch(url=None):
     new_articles = filter_outdated(articles, old_entries)
     pprint(new_articles)
 
-    # TODO: Run for all links.
-    title_data = process_titles(new_articles[:2])
+    title_data = process_titles(new_articles)
     pprint(title_data)
 
     new_entries = convert_for_publish(title_data)
