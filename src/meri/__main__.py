@@ -86,7 +86,6 @@ RahtiEntry = ...
 
 
 def hash_url(url: str) -> str:
-    """Placeholder for the real Suola implementation""" 
     # TODO: Figure out this Wasm thingy.
     #sign = suola.exports.GetSignature(link)
     #suola = Instantiate("./suola/build/wasi.wasm")
