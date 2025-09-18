@@ -52,24 +52,15 @@ echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
-    uv sync --frozen --no-install-project --dev
+    uv sync --frozen --no-install-project --no-dev
 
 
 # Install the application
 COPY . /app
 
-ENV UV_LINK_MODE=copy
-
-ENV VIRTUAL_ENV=$VIRTUAL_ENV \
-    PATH="${VIRTUAL_ENV}/bin/:${PATH}"
-
-# Disable telemetry
-ENV HAYSTACK_TELEMETRY_ENABLED="False" \
-    ANONYMIZED_TELEMETRY="False"
-
-# Install development dependencies
+# Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --dev --package meri
+    uv sync --frozen --no-dev --package meri
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 

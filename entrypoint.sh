@@ -12,5 +12,10 @@ else
     echo "-!- Running as root, dropping privileges to ${PUID}:${PGID}"
     groupadd -o -g ${PGID} user
     useradd -o -u ${PUID} -g ${PGID} -s /bin/bash -d /home/user user
+    # NOTE: Uncomment these directory commands in order to be able to add new
+    # packages with uv (at least outside devcontainer).
+    #mkdir /home/user
+    #chown user:user /home/user
+    #chown -R user:user /app/.venv
     dumb-init -- gosu ${PUID}:${PGID} "$@"
 fi
