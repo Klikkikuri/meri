@@ -33,6 +33,7 @@ setup_logging()
 tracer = setup_tracing(__package__)
 logger = get_logger(__package__)
 
+
 @click.group()
 @click.version_option()
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=os.getenv("REQUESTS_CACHE", True))
@@ -44,7 +45,7 @@ def cli(cache: bool):
 
         # get temp directory
         tmp_dir = tempfile.gettempdir()
-        requests_cache.install_cache(f'{tmp_dir}/klikkikuri_requests_cache', expire_after=3600)
+        requests_cache.install_cache(f"{tmp_dir}/klikkikuri_requests_cache", expire_after=3600)
 
 
 @cli.command()
@@ -69,12 +70,14 @@ def fetch(url=None):
         span.set_attribute("url", url)
         logger.info("Fetching article from %r", url)
         from meri.extractor._processors import process
+
         outlet = extractor(url)
         processed = process(outlet, url)
         logger.debug("Processed %d", len(processed), processed=processed)
 
         from rich.pretty import pprint
         from .llm import extract_interest_groups
+
         pprint(extract_interest_groups(processed))
 
 
@@ -87,8 +90,8 @@ RahtiEntry = ...
 
 def hash_url(url: str) -> str:
     # TODO: Figure out this Wasm thingy.
-    #sign = suola.exports.GetSignature(link)
-    #suola = Instantiate("./suola/build/wasi.wasm")
+    # sign = suola.exports.GetSignature(link)
+    # suola = Instantiate("./suola/build/wasi.wasm")
     return hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
 
 
@@ -111,7 +114,7 @@ def process_titles(articles: list[Article]) -> list[ArticleTitleData]:
         result = predictor.run(article)
         results.append((article, result))
     return results
- 
+
 
 def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
     """Convert results into the public Klikkikuri data format"""
@@ -120,32 +123,37 @@ def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
         urls = []
         for url in article.urls:
             sign = hash_url(str(url.href))
-            urls.append({
-                "labels": [
-                    # TODO: Replace this default.
-                    "com.github.klikkikuri/link-rel=canonical"
-                ],
-                "sign": sign,
-            })
+            urls.append(
+                {
+                    "labels": [
+                        # TODO: Replace this default.
+                        "com.github.klikkikuri/link-rel=canonical"
+                    ],
+                    "sign": sign,
+                }
+            )
         updated = str(article.updated_at.replace(tzinfo=timezone.utc))
         title = title_obj.title
         clickbaitiness = title_obj.original_title_clickbaitiness
 
-        entries.append({
-            "updated": updated,
-            "urls": urls,
-            "title": title,
-            "clickbaitiness": clickbaitiness,
-            "labels": [
-                # TODO: Replace this default.
-                "com.github.klikkikuri/article-type=article"
-            ],
-        })
+        entries.append(
+            {
+                "updated": updated,
+                "urls": urls,
+                "title": title,
+                "clickbaitiness": clickbaitiness,
+                "labels": [
+                    # TODO: Replace this default.
+                    "com.github.klikkikuri/article-type=article"
+                ],
+            }
+        )
 
     return entries
 
 
 RahtiData = dict
+
 
 def fetch_old_data() -> tuple[str, RahtiData]:
     old_data_file_obj = requests.get(
@@ -154,13 +162,13 @@ def fetch_old_data() -> tuple[str, RahtiData]:
             "Accept": "application/vnd.github.object",
             "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
             "X-GitHub-Api-Version": "2022-11-28",
-        }
+        },
     ).json()
 
     old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
 
     return old_data_file_obj["sha"], old_data
- 
+
 
 def filter_outdated(articles: list[Article], old_entries: list[RahtiEntry]) -> list[Article]:
     # When signatures match, use the newer-released article's entry.
@@ -238,17 +246,14 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
             "X-GitHub-Api-Version": "2022-11-28",
         },
         json={
-            "message": "feat: Add results of newest processing run" \
-                    if entries \
-                    else "feat: Empty the list of entries",
-            "committer":
-                {
-                    "name": "Tessa Testaaja",
-                    "email": "klikkikuri@protonmail.com",
-                },
+            "message": "feat: Add results of newest processing run" if entries else "feat: Empty the list of entries",
+            "committer": {
+                "name": "Tessa Testaaja",
+                "email": "klikkikuri@protonmail.com",
+            },
             "content": encoded_file_content,
             "sha": hash_of_stored_file,
-        }
+        },
     )
 
     res_json = res.json()
@@ -260,7 +265,13 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
 @cli.command()
 @click.argument("article_limit", required=False, type=int)
 @click.option("--range-start", help="Start index to the source's list of article's", required=False, type=int)
-@click.option("--range-amount", help="Amount of items to take from the source's list of article's", required=False, type=int, default=1)
+@click.option(
+    "--range-amount",
+    help="Amount of items to take from the source's list of article's",
+    required=False,
+    type=int,
+    default=1,
+)
 def run(article_limit, range_start, range_amount):
     """
     Run the Meri title processing routine once.
@@ -269,17 +280,19 @@ def run(article_limit, range_start, range_amount):
     # OPENAI_API_KEY, GITHUB_TOKEN
     articles = fetch_articles()
     if range_start:
-        articles = articles[range_start:range_start + range_amount]
+        articles = articles[range_start : range_start + range_amount]
     if article_limit:
         articles = articles[:article_limit]
 
-    print("ARTICLES:"); pprint(articles); print("\n")
+    print("ARTICLES:")
+    pprint(articles)
+    print("\n")
 
     hash_of_stored_file, old_data = fetch_old_data()
     old_entries = old_data["entries"]
     pprint(old_entries)
     # Use this for emptying Rahti while developing.
-    #store_results(hash_of_stored_file, []); return
+    # store_results(hash_of_stored_file, []); return
 
     new_articles = filter_outdated(articles, old_entries)
     pprint(new_articles)
