@@ -262,15 +262,20 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
 
 @cli.command()
 @click.argument("article_limit", required=False, type=int)
-def run(article_limit=None):
+@click.option("--range-start", help="Start index to the source's list of article's", required=False, type=int)
+@click.option("--range-amount", help="Amount of items to take from the source's list of article's", required=False, type=int)
+def run(article_limit=None, range_start=None, range_amount=1):
     """
     Run the Meri title processing routine once.
     """
     # NOTE: Needed env variables:
     # OPENAI_API_KEY, GITHUB_TOKEN
     articles = fetch_articles()
+    if range_start:
+        articles = articles[range_start:range_start + range_amount]
     if article_limit:
         articles = articles[:article_limit]
+
     print("ARTICLES:"); pprint(articles); print("\n")
 
     hash_of_stored_file, old_data = fetch_old_data()
