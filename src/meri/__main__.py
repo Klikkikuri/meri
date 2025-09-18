@@ -87,8 +87,7 @@ RahtiEntry = ...
 
 def hash_url(url: str) -> str:
     """Placeholder for the real Suola implementation""" 
-    # TODO: Figure out this Wasm mess.
-    # TODO: Wasm thingy.
+    # TODO: Figure out this Wasm thingy.
     #sign = suola.exports.GetSignature(link)
     #suola = Instantiate("./suola/build/wasi.wasm")
     return hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
@@ -166,7 +165,6 @@ def fetch_old_data() -> tuple[str, RahtiData]:
 
 def filter_outdated(articles: list[Article], old_entries: list[RahtiEntry]) -> list[Article]:
     # When signatures match, use the newer-released article's entry.
-    # TODO: Do this filtering __BEFORE__ passing to title prediction.
     # Initially assume that we are just saving the old article already stored
     # and now pulled from storage for possible update.
     new_articles = []
