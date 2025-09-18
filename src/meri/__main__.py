@@ -263,8 +263,8 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
 @cli.command()
 @click.argument("article_limit", required=False, type=int)
 @click.option("--range-start", help="Start index to the source's list of article's", required=False, type=int)
-@click.option("--range-amount", help="Amount of items to take from the source's list of article's", required=False, type=int)
-def run(article_limit=None, range_start=None, range_amount=1):
+@click.option("--range-amount", help="Amount of items to take from the source's list of article's", required=False, type=int, default=1)
+def run(article_limit, range_start, range_amount):
     """
     Run the Meri title processing routine once.
     """
