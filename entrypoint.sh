@@ -1,5 +1,5 @@
 #!/bin/bash
-set -ex
+set -x
 
 PUID=${PUID:-1000}
 PGID=${PGID:-1000}
