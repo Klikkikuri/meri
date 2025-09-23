@@ -45,6 +45,7 @@
 				"python.analysis.importFormat": "relative",
 				"python.analysis.supportDocstringTemplate": true,
 				"python.testing.pytestEnabled": true,
+				"python.analysis.typeCheckingMode": "standard",
 				"ruff.enable": true,
 				"python.linting.enabled": true,
 				"isort.check": true,
@@ -53,7 +54,8 @@
 				"isort.importStrategy": "fromEnvironment",
     			"ruff.importStrategy": "fromEnvironment",
 				"[python]": {
-					"editor.rulers": [120]
+					"editor.rulers": [120],
+    				"editor.defaultFormatter": "charliermarsh.ruff"
 				},
 				"rewrap.wrappingColumn": 120,
 
@@ -68,10 +70,6 @@
 				"cSpell.import": [
 					"${workspaceFolder}/.devcontainer/cspell.config.yaml"
 				]
-
-				// "remote.extensionKind": {
-				// 	"ms-azuretools.vscode-docker": "workspace"
-				// }
 			}
 		}
 	},
