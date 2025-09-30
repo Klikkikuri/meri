@@ -1,20 +1,17 @@
 import base64
 from datetime import datetime, timezone
 import hashlib
-import logging
 import os
 import json
+from textwrap import wrap
 
 import dotenv
-from pydantic import AnyHttpUrl, AnyUrl
-from rich.pretty import pprint
+from pydantic import AnyUrl
+from rich.pretty import pprint  # TODO: remove from production code
 import requests
 
-from .extractor._processors import MarkdownStr
-from meri.settings import settings
-from meri.extractor._processors import process
 from meri.abc import ArticleTitleResponse, Article
-from .utils import setup_logging, setup_tracing
+from .utils import setup_logging
 from structlog import get_logger
 from .scraper import extractor
 from .extractor.iltalehti import Iltalehti
@@ -83,22 +80,18 @@ RahtiEntry = ...
 
 
 def hash_url(url: str) -> str:
+    url = str(url)
     # TODO: Figure out this Wasm thingy.
     # sign = suola.exports.GetSignature(link)
     # suola = Instantiate("./suola/build/wasi.wasm")
     return hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
 
 
-def fetch_articles() -> list[Article]:
+def fetch_latest() -> list[Article]:
     processor = Iltalehti()
     links = processor.latest()
     pprint(links)
 
-    # articles = []
-    # for url in links:
-    #     article_object = trafilatura_extractor(url)
-    #     articles.append(article_object)
-    # return articles
     return links
 
 
@@ -194,6 +187,57 @@ def filter_outdated(articles: list[Article], old_entries: list[RahtiEntry]) -> l
     return new_articles
 
 
+def fetch_articles(article_stubs: list[Article]) -> list[Article]:
+    """
+    Fetch full articles from the given article stubs.
+
+    Returned articles have metadata merged from the stubs.
+    """
+
+    articles = []
+
+    for stub in article_stubs:
+        if not (url := str(stub.get_url())):
+            raise ValueError(f"Article stub has no URL: {stub}")
+        
+        article_object = trafilatura_extractor(url)
+
+        # Merge the stub and the fetched article object.
+        # Use the latest updated_at and earliest created_at.
+        article_object.updated_at = max(stub.updated_at, article_object.updated_at)
+        article_object.created_at = min(stub.created_at, article_object.created_at)
+        # Merge missing metadata from stub to fetched object.
+        for k, v in stub.meta.items():
+            if k not in article_object.meta or not article_object.meta[k]:
+                article_object.meta[k] = v
+        # Append missing URLs from stub to fetched object.
+        existing_urls = set(map(lambda u: str(u.href), article_object.urls))
+        for url in stub.urls:
+            if str(url.href) not in existing_urls:
+                article_object.urls.append(url)
+
+        articles.append(article_object)
+
+    return articles
+
+
+
+def prune_old_entries(old_entries: list[RahtiEntry], max_age_days: int = 3) -> list[RahtiEntry]:
+    """
+    Remove entries older than max_age_days from the list of old entries.
+    """
+    pruned = []
+    now = datetime.now(timezone.utc)
+    for entry in old_entries:
+        entry_time = datetime.fromisoformat(entry["updated"])
+        age_days = (now - entry_time).days
+        if age_days <= max_age_days:
+            pruned.append(entry)
+        else:
+            logger.debug("Pruning old entry", title=entry["title"], age_days=age_days)
+    return pruned
+
+
 def merge_updates(old_entries: list[RahtiEntry], new_entries: list[RahtiEntry]) -> list[RahtiEntry]:
     entries = old_entries
     old_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in old_entries]
@@ -215,7 +259,7 @@ def merge_updates(old_entries: list[RahtiEntry], new_entries: list[RahtiEntry]) 
     return entries
 
 
-def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
+def store_results(hash_of_stored_file: str, entries: list[RahtiEntry], commit_message: str):
     """
     Add the result data of a processing run into the existing Rahti storage.
 
@@ -242,10 +286,10 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
             "X-GitHub-Api-Version": "2022-11-28",
         },
         json={
-            "message": "feat: Add results of newest processing run" if entries else "feat: Empty the list of entries",
+            "message": commit_message,
             "committer": {
-                "name": "Tessa Testaaja",
-                "email": "klikkikuri@protonmail.com",
+                "name": "[🤖 bot] Klikkikuri harbormaster",
+                "email": "klikkikuri+satamamestari@protonmail.com",
             },
             "content": encoded_file_content,
             "sha": hash_of_stored_file,
@@ -275,7 +319,10 @@ def run(article_limit, range_start, range_amount):
     """
     # NOTE: Needed env variables:
     # OPENAI_API_KEY, GITHUB_TOKEN
-    articles = fetch_articles()
+    articles = fetch_latest()
+
+    commit_message = []
+
     if range_start:
         articles = articles[range_start : range_start + range_amount]
     if article_limit:
@@ -292,18 +339,35 @@ def run(article_limit, range_start, range_amount):
     # store_results(hash_of_stored_file, []); return
 
     new_articles = filter_outdated(articles, old_entries)
-    pprint(new_articles)
+
+    new_articles = fetch_articles(new_articles)
+
+    # remove old entries before merging in new ones.    
+    original_count = len(old_entries)
+    old_entries = prune_old_entries(old_entries)
+    pruned_count = len(old_entries)
 
     title_data = process_titles(new_articles)
-    pprint(title_data)
 
     new_entries = convert_for_publish(title_data)
-    pprint(new_entries)
 
     entries = merge_updates(old_entries, new_entries)
-    pprint(new_entries)
+    
+    commit_message.append(f"[🤖 bot]: Updated list with {len(new_entries)} additions or updates, and removed {original_count - pruned_count} old entries.")
+    if len(title_data) > 0:
+        commit_message.append("")
+        commit_message.append("New or updated entries:")
+        
 
-    store_results(hash_of_stored_file, entries)
+        for i, (a, t) in enumerate(title_data):
+            a: Article
+            t: ArticleTitleResponse
+            sign = new_entries[i]["urls"][0]["sign"]
+            commit_message.append("")
+            commit_message.append(f" - {sign}:")
+            commit_message += wrap(t.contemplator, initial_indent="   ", subsequent_indent="   ", break_long_words=False, width=72)
+
+    store_results(hash_of_stored_file, entries, "\n".join(commit_message))
 
 
 if __name__ == "__main__":
