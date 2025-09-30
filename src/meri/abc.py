@@ -105,7 +105,7 @@ class Outlet:
         elif name == "weight":
             return 50
 
-    def latest(self) -> list:
+    def latest(self) -> list["Article"]:
         raise NotImplementedError
 
     def frequency(self, dt: datetime | None) -> timedelta:
@@ -314,22 +314,31 @@ class ArticleUrl(BaseModel):
     """
     Article URL.
     """
-    href: AnyHttpUrl = Field(...)
+    href: AnyHttpUrl = Field()
     labels: list[LinkLabel] = Field(default_factory=list)
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     def __str__(self):
-        return self.href
+        return str(self.href)
+
+    # Allow comparison with string
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return str(self.href) == other
+        elif isinstance(other, ArticleUrl):
+            return self.href == other.href
+        return super().__eq__(other)
 
 
 class ArticleMeta(TypedDict, total=False):
     title: Optional[str]
     " Title of the article. Should be the same as the <title> tag in the HTML document. "
-    authors: List[str] = Field(default_factory=list)
+    authors: Optional[List[str]]
     id: Optional[str]
     language: Optional[str]
     "Language of the article (ISO 639-1 code)."
+    outlet: Optional[str]
 
 
 class Article(BaseModel):
@@ -338,7 +347,7 @@ class Article(BaseModel):
     """
     #id: Optional[PyObjectId] = Field(None, alias="_id")
 
-    text: str = Field(...)
+    text: Optional[str] = Field(...)
     meta: ArticleMeta = Field(default_factory=ArticleMeta)
     labels: list[ArticleTypeLabels] = Field(default_factory=list)
     urls: list[ArticleUrl] = Field(default_factory=list)
