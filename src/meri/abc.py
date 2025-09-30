@@ -356,6 +356,23 @@ class Article(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
+    def get_url(self) -> Optional[AnyHttpUrl]:
+        """
+        Get the primary URL of the article.
+
+        If multiple URLs are present, prefer the canonical URL.
+        """
+        if not self.urls:
+            return None
+
+        for url in self.urls:
+            # Prefer canonical URL if available
+            if LinkLabel.LINK_CANONICAL in url.labels:
+                return url.href
+
+        return self.urls[0].href
+
+
 class VestedGroup(BaseModel):
     """
     Model for identified interest group, person, or entity.
@@ -425,9 +442,9 @@ class Dataset(BaseModel):
     data: list[Link]
 
 
-def article_url(href: AnyHttpUrl, /, **kwargs) -> ArticleUrl:
+def article_url(href: AnyHttpUrl | str, /, **kwargs) -> ArticleUrl:
     """
     Create an ArticleUrl object from a URL.
     """
-    url = clean_url(href)
-    return ArticleUrl(href=url, **kwargs)
+    url = clean_url(str(href))
+    return ArticleUrl(href=AnyHttpUrl(url), **kwargs)
