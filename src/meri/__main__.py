@@ -30,14 +30,12 @@ except ImportError:
 dotenv.load_dotenv()
 
 setup_logging()
-tracer = setup_tracing(__package__)
 logger = get_logger(__package__)
 
 
 @click.group()
 @click.version_option()
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=os.getenv("REQUESTS_CACHE", True))
-@tracer.start_as_current_span(f"{__name__}.cli")
 def cli(cache: bool):
     if cache:
         import requests_cache
@@ -50,35 +48,31 @@ def cli(cache: bool):
 
 @cli.command()
 @click.argument("url", required=False, type=AnyUrl)
-@tracer.start_as_current_span("fetch")
 def fetch(url=None):
     """
     Fetch article from URL.
     """
     if not url:
-        with tracer.start_as_current_span(f"{__name__}.fetch.latest"):
-            url = "https://www.iltalehti.fi/"
-            logger.info("Pulling latest from %r", url)
-            source = extractor(url)
-            latest = source.latest()
-            logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
+        url = "https://www.iltalehti.fi/"
+        logger.info("Pulling latest from %r", url)
+        source = extractor(url)
+        latest = source.latest()
+        logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
 
-            url = latest[0]
+        url = latest[0]
 
-    with tracer.start_as_current_span(f"{__name__}.fetch.article") as span:
-        url = str(url)
-        span.set_attribute("url", url)
-        logger.info("Fetching article from %r", url)
-        from meri.extractor._processors import process
+    url = str(url)
+    logger.info("Fetching article from %r", url)
+    from meri.extractor._processors import process
 
-        outlet = extractor(url)
-        processed = process(outlet, url)
-        logger.debug("Processed %d", len(processed), processed=processed)
+    outlet = extractor(url)
+    processed = process(outlet, url)
+    logger.debug("Processed %d", len(processed), processed=processed)
 
-        from rich.pretty import pprint
-        from .llm import extract_interest_groups
+    from rich.pretty import pprint
+    from .llm import extract_interest_groups
 
-        pprint(extract_interest_groups(processed))
+    pprint(extract_interest_groups(processed))
 
 
 ArticleTitleData = tuple[Article, ArticleTitleResponse]
@@ -100,11 +94,12 @@ def fetch_articles() -> list[Article]:
     links = processor.latest()
     pprint(links)
 
-    articles = []
-    for url in links:
-        article_object = trafilatura_extractor(url)
-        articles.append(article_object)
-    return articles
+    # articles = []
+    # for url in links:
+    #     article_object = trafilatura_extractor(url)
+    #     articles.append(article_object)
+    # return articles
+    return links
 
 
 def process_titles(articles: list[Article]) -> list[ArticleTitleData]:
@@ -132,7 +127,7 @@ def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
                     "sign": sign,
                 }
             )
-        updated = str(article.updated_at.replace(tzinfo=timezone.utc))
+        updated = str(article.updated_at.astimezone(timezone.utc))
         title = title_obj.title
         clickbaitiness = title_obj.original_title_clickbaitiness
 
@@ -163,6 +158,7 @@ def fetch_old_data() -> tuple[str, RahtiData]:
             "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
             "X-GitHub-Api-Version": "2022-11-28",
         },
+        timeout=30
     ).json()
 
     old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
@@ -181,12 +177,12 @@ def filter_outdated(articles: list[Article], old_entries: list[RahtiEntry]) -> l
     pprint(new_signatures)
     for i, news in enumerate(new_signatures):
         for j, olds in enumerate(old_signatures):
-            if olds & news:
+            if olds == news:
                 # Signature match! Dealing with an article already once processed.
-                # NOTE: Assuming the article.updated_at is a naive utc time.
-                new_datetime = articles[i].updated_at.replace(tzinfo=timezone.utc)
+                new_datetime = articles[i].updated_at
                 old_datetime = datetime.fromisoformat(old_entries[j]["updated"])
                 if new_datetime > old_datetime:
+                    logger.info("Article updated, replacing old entry", url=articles[i].urls, new=new_datetime, old=old_datetime)
                     # The new object has an updated version of the article, so
                     # select that instead.
                     new_articles.append(articles[i])
@@ -254,6 +250,7 @@ def store_results(hash_of_stored_file: str, entries: list[RahtiEntry]):
             "content": encoded_file_content,
             "sha": hash_of_stored_file,
         },
+        timeout=30
     )
 
     res_json = res.json()
