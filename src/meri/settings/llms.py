@@ -149,7 +149,7 @@ def detect_generators(values: dict):
         settings.append(OpenAISettings(
             name="Gemini",
             api_key=api_key,
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             api_base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         ))
 
