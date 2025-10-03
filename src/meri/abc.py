@@ -76,58 +76,6 @@ class ConfidenceLevel(str, Enum):
     HIGH = "Very Certain"
 
 
-# TODO: Make as pydantic model
-class Outlet:
-    name: Optional[str] = None
-    valid_url: Pattern | list[Pattern]
-
-    weight: Optional[int] = 50
-
-    processors: list[callable] = []
-
-    def __init__(self) -> None:
-        self.processors = []
-        # Get classes this instance is a subclass of, and add their processors
-        logger.debug("Adding processors from %s", self.__class__.__name__, extra={"base_classes": self.__class__.__mro__})
-        for cls in self.__class__.__mro__:
-            logger.debug("Checking class %s", cls.__name__)
-            if cls in [Outlet, object]:
-                break
-            if class_processors := cls.__dict__.get("processors"):
-                logger.debug("Adding %d processors from %r", len(class_processors), cls.__name__)
-                self.processors += class_processors
-
-        logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
-
-    def __getattr__(self, name: str):
-        if name == "name":
-            return self.__class__.__name__
-        elif name == "weight":
-            return 50
-
-    def latest(self) -> list["Article"]:
-        raise NotImplementedError
-
-    def frequency(self, dt: datetime | None) -> timedelta:
-        """
-        Get the frequency of the outlet.
-
-        :param dt: Time of the article previously published.
-        """
-        default = timedelta(minutes=30)
-        logger.debug("Outlet %r does not provide a frequency, defaulting to %s", self.name, default)
-
-        return default
-
-    def fetch(self, url: AnyHttpUrl):
-        """
-        Fetch the article from the URL.
-
-        :param url: The URL of the article.
-        """
-        raise NotImplementedError
-
-
 class LinkLabel(str, Enum):
     LINK_CANONICAL   = "com.github.klikkikuri/link-rel=canonical"
     "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#canonical"
@@ -339,38 +287,6 @@ class ArticleMeta(TypedDict, total=False):
     language: Optional[str]
     "Language of the article (ISO 639-1 code)."
     outlet: Optional[str]
-
-
-class Article(BaseModel):
-    """
-    Article model
-    """
-    #id: Optional[PyObjectId] = Field(None, alias="_id")
-
-    text: Optional[str] = Field(...)
-    meta: ArticleMeta = Field(default_factory=ArticleMeta)
-    labels: list[ArticleTypeLabels] = Field(default_factory=list)
-    urls: list[ArticleUrl] = Field(default_factory=list)
-
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-    def get_url(self) -> Optional[AnyHttpUrl]:
-        """
-        Get the primary URL of the article.
-
-        If multiple URLs are present, prefer the canonical URL.
-        """
-        if not self.urls:
-            return None
-
-        for url in self.urls:
-            # Prefer canonical URL if available
-            if LinkLabel.LINK_CANONICAL in url.labels:
-                return url.href
-
-        return self.urls[0].href
 
 
 class VestedGroup(BaseModel):
