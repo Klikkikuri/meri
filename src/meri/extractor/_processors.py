@@ -9,6 +9,7 @@ from inspect import signature
 from opentelemetry import trace
 from opentelemetry.semconv.trace import SpanAttributes
 from langdetect import detect as detect_language
+import requests
 
 from meri.settings import settings
 
@@ -99,9 +100,6 @@ def check_robots_txt_access(url: AnyHttpUrl) -> bool:
     user_agent = settings.BOT_USER_AGENT
     url = str(url)
 
-    # Piggyback on the newspaper session
-    session = newspaper.network.session
-
     rules: dict[str, RobotFileParser] = {}
 
     def _get_robots_rule(url: AnyHttpUrl) -> RobotFileParser:
@@ -112,7 +110,7 @@ def check_robots_txt_access(url: AnyHttpUrl) -> bool:
             robots_url = f"{base_url}/robots.txt"
 
             try:
-                robots_response = session.get(robots_url, timeout=5, headers={"User-Agent": user_agent})
+                robots_response = requests.get(robots_url, timeout=5, headers={"User-Agent": user_agent})
 
                 if robots_response.ok:
                     logger.debug(

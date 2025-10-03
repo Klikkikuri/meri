@@ -23,7 +23,7 @@ def extractor(url: AnyHttpUrl) -> Outlet:
 
     from .extractor import get_extractors
 
-    article_url_parts = urlparse(url)
+    article_url_parts = urlparse(str(url))
 
     # Find the outlet that matches the URL
     # Warning: there be dragons here

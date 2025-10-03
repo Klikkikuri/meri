@@ -3,6 +3,7 @@ ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}-bookworm
 
 ARG VIRTUAL_ENV="/app/.venv"
 
+
 FROM ${PYTHON_BASE_IMAGE} AS build
 
 LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
@@ -52,6 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     uv sync --frozen --no-install-project --no-dev
+
 
 # Install the application
 COPY . /app
