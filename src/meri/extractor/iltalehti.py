@@ -1,18 +1,30 @@
 from datetime import datetime, timedelta
-from pprint import pprint
-from pytz import utc
-import requests
-from structlog import get_logger
-from ..abc import Article, ArticleMeta, ArticleTypeLabels, ArticleUrl, LinkLabel, Outlet
-from ._extractors import TrafilaturaExtractorMixin
 
-from ._common import PolynomialDelayEstimator
+import requests
+from pytz import utc
+from structlog import get_logger
+
+from meri.abc import ArticleMeta, ArticleUrl, LinkLabel
+from meri.article import Article
+
+from ._common import Outlet, PolynomialDelayEstimator
+from ._extractors import TrafilaturaArticle, TrafilaturaExtractorMixin
+from ._processors import label_paywalled_content
 
 
 logger = get_logger(__name__)
 
+class _Iltapulu(TrafilaturaExtractorMixin, Outlet):
 
-class Iltalehti(TrafilaturaExtractorMixin, Outlet):
+    def fetch(self, source) -> TrafilaturaArticle:
+        article: TrafilaturaArticle = super().fetch(source)  # type: ignore
+
+        article = label_paywalled_content(article)
+
+        return article
+
+
+class Iltalehti(_Iltapulu):
     name = "Iltalehti"
     valid_url = r"//www.iltalehti.fi/"
     weight = 50
@@ -34,6 +46,13 @@ class Iltalehti(TrafilaturaExtractorMixin, Outlet):
             dt = datetime.now(utc)
 
         return self._frequency(dt)
+
+    def fetch(self, source) -> TrafilaturaArticle:
+        article: TrafilaturaArticle = super().fetch(source)  # type: ignore
+
+        article = label_paywalled_content(article)
+
+        return article
 
     def latest(self) -> list[Article]:
         latest_url = r"https://api.il.fi/v1/articles/iltalehti/lists/latest?limit=90&image_sizes[]=size138"

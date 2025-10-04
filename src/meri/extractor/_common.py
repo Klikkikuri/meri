@@ -1,15 +1,124 @@
+from abc import ABC
 from datetime import datetime, timedelta, timezone
-from typing import Generator, Iterable, Optional
+from re import Pattern
+from typing import Callable, Generator, Generic, Iterable, Optional, Protocol, TypeVar
 
-import fastfeedparser
-from pydantic import HttpUrl
+from pydantic import AnyHttpUrl, Field, HttpUrl
 from structlog import get_logger
 
-from meri.abc import Article, ArticleMeta, article_url
-
-from ._processors import html_to_markdown
+from meri.abc import ArticleMeta, article_url
+from meri.article import Article
 
 logger = get_logger(__name__)
+
+T = TypeVar('T', bound=Article)
+""" Type variable for generic types. """
+
+class OutletProtocol(Protocol, Generic[T]):
+    name: str
+
+    def fetch(self, source) -> T: ...
+    def latest(self) -> list[T]: ...
+
+
+class HtmlArticle(Article, ABC):
+    """
+    An article containing raw HTML content.
+    """
+
+    html: str = Field(..., description="Raw HTML of the article as a string.")
+
+
+# TODO: Make as pydantic model
+class Outlet(ABC):
+    name: Optional[str] = None
+    valid_url: Pattern | list[Pattern] | str
+
+    weight: Optional[int] = 50
+
+    processors: list[Callable] = []
+
+    def __init__(self) -> None:
+        self.processors = []
+        # Get classes this instance is a subclass of, and add their processors
+        logger.debug("Adding processors from %s", self.__class__.__name__, extra={"base_classes": self.__class__.__mro__})
+        for cls in self.__class__.__mro__:
+            logger.debug("Checking class %s", cls.__name__)
+            if cls in [Outlet, object]:
+                break
+            if class_processors := cls.__dict__.get("processors"):
+                logger.debug("Adding %d processors from %r", len(class_processors), cls.__name__)
+                self.processors += class_processors
+
+        logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
+
+    def __getattr__(self, name: str):
+        if name == "name":
+            return self.__class__.__name__
+        elif name == "weight":
+            return 50
+
+    def latest(self) -> list[Article]:
+        raise NotImplementedError
+
+    def frequency(self, dt: datetime | None) -> timedelta:
+        """
+        Get the frequency of the outlet.
+
+        :param dt: Time of the article previously published.
+        """
+        default = timedelta(minutes=30)
+        logger.debug("Outlet %r does not provide a frequency, defaulting to %s", self.name, default)
+
+        return default
+
+
+    def fetch(self, source) -> Article:
+        """
+        Fetch the article from the source. The source can be a URL (str or AnyHttpUrl) or an Article object.
+        """
+
+        match source:
+            case str():
+                if not source.startswith("http://") and not source.startswith("https://"):
+                    raise ValueError(f"Cannot fetch article from non-URL string: {source!r}")
+                return self.fetch_by_url(AnyHttpUrl(source))
+            case AnyHttpUrl() | HttpUrl():
+                return self.fetch_by_url(source)
+            case Article():
+                return self.fetch_by_article(source)
+            case _:
+                raise ValueError(f"Cannot fetch article from source of type {type(source)}")
+
+
+    def fetch_by_url(self, url: AnyHttpUrl | str) -> Article:
+        """
+        Fetch the article from the URL.
+
+        :param url: The URL of the article.
+        """
+        raise NotImplementedError("Outlet %s does not implement fetch by URL" % self.name)
+
+
+    def fetch_by_article(self, article: Article) -> Article:
+        """
+        Fetch the article from the Article object.
+
+        :param article: The Article object.
+        """
+        logger.debug("Fetching full article for %r", article, extra={"article": article, "outlet": self.name})
+        url = article.get_url()
+        if not url:
+            raise ValueError("Article does not have a URL")
+    
+        # Fetch the full article, and merge it with the old one.
+        # Old article might have some metadata that the fetcher does not extract.
+
+        full_article = self.fetch(url)
+        full_article.merge(article)
+
+        return full_article
+
 
 class PolynomialDelayEstimator:
     """
@@ -50,86 +159,6 @@ class PolynomialDelayEstimator:
         return timedelta(minutes=predicted_delay)
 
 
-class RssParser(Iterable[Article]):
-    """
-    Convert RSS feed data to a list of articles. Supports iteration over articles.
-
-    TODO: Use own network fetching code.
-    """
-    feed: fastfeedparser.FastFeedParserDict
-    url: HttpUrl
-    language: Optional[str]
-
-    def __init__(self, url: str | HttpUrl, language: str | None = None):
-        self.url = HttpUrl(url)
-        self.language = language
-
-    def __iter__(self) -> Generator[Article, None, None]:
-        """Make the parser iterable using yield."""
-        self.feed = fastfeedparser.parse(str(self.url))
-
-        for entry in self.feed.entries:
-
-            content = entry.get("description", None).strip()
-            content_lang = self.language
-
-            # Check if "actual" - or more likely to terse - content is available
-            if 'content' in entry and entry.content:
-                if len(entry.content) > 1:
-                    logger.warning("Multiple content entries found, using the first one.", extra={"entry": entry, "url": self.url, "feed": self.feed.feed})
-
-                for i, content_entry in enumerate(entry.content):
-                    if 'value' not in content_entry or not content_entry['value'].strip():
-                        # Skip entries without 'value' key
-                        logger.debug("Skipping content entry without 'value' key or empty value.", extra={"entry": entry, "index": i, "url": self.url, "feed": self.feed.feed})
-                        continue
-
-                    _content = content_entry['value'].strip()
-
-                    # TODO: Maybe implement language filtering here?
-                    content_lang = content_entry.get("language", content_lang)
-
-                    mime_type = content_entry.get("type", "").strip()
-                    match mime_type:
-                        case "text/plain":
-                            _content = content_entry['value'].strip()
-                        case "text/html":
-                            _content = html_to_markdown(_content)
-                        case _:
-                            logger.warning("Unknown content type, skipping.", extra={"entry": entry, "index": i, "url": self.url, "feed": self.feed.feed})
-                            continue
-                    break
-
-            url = entry.get("link", "").strip()
-            if not url:
-                logger.warning("Entry %r missing url (`link` -field), skipping.", entry['title'], extra={"entry": entry, "url": self.url, "feed": self.feed.feed})
-                continue
-
-            published = None
-            if _published := entry.get("published", None):
-                published = datetime.fromisoformat(_published)
-            else:
-                published = datetime.now(timezone.utc)
-
-            article = Article(
-                text=content,
-                meta=ArticleMeta({
-                    "title": entry.get("title", "").strip(),
-                    "language": content_lang,
-                    "authors": [author.strip() for author in entry.get("author", "").split(",") if author.strip()],
-                    "id": entry.get("id", entry.get("link", "")).strip(),
-                }),
-                created_at=published,
-                urls=[article_url(url)]
-            )
-
-            yield article
-
-    def parse(self) -> list[Article]:
-        """Parse and return all articles as a list."""
-        return list(self)
-
-
 def merge_article_lists(*article_lists: Iterable[Article]) -> list[Article]:
     """
     Merge multiple lists of articles into a single list, removing duplicates based on article URLs.
@@ -167,6 +196,7 @@ def merge_article_lists(*article_lists: Iterable[Article]) -> list[Article]:
 
 if __name__ == "__main__":
     import logging
+    from ._extractors import RssParser
     
     logging.basicConfig(level=logging.DEBUG)
 
@@ -181,6 +211,8 @@ if __name__ == "__main__":
     ]
 
     rss_articles = merge_article_lists(*rss_feeds)
+
+    print(rss_feeds[0].feed['feed'])
     print(f"Parsed {len(rss_articles)} articles from {len(rss_feeds)} feeds")
     # for article in rss_articles:
     #     pprint(article)

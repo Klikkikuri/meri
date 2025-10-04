@@ -7,14 +7,18 @@ from structlog import get_logger
 from markdownify import markdownify
 from inspect import signature
 from opentelemetry import trace
-from opentelemetry.semconv.trace import SpanAttributes
 from langdetect import detect as detect_language
 import requests
 
+from meri.abc import ArticleLabels
+
+from ._paywalled import is_paywalled_content
+
+from ._common import HtmlArticle, Outlet
 from meri.settings import settings
 
-
-from ..abc import Outlet, Article
+from meri.article import Article
+from typing import TypeVar
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -36,11 +40,24 @@ class NotAllowedByRobotsTxt(RequestException):
     pass
 
 
+A = TypeVar('A', bound=HtmlArticle)
+
+def label_paywalled_content(article: A) -> A:
+    """
+    Add a paywalled label to the article if it is paywalled.
+    """
+    paywalled = is_paywalled_content(article.html)
+    if paywalled:
+        article.labels.append(ArticleLabels.PAYWALLED)
+
+    return article
+
+
 def article_language_from_text(article: Article) -> Article:
     """
     Detect the article language from content, if not already detected.
     """
-    if not article.meta['language']:
+    if not article.meta.get('language'):
         lang = detect_language(article.text)
         logger.debug("Detected language %r", lang)
         article.meta['language'] = lang
@@ -144,7 +161,7 @@ def check_robots_txt_access(url: AnyHttpUrl) -> bool:
     return True
 
 
-def process(outlet: Outlet, url: AnyHttpUrl) -> list[Any]:
+def process(outlet: "Outlet", url: AnyHttpUrl) -> list[Any]:
     """
     Process the article using the processors defined in the outlet.
     """
