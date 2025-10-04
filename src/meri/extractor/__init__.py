@@ -8,11 +8,11 @@ New extactors can be added by creating a new class that inherits from the
 """
 
 from importlib.resources import files
-from ..abc import Outlet
+from ._common import Outlet
 
-def get_default_extractors():
+def get_default_extractors() -> list[Outlet]:
     """
-    Buildin extractors.
+    Builtin extractors.
 
     This function will return a list of all the extractors in the `extractor`
     package.
@@ -42,7 +42,8 @@ def get_default_extractors():
 
     return extractors
 
-def get_extractors():
+
+def get_extractors() -> list[Outlet]:
     """
     Get all the extractors.
 
@@ -51,3 +52,4 @@ def get_extractors():
     default_extractors = get_default_extractors()
     # Sort the extractors by weight
     return sorted(default_extractors, key=lambda x: x.weight, reverse=True)
+
