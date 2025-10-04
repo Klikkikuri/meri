@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import AnyHttpUrl, BaseModel, Field
-from .abc import ArticleMeta, ArticleTypeLabels, ArticleUrl, LinkLabel
+from .abc import ArticleLabels, ArticleMeta, ArticleTypeLabels, ArticleUrl, LinkLabel
 
 
 class Article(BaseModel):
@@ -15,7 +15,7 @@ class Article(BaseModel):
 
     text: Optional[str] = Field(...)
     meta: ArticleMeta = Field(default_factory=ArticleMeta)
-    labels: list[ArticleTypeLabels] = Field(default_factory=list)
+    labels: list[ArticleTypeLabels | ArticleLabels] = Field(default_factory=list)
     urls: list[ArticleUrl] = Field(default_factory=list)
 
     created_at: Optional[datetime] = Field(None)

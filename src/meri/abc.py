@@ -193,6 +193,25 @@ class ArticleTypeLabels(str, Enum):
     # """
 
 
+class ArticleLabels(str, Enum):
+    """
+    General labels for articles.
+
+    Labels:
+
+    - `com.github.klikkikuri/paywalled=true`:
+    
+        The article is behind a paywall and requires a subscription or payment to access the full content.
+
+    - `com.github.klikkikuri/sponsored=true`:
+        
+        The article is sponsored content, meaning it is paid for by an advertiser or sponsor and may have promotional intent.
+
+    """
+    PAYWALLED = "com.github.klikkikuri/paywalled=true"
+    SPONSORED = "com.github.klikkikuri/sponsored=true"
+
+
 class TitleQuorumLabel(str, Enum):
     """
     Indicates the level of agreement among LLMs when generating a title.
