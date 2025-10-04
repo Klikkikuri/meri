@@ -2,9 +2,7 @@ from structlog import get_logger
 
 from .iltalehti import _Iltapulu
 
-from ._processors import label_paywalled_content
-from ._common import Outlet
-from ._extractors import RssFeedMixin, TrafilaturaArticle
+from ._extractors import RssFeedMixin
 
 logger = get_logger(__name__)
 
