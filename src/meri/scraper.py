@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 from re import Pattern
 from urllib.parse import urlparse
@@ -9,12 +8,12 @@ from structlog import get_logger
 from meri.settings import settings
 from platformdirs import user_cache_dir
 
-from .abc import Outlet
+from .extractor import Outlet
 
 logger = get_logger(__name__)
 
 
-def extractor(url: AnyHttpUrl) -> Outlet:
+def get_extractor(url: AnyHttpUrl) -> Outlet:
     """
     Find the extractor for the given URL.
 
