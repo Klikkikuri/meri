@@ -1,5 +1,3 @@
-
-
 from datetime import datetime
 from typing import Optional
 
@@ -70,5 +68,5 @@ class Article(BaseModel):
         # If no text is present, use the other article's text.
         if not self.text and other.text:
             self.text = other.text
-        
+
         return self
