@@ -1,12 +1,11 @@
 from abc import ABC
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from re import Pattern
-from typing import Callable, Generator, Generic, Iterable, Optional, Protocol, TypeVar
+from typing import Callable, Generic, Iterable, Optional, Protocol, TypeVar
 
 from pydantic import AnyHttpUrl, Field, HttpUrl
 from structlog import get_logger
 
-from meri.abc import ArticleMeta, article_url
 from meri.article import Article
 
 logger = get_logger(__name__)
@@ -21,7 +20,7 @@ class OutletProtocol(Protocol, Generic[T]):
     def latest(self) -> list[T]: ...
 
 
-class HtmlArticle(Article, ABC):
+class HtmlArticle(Article):
     """
     An article containing raw HTML content.
     """
@@ -196,6 +195,7 @@ def merge_article_lists(*article_lists: Iterable[Article]) -> list[Article]:
 
 if __name__ == "__main__":
     import logging
+
     from ._extractors import RssParser
     
     logging.basicConfig(level=logging.DEBUG)
