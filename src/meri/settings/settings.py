@@ -34,6 +34,8 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from .newssources import NewsSource
+
 from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
@@ -49,7 +51,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BOT_ID = "Klikkikuri"
 
-_pkg_name: str = __package__
+_pkg_name: str = str(__package__)
+
 try:
     _pkg_name, *_ = __package__.split(".")
     _pkg_metadata = dict(metadata(_pkg_name))
@@ -82,7 +85,6 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
-
 class Settings(BaseSettings):
     DEBUG: bool = Field(
         False,
@@ -114,6 +116,9 @@ class Settings(BaseSettings):
 
     llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
     pipelines: list[str] = Field([], description="List of pipeline definitions.")
+
+    sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
+
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
@@ -153,7 +158,6 @@ class Settings(BaseSettings):
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
-
     @classmethod
     def settings_customise_sources(cls,
         settings_cls: Type[BaseSettings],
@@ -183,3 +187,4 @@ class Settings(BaseSettings):
 
 settings_var: ContextVar[Settings] = ContextVar(f"{__package__}.settings_var", default=Settings())
 settings = settings_var.get()
+
