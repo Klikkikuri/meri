@@ -20,7 +20,7 @@ class StructuredPipeline:
     """
 
     pipeline: Optional[Pipeline]
-    output_model: BaseModel
+    output_model: type[BaseModel]
 
     PIPELINE_NAME: ClassVar[str] = "default"
 
