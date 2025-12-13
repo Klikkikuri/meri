@@ -13,6 +13,8 @@ from .extractor import Outlet
 from .discovery import SourceDiscoverer, registry, merge_article_lists
 from .article import Article
 
+from pydantic import HttpUrl
+
 logger = get_logger(__name__)
 
 
@@ -146,13 +148,19 @@ def discover_articles(source: NewsSource) -> list[Article]:
         try:
             logger.info("Discovering articles from %s using %s discoverer", url, source.type)
             # Convert to HttpUrl if needed
-            from pydantic import HttpUrl
+
             http_url = HttpUrl(str(url))
             # Pass language if available
             kwargs = {}
             if source.language:
                 kwargs['language'] = source.language
             articles = discoverer.discover(http_url, **kwargs)
+            
+            # Set outlet name to source name if not already set by discoverer
+            for article in articles:
+                if not article.meta.get('outlet'):
+                    article.meta['outlet'] = source.name
+            
             article_lists.append(articles)
             logger.debug("Discovered %d articles from %s", len(articles), url)
         except Exception as e:
