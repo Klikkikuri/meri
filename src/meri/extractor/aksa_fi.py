@@ -1,20 +1,18 @@
 from structlog import get_logger
 
+from ..discovery.rss import RSSDiscoverer
+
 from ._common import Outlet
 
 
-from ._extractors import RssFeedMixin, TrafilaturaExtractorMixin
+from ._extractors import TrafilaturaExtractorMixin
 
 logger = get_logger(__name__)
 
-class AksaFi(TrafilaturaExtractorMixin, RssFeedMixin, Outlet):
+class AksaFi(TrafilaturaExtractorMixin, Outlet):
     name = "Aksa.fi"
     valid_url = r"https://aksa.fi/"
     weight = 50
-
-    feed_urls = [
-        "https://aksa.fi/feed/",
-    ]
 
 
 if __name__ == "__main__":
@@ -23,6 +21,7 @@ if __name__ == "__main__":
     from pprint import pprint
 
     outlet = AksaFi()
+    discover = RSSDiscoverer(["https://aksa.fi/feed/"])
     articles = outlet.latest()
     logger.info("Found articles", count=len(articles))
 

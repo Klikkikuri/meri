@@ -6,9 +6,12 @@ from pydantic import AnyHttpUrl
 from structlog import get_logger
 
 from meri.settings import settings
+from meri.settings.newssources import NewsSource
 from platformdirs import user_cache_dir
 
 from .extractor import Outlet
+from .discovery import SourceDiscoverer, registry, merge_article_lists
+from .article import Article
 
 logger = get_logger(__name__)
 
@@ -98,3 +101,77 @@ def try_setup_requests_cache():
         cache_name=str(cache_path),
     )
     logger.debug("Cache set up at %s", cache_path)
+
+
+def get_discoverer(source: NewsSource) -> SourceDiscoverer:
+    """
+    Get the discoverer for the given news source.
+
+    :param source: The news source to get the discoverer for.
+    :return: Discoverer instance for the source
+    :raises ValueError: If no discoverer is found for the source type
+    """
+    discoverer = registry.get_instance(source.type)
+    
+    if discoverer is None:
+        available = registry.list_names()
+        raise ValueError(
+            f"No discoverer found for source {source.name!r} with type {source.type!r}. "
+            f"Available discoverers: {', '.join(available)}"
+        )
+    
+    return discoverer
+
+
+def discover_articles(source: NewsSource) -> list[Article]:
+    """
+    Discover articles from a news source and remove duplicates.
+
+    This function fetches articles from all URLs configured in the news source
+    using the appropriate discoverer, then merges the results and removes
+    any duplicate articles.
+
+    :param source: The news source to discover articles from.
+    :return: List of unique Article objects discovered from the source.
+    :raises ValueError: If no discoverer is found for the source type.
+    """
+    if not source.enabled:
+        logger.info("News source %s is disabled, skipping discovery", source.name)
+        return []
+
+    discoverer = get_discoverer(source)
+    article_lists = []
+
+    for url in source.url:
+        try:
+            logger.info("Discovering articles from %s using %s discoverer", url, source.type)
+            # Convert to HttpUrl if needed
+            from pydantic import HttpUrl
+            http_url = HttpUrl(str(url))
+            # Pass language if available
+            kwargs = {}
+            if source.language:
+                kwargs['language'] = source.language
+            articles = discoverer.discover(http_url, **kwargs)
+            article_lists.append(articles)
+            logger.debug("Discovered %d articles from %s", len(articles), url)
+        except Exception as e:
+            logger.error(
+                "Failed to discover articles from URL",
+                url=url,
+                source=source.name,
+                error=str(e),
+                exc_info=True
+            )
+            continue
+
+    # Merge all article lists and remove duplicates
+    unique_articles = merge_article_lists(*article_lists)
+    logger.info(
+        "Discovered %d unique articles from %s (%d total before deduplication)",
+        len(unique_articles),
+        source.name,
+        sum(len(articles) for articles in article_lists)
+    )
+
+    return unique_articles

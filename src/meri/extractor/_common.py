@@ -57,8 +57,6 @@ class Outlet(ABC):
         elif name == "weight":
             return 50
 
-    def latest(self) -> list[Article]:
-        raise NotImplementedError
 
     def frequency(self, dt: datetime | None) -> timedelta:
         """

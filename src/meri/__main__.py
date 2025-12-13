@@ -1,23 +1,27 @@
 import base64
 from datetime import datetime, timezone
 import hashlib
+from importlib.util import find_spec
 import os
 import json
 from textwrap import wrap
 
 import dotenv
-from pydantic import AnyUrl
+from pydantic import AnyHttpUrl
 from rich.pretty import pprint  # TODO: remove from production code
 import requests
 
-from meri.abc import ArticleTitleResponse, Article
+from meri.abc import ArticleTitleResponse
+from meri.article import Article
 from .utils import setup_logging
 from structlog import get_logger
-from .scraper import extractor
-from .extractor.iltalehti import Iltalehti
+from .scraper import get_extractor, try_setup_requests_cache, discover_articles
 from .pipelines.title import TitlePredictor
 from meri.extractor._extractors import trafilatura_extractor
+from meri.extractor import get_default_extractors
+from meri.discovery import merge_article_lists
 
+from meri.settings import settings
 
 try:
     import rich_click as click
@@ -29,47 +33,50 @@ dotenv.load_dotenv()
 setup_logging()
 logger = get_logger(__package__)
 
+# Check if requests_cache is available, since it is not a hard dependency and not installed by default
+_requests_cache_available: bool = find_spec("requests_cache") is not None
+
+extractors = {e.name: e for e in get_default_extractors()}
+
 
 @click.group()
 @click.version_option()
-@click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=os.getenv("REQUESTS_CACHE", True))
-def cli(cache: bool):
-    if cache:
-        import requests_cache
-        import tempfile
+@click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
 
-        # get temp directory
-        tmp_dir = tempfile.gettempdir()
-        requests_cache.install_cache(f"{tmp_dir}/klikkikuri_requests_cache", expire_after=3600)
+def cli(cache: bool):
+
+    if cache:
+        if not _requests_cache_available:
+            raise RuntimeError("requests_cache is not available, cannot enable caching.")
+
+        try_setup_requests_cache()
+
+    os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
 
 @cli.command()
-@click.argument("url", required=False, type=AnyUrl)
-def fetch(url=None):
+@click.option("--extractor", required=False, type=click.Choice(list(extractors.keys()), case_sensitive=False))  # type: ignore
+@click.argument("url", required=True, type=AnyHttpUrl)
+def fetch(url: AnyHttpUrl, extractor=None):
     """
     Fetch article from URL.
     """
-    if not url:
-        url = "https://www.iltalehti.fi/"
-        logger.info("Pulling latest from %r", url)
-        source = extractor(url)
-        latest = source.latest()
-        logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
 
-        url = latest[0]
+    if not extractor:
+        outlet = get_extractor(url)
+        if not outlet:
+            raise ValueError(f"No extractor found for URL {url}")
+    else:
+        outlet = extractors.get(extractor)
+        if not outlet:
+            raise ValueError(f"No extractor found with name {extractor}")
 
-    url = str(url)
-    logger.info("Fetching article from %r", url)
-    from meri.extractor._processors import process
 
-    outlet = extractor(url)
-    processed = process(outlet, url)
-    logger.debug("Processed %d", len(processed), processed=processed)
+    article = outlet.fetch(url)
+    if getattr(article, "html", None):
+        article.html = article.html[:1000] + "..." if article.html and len(article.html) > 1000 else article.html
 
-    from rich.pretty import pprint
-    from .llm import extract_interest_groups
-
-    pprint(extract_interest_groups(processed))
+    pprint(article.dict())
 
 
 ArticleTitleData = tuple[Article, ArticleTitleResponse]
@@ -88,11 +95,42 @@ def hash_url(url: str) -> str:
 
 
 def fetch_latest() -> list[Article]:
-    processor = Iltalehti()
-    links = processor.latest()
-    pprint(links)
-
-    return links
+    """
+    Fetch latest articles from all configured news sources.
+    
+    Returns a deduplicated list of articles from all enabled sources.
+    """
+    
+    article_lists: list[list[Article]] = []
+    
+    for source in settings.sources:
+        if not source.enabled:
+            logger.debug("Skipping disabled source", source=source.name)
+            continue
+        
+        try:
+            logger.info("Fetching articles from source", source=source.name, type=source.type)
+            articles = discover_articles(source)
+            article_lists.append(articles)
+            logger.info("Fetched %d articles from %s", len(articles), source.name)
+        except Exception as e:
+            logger.error(
+                "Failed to fetch articles from source",
+                source=source.name,
+                error=str(e),
+                exc_info=True
+            )
+            continue
+    
+    # Merge all article lists and remove duplicates across sources
+    all_articles = merge_article_lists(*article_lists)
+    logger.info(
+        "Fetched total of %d unique articles from %d sources",
+        len(all_articles),
+        len([s for s in settings.sources if s.enabled])
+    )
+    
+    return all_articles
 
 
 def process_titles(articles: list[Article]) -> list[ArticleTitleData]:
@@ -203,23 +241,11 @@ def fetch_articles(article_stubs: list[Article]) -> list[Article]:
         article_object = trafilatura_extractor(url)
 
         # Merge the stub and the fetched article object.
-        # Use the latest updated_at and earliest created_at.
-        article_object.updated_at = max(stub.updated_at, article_object.updated_at)
-        article_object.created_at = min(stub.created_at, article_object.created_at)
-        # Merge missing metadata from stub to fetched object.
-        for k, v in stub.meta.items():
-            if k not in article_object.meta or not article_object.meta[k]:
-                article_object.meta[k] = v
-        # Append missing URLs from stub to fetched object.
-        existing_urls = set(map(lambda u: str(u.href), article_object.urls))
-        for url in stub.urls:
-            if str(url.href) not in existing_urls:
-                article_object.urls.append(url)
+        article_object.merge(stub)
 
         articles.append(article_object)
 
     return articles
-
 
 
 def prune_old_entries(old_entries: list[RahtiEntry], max_age_days: int = 3) -> list[RahtiEntry]:
@@ -368,6 +394,66 @@ def run(article_limit, range_start, range_amount):
             commit_message += wrap(t.contemplator, initial_indent="   ", subsequent_indent="   ", break_long_words=False, width=72)
 
     store_results(hash_of_stored_file, entries, "\n".join(commit_message))
+
+
+@cli.command()
+def list_sources():
+    """
+    List available extractors.
+    """
+    import meri.settings
+
+    for source in meri.settings.settings.sources:
+        print(f"Extractor: {source.name} (weight={source})")
+
+
+@cli.command()
+def test_fetch():
+    """
+    Test fetching latest news from all configured sources.
+    
+    This command fetches articles from all enabled news sources and displays
+    a summary. Use this to verify your source configuration is working correctly.
+    """
+    from meri.settings import settings
+    
+    if not settings.sources:
+        click.echo("No news sources configured. Add sources to your config.yaml file.")
+        return
+    
+    click.echo(f"Fetching articles from {len(settings.sources)} configured source(s)...\n")
+    
+    articles = fetch_latest()
+    
+    if not articles:
+        click.echo("No articles found.")
+        return
+    
+    click.echo(f"\n{'='*80}")
+    click.echo(f"Found {len(articles)} unique article(s)")
+    click.echo(f"{'='*80}\n")
+    
+    limit = 10
+    show_meta = True
+    
+    display_articles = articles[:limit] if limit else articles
+    
+    for i, article in enumerate(display_articles, 1):
+        url = article.get_url()
+        title = article.meta.get("title", "No title")
+        published = article.created_at
+        
+        click.echo(f"{i}. {title}")
+        click.echo(f"   URL: {url}")
+        click.echo(f"   Updated: {published}")
+        
+        if show_meta:
+            click.echo(f"   Metadata: {article.meta}")
+
+        click.echo()
+    
+    if limit and len(articles) > limit:
+        click.echo(f"... and {len(articles) - limit} more article(s)")
 
 
 if __name__ == "__main__":
