@@ -22,6 +22,7 @@ from ._base import SourceDiscoverer
 from ._registry import DiscovererRegistry, registry
 from ._utils import merge_article_lists
 from .iltalehti import IltalehtiFeedDiscoverer
+from .kontio import KontioDiscoverer
 from .rss import RSSDiscoverer
 from .sitemap import SitemapDiscoverer
 
@@ -33,6 +34,7 @@ __all__ = [
     # Concrete discoverers
     "RSSDiscoverer",
     "IltalehtiFeedDiscoverer",
+    "KontioDiscoverer",
     "SitemapDiscoverer",
     
     # Registry instance
