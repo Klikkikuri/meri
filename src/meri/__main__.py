@@ -1,9 +1,9 @@
 import base64
 from datetime import datetime, timezone
-import hashlib
 from importlib.util import find_spec
 import os
 import json
+import sys
 from textwrap import wrap
 
 import dotenv
@@ -22,6 +22,7 @@ from meri.extractor import get_default_extractors
 from meri.discovery import merge_article_lists
 
 from meri.settings import settings
+from .suola import hash_url
 
 try:
     import rich_click as click
@@ -85,15 +86,6 @@ ArticleTitleData = tuple[Article, ArticleTitleResponse]
 RahtiEntry = ...
 """Placeholder for future"""
 
-
-def hash_url(url: str) -> str:
-    url = str(url)
-    # TODO: Figure out this Wasm thingy.
-    # sign = suola.exports.GetSignature(link)
-    # suola = Instantiate("./suola/build/wasi.wasm")
-    return hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
-
-
 def fetch_latest() -> list[Article]:
     """
     Fetch latest articles from all configured news sources.
@@ -124,6 +116,9 @@ def fetch_latest() -> list[Article]:
     
     # Merge all article lists and remove duplicates across sources
     all_articles = merge_article_lists(*article_lists)
+    # To keep stable, sort by created_at descending
+    all_articles.sort(key=lambda a: a.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+
     logger.info(
         "Fetched total of %d unique articles from %d sources",
         len(all_articles),
@@ -345,6 +340,13 @@ def run(article_limit, range_start, range_amount):
     """
     # NOTE: Needed env variables:
     # OPENAI_API_KEY, GITHUB_TOKEN
+    if not os.getenv("OPENAI_API_KEY"):
+        click.echo("OPENAI_API_KEY environment variable not set")
+        sys.exit(1)
+    if not os.getenv("GITHUB_TOKEN"):
+        click.echo("GITHUB_TOKEN environment variable not set")
+        sys.exit(1)
+
     articles = fetch_latest()
 
     commit_message = []
@@ -411,7 +413,9 @@ def list_sources():
 def test_fetch():
     """
     Test fetching latest news from all configured sources.
-    
+
+    TEST FUNCTION - Remove when integrated elsewhere.
+
     This command fetches articles from all enabled news sources and displays
     a summary. Use this to verify your source configuration is working correctly.
     """
@@ -424,7 +428,32 @@ def test_fetch():
     click.echo(f"Fetching articles from {len(settings.sources)} configured source(s)...\n")
     
     articles = fetch_latest()
-    
+    hashable_articles = []
+
+    # Iterate all and check if any of the urls are hashable
+    for article in articles:
+        article_has_hashable_url = False
+        for url in article.urls:
+            signature = hash_url(str(url.href))
+            if signature:
+                article_has_hashable_url = True
+                url.signature = signature
+
+        if article_has_hashable_url:
+            hashable_articles.append(article)
+
+    # Remove duplicates based on URL signatures
+    unique_signatures = set()
+    unique_articles = []
+    for article in hashable_articles:
+        article_signatures = {url.signature for url in article.urls if url.signature}
+        if not article_signatures.isdisjoint(unique_signatures):
+            continue  # Skip duplicate article
+        unique_signatures.update(article_signatures)
+        unique_articles.append(article)
+
+    articles = unique_articles
+
     if not articles:
         click.echo("No articles found.")
         return
@@ -437,6 +466,8 @@ def test_fetch():
     show_meta = True
     
     display_articles = articles[:limit] if limit else articles
+
+    display_articles = fetch_articles(display_articles)
     
     for i, article in enumerate(display_articles, 1):
         url = article.get_url()
