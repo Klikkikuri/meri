@@ -286,6 +286,8 @@ class ArticleUrl(BaseModel):
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+    signature: Optional[str] = Field(None, description="Hashed signature of the URL.")
+
     def __str__(self):
         return str(self.href)
 
@@ -294,7 +296,7 @@ class ArticleUrl(BaseModel):
         if isinstance(other, str):
             return str(self.href) == other
         elif isinstance(other, ArticleUrl):
-            return self.href == other.href
+            return self.href == other.href or self.signature == other.signature
         return super().__eq__(other)
 
 
