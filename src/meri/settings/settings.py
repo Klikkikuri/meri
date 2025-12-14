@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_BOT_ID = "Klikkikuri"
 
-_pkg_name: str = str(__package__)
+_pkg_name: str = str(__package__ or "meri")
 
 try:
     _pkg_name, *_ = __package__.split(".")
@@ -84,6 +84,8 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
+
+_suola_rules = Path("/app/packages/suola/rules.yaml")
 
 class Settings(BaseSettings):
     DEBUG: bool = Field(
@@ -119,6 +121,10 @@ class Settings(BaseSettings):
 
     sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
 
+    suola_rules: Path | None = Field(
+        _suola_rules if _suola_rules.exists() else None,
+        description="Path to Suola rules file. If not set, inbuilt rules will be used.",
+    )
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
