@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-import requests
+from meri.extractor.kontio.client import client
 from pydantic import HttpUrl
 from pytz import utc
 from structlog import get_logger
@@ -43,7 +43,7 @@ class KontioDiscoverer(SourceDiscoverer):
 
         logger.debug("Discovering articles from Kontio API: %s", source_url)
 
-        response = requests.get(str(source_url), timeout=10)
+        response = client().get(str(source_url), timeout=10)
         response.raise_for_status()
         data = response.json()
 
