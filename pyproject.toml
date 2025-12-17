@@ -28,6 +28,7 @@ dependencies = [
     "python-dotenv>=1.0.1",
     "requests>=2.32.3",
     "structlog>=25.1.0",
+    "suola",
     "trafilatura>=2.0.0",
     "ultimate-sitemap-parser>=1.6.0",
     "url-normalize>=1.4.3",
@@ -66,12 +67,13 @@ dev-dependencies = [
     "ollama-haystack>=2.4.1",
 ]
 [tool.uv.sources]
-suola = { workspace = true }
+suola = { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" }
+#suola = { workspace = true }
 #karikko = { workspace = true }
 #meri = { path = "./src/meri" }
 
 [tool.uv.workspace]
-members = ["packages/meri/python"]
+#members = ["packages/suola/python"]
 #members = ["src/*"]
 # Exclude self from workspace
 #exclude = ["src/meri"]
