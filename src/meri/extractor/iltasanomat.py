@@ -2,8 +2,6 @@ from structlog import get_logger
 
 from .iltalehti import IltapuluABC
 
-from ._extractors import RssFeedMixin
-
 logger = get_logger(__name__)
 
 
