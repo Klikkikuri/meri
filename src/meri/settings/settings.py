@@ -26,13 +26,15 @@ from pathlib import Path
 from typing import Literal, Type
 
 from platformdirs import site_config_dir, user_config_dir
-from pydantic import Field, root_validator
+from pydantic import Field, HttpUrl, SecretStr, root_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
+
+from .rahti import RahtiSettings
 
 from .newssources import NewsSource
 
@@ -45,27 +47,29 @@ from .llms import (
     detect_generators,
 )
 
+from .const import (
+    DEFAULT_BOT_ID,
+    PKG_NAME,
+)
+
 LLMSetting = OpenAISettings | OllamaSettings | GoogleGeminiSettings | GeneratorSettings
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BOT_ID = "Klikkikuri"
-
-_pkg_name: str = str(__package__ or "meri")
+_pkg_metadata: dict = {}
 
 try:
-    _pkg_name, *_ = __package__.split(".")
+    _pkg_name, *_ = PKG_NAME.split(".")
     _pkg_metadata = dict(metadata(_pkg_name))
 except (IndexError, PackageNotFoundError):
-    _pkg_name = __package__
+    _pkg_name = PKG_NAME
     _pkg_metadata = dict(metadata(_pkg_name))
 finally:
     # Set the homepage from the metadata
     _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
 
-
 # User defined settings
-_user_config_path = Path(user_config_dir("meri"), "config.yaml")
+_user_config_path = Path(user_config_dir(PKG_NAME), "config.yaml")
 DEFAULT_CONFIG_PATH = _user_config_path
 
 # Locations to look for the settings file
@@ -85,7 +89,9 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
-_suola_rules = Path("/app/packages/suola/rules.yaml")
+# Default Suola rules path from monorepo
+_suola_rules = Path("packages/suola/rules.yaml").resolve()
+
 
 class Settings(BaseSettings):
     DEBUG: bool = Field(
@@ -97,7 +103,6 @@ class Settings(BaseSettings):
         True,
         description="Enable OpenTelemetry tracing.",
     )
-
 
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
@@ -125,6 +130,8 @@ class Settings(BaseSettings):
         _suola_rules if _suola_rules.exists() else None,
         description="Path to Suola rules file. If not set, inbuilt rules will be used.",
     )
+
+    rahti: RahtiSettings
 
     @root_validator(pre=True)
     def parse_llm_settings(cls, values):
@@ -164,6 +171,16 @@ class Settings(BaseSettings):
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
+    model_config = SettingsConfigDict(
+        secrets_dir='/run/secrets' if Path('/run/secrets').exists() else None,
+        yaml_file=_settings_file_location,
+        yaml_file_encoding="utf-8",
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore',  # If dotenv contains extra keys, ignore them
+        env_nested_delimiter='__',
+    )
+
     @classmethod
     def settings_customise_sources(cls,
         settings_cls: Type[BaseSettings],
@@ -179,16 +196,6 @@ class Settings(BaseSettings):
             file_secret_settings,
             YamlConfigSettingsSource(settings_cls),
         )
-
-    model_config = SettingsConfigDict(
-        secrets_dir='/run/secrets',
-        yaml_file=_settings_file_location,
-        yaml_file_encoding="utf-8",
-        env_prefix="",
-        env_file='.env',
-        env_file_encoding='utf-8',
-        extra='ignore',  # If dotenv contains extra keys, ignore them
-    )
 
 
 settings_var: ContextVar[Settings] = ContextVar(f"{__package__}.settings_var", default=Settings())
