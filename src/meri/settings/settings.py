@@ -41,9 +41,7 @@ from .newssources import NewsSource
 from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
-    OllamaSettings,
-    GoogleGeminiSettings,
-    OpenAISettings,
+    LLMSetting,
     detect_generators,
 )
 
@@ -51,8 +49,6 @@ from .const import (
     DEFAULT_BOT_ID,
     PKG_NAME,
 )
-
-LLMSetting = OpenAISettings | OllamaSettings | GoogleGeminiSettings | GeneratorSettings
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +115,7 @@ class Settings(BaseSettings):
 
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
 
-    PROMPT_DIR: Path = Field(Path(user_config_dir("meri"), "prompts"), description="Directory to store prompt templates.")
+    PROMPT_DIR: Path = Field(Path(user_config_dir(PKG_NAME), "prompts"), description="Directory to store prompt templates.")
 
     llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
     pipelines: list[str] = Field([], description="List of pipeline definitions.")
