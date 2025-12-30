@@ -78,6 +78,7 @@ def match_by_url(v: dict) -> str:
     logger.error("Unknown Rahti settings type for value: %s", v)
     raise ValueError("Unknown Rahti settings type")
 
+# When adding new Rahti settings types, also update the `match_by_url` function, and `rahti` factory function.
 RahtiSettings = Annotated[
     Union[
         Annotated[RahtiFileSettings, Tag("file")],
