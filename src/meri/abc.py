@@ -8,17 +8,19 @@ from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
 from opentelemetry import trace
-from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, WithJsonSchema
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, WithJsonSchema, computed_field
 from pydantic.json import pydantic_encoder
 from structlog import get_logger
 
 from .utils import clean_url
+from .suola import hash_url
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 type PyObjectId = Annotated[str, BeforeValidator(str)]
+
 
 ContemplatorType = Annotated[
     str,
@@ -266,6 +268,9 @@ class ArticleTitleResponse(BaseModel):
 
     Order of fields:
      - Contemplation needs to be the first field in the response.
+     - Then evidence
+     - Then original title and its clickbaitiness
+     - Finally the suggested title.
     """
     contemplator: ContemplatorType
 
@@ -286,7 +291,17 @@ class ArticleUrl(BaseModel):
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
-    signature: Optional[str] = Field(None, description="Hashed signature of the URL.")
+    #signature: Optional[str] = Field(None, description="Hashed signature of the URL.", alias="sign")
+    @computed_field
+    @property
+    def signature(self) -> str:
+        """
+        Compute a simple signature for the URL.
+        """
+        if not self.href:
+            return ""
+        sign = hash_url(self.href)
+        return sign if sign else ""
 
     def __str__(self):
         return str(self.href)
