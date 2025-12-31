@@ -1,13 +1,13 @@
 from structlog import get_logger
 
-from ._iltapulu import _IltapuluABC
+from ._iltapulu import IltapuluABC
 
 from ._common import domain
 
 logger = get_logger(__name__)
 
 
-class Iltasanomat(_IltapuluABC):
+class Iltasanomat(IltapuluABC):
     name = "Iltasanomat"
     valid_url = [
         domain("iltasanomat.fi"),

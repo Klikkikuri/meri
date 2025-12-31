@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pytz import utc
 from structlog import get_logger
 
-from ._iltapulu import _IltapuluABC
+from ._iltapulu import IltapuluABC
 
 from ._common import PolynomialDelayEstimator, domain
 
@@ -11,7 +11,7 @@ from ._common import PolynomialDelayEstimator, domain
 logger = get_logger(__name__)
 
 
-class Iltalehti(_IltapuluABC):
+class Iltalehti(IltapuluABC):
     name = "Iltalehti"
     valid_url = domain("iltalehti.fi")
     weight = 50
