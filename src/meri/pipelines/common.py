@@ -1,18 +1,19 @@
 import json
 import logging
 from typing import Any, ClassVar, Optional
+
 from haystack import Pipeline
-from haystack.components.builders import PromptBuilder
-from opentelemetry import trace
+from haystack.components.builders import ChatPromptBuilder
+from haystack.dataclasses import ChatMessage
 from pydantic import BaseModel
 
 from meri.settings import settings
 
+from ..llm import PipelineType, get_generator
 from ..pydantic_llm import PydanticOutputParser
 
-from ..llm import get_generator
-
 logger = logging.getLogger(__name__)
+
 
 class StructuredPipeline:
     """
@@ -22,11 +23,11 @@ class StructuredPipeline:
     pipeline: Optional[Pipeline]
     output_model: type[BaseModel]
 
-    PIPELINE_NAME: ClassVar[str] = "default"
-
+    PIPELINE_NAME: ClassVar = PipelineType.DEFAULT
+    
     prompt_templates: dict[str, str] = {}
 
-    _prompt: PromptBuilder
+    _prompt: ChatPromptBuilder
     _llm: Any
 
     def __init__(self):
@@ -48,7 +49,10 @@ class StructuredPipeline:
 
         prompt_template = "\n\n".join(self.prompt_templates.values())
 
-        self._prompt = PromptBuilder(prompt_template)
+        self._prompt = ChatPromptBuilder([
+            ChatMessage.from_system(prompt_template)
+        ])
+
         self._llm = get_generator(self.PIPELINE_NAME)
 
         self.pipeline = Pipeline(max_runs_per_component=1)
@@ -84,7 +88,8 @@ class StructuredPipeline:
         # HACK: Haystack prompt -class bitches if it receives extra variables
         prompt_vars = {k: v for k, v in prompt_vars.items() if k in self._prompt.variables}
 
-        print(self._prompt.run(**prompt_vars)['prompt'])
+        if settings.DEBUG:
+            print(self._prompt.run(template_variables=prompt_vars)['prompt'][0].text)
 
         results = pipeline.run({
             "prompt_builder": prompt_vars,
