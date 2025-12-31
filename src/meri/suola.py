@@ -30,7 +30,10 @@ def hash_url(url: Url) -> str | None:
         inst = init_suola(settings.suola_rules)
 
     try:
-        return inst(url)
+        sign = inst(url)
+        if not sign:
+            logger.debug("Suola returned no signature for URL: %s", url)
+        return sign
     except Exception as e:
         logger.exception("Error hashing URL %s: %s", url, e)
         raise
