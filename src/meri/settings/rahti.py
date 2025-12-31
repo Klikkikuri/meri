@@ -1,14 +1,9 @@
 import logging
-from pathlib import Path
-from typing import Annotated, Literal, Optional, Optional, Union
-from isort import file
-from pydantic import ConfigDict, Discriminator, Field, HttpUrl, SecretStr, Tag
-from pydantic_settings import BaseSettings
 from socket import gethostname
+from typing import Annotated, Optional, Union
 
-from platformdirs import user_data_path
-
-from .const import PKG_NAME
+from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag
+from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +48,9 @@ class RahtiGithubSettings(RahtiBaseSettings):
         HttpUrl("https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"),
         description="Target URL for Rahti data.",
     )  
-    auth_token: SecretStr = Field(
+    auth_token: Optional[SecretStr] = Field(
         description="GitHub token for GitHub API access.",
+        alias="GITHUB_TOKEN"
     )
 
     timeout: Optional[int] = Field(
