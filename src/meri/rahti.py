@@ -7,6 +7,8 @@ from typing import List, Literal, Protocol
 import requests
 from pydantic import BaseModel, Field, field_validator
 
+from meri.settings import settings
+
 from .abc import ArticleLabels, ArticleTypeLabels, ClickbaitScale, LinkLabel
 from .settings.rahti import RahtiFileSettings, RahtiGithubSettings, RahtiSettings
 
@@ -116,6 +118,8 @@ class RahtiFile(RahtiProtocol):
         with open(self.path, "w", encoding="utf-8") as f:
             f.write(data.model_dump_json(indent=2))
 
+        if settings.DEBUG:
+            print(commit_message)
 
 class RahtiRepo(RahtiProtocol):
     """
