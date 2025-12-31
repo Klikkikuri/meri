@@ -13,7 +13,11 @@ words:
   - opentelemetry
   - platformdirs
   - pydantic
+  - clickbaitiness
+  - Rahti
+  - Suola
 ignoreWords:
+  - ollama
   - Meri
   - Valas
   - structlog
