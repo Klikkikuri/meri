@@ -55,7 +55,7 @@ class StructuredPipeline:
 
         self._llm = get_generator(self.PIPELINE_NAME)
 
-        self.pipeline = Pipeline(max_runs_per_component=1)
+        self.pipeline = Pipeline(max_runs_per_component=5)
         self.pipeline.add_component("prompt_builder", self._prompt)
         self.pipeline.add_component("llm", self._llm)
         self.pipeline.add_component("output_validator", PydanticOutputParser(self.output_model))
