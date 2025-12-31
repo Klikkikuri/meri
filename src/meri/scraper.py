@@ -48,8 +48,8 @@ def get_extractor(url: AnyHttpUrl | str) -> Outlet:
                 case str():
                     outlet_urls[i] = re.compile(r"^" + re.escape(outlet_url_rule))  # type: ignore
                 case _:
-                    raise ValueError(f"Invalid outlet URL rule type: {type(outlet_url_rule)}
- 
+                    raise ValueError(f"Invalid outlet URL rule type: {type(outlet_url_rule)}")
+
         for outlet_url_rule in outlet_urls:
             if outlet_url_rule.match(url):
                 logger.debug("Matched outlet %s for URL %s", outlet.name, url)
