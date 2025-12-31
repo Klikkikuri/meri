@@ -146,6 +146,7 @@ class Article(BaseModel):
 
         return self
 
+
     def __eq__(self, other: object) -> bool:
         """
         Compare two articles for equality based on their url signature.
@@ -159,22 +160,12 @@ class Article(BaseModel):
 
         if self.__hash__() == other.__hash__():
             return True
+ 
+        left = set((url.signature for url in self.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in self.urls))
+        right = set((url.signature for url in other.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in other.urls))
 
-        is_equal = False
+        return not left.isdisjoint(right)
 
-        with tracer.start_as_current_span("Article.__eq__") as span:
-            span.set_attribute("left.id", id(self))
-            span.set_attribute("right.id", id(other))
-            span.set_attribute("left.urls", [str(url.href) for url in self.urls])
-            span.set_attribute("right.urls", [str(url.href) for url in other.urls])
-
-            left = set((url.signature for url in self.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in self.urls))
-            right = set((url.signature for url in other.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in other.urls))
-
-            is_equal = not left.isdisjoint(right)
-            span.set_attribute("articles.equal", is_equal)
-
-        return is_equal
 
     # Reuse BaseModel's hash implementation, custom __eq__ disables it otherwise
     def __hash__(self) -> int:
