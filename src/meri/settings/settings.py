@@ -52,6 +52,10 @@ from .const import (
 
 logger = logging.getLogger(__name__)
 
+# Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
+from dotenv import load_dotenv
+load_dotenv()
+
 _pkg_metadata: dict = {}
 
 try:
@@ -85,6 +89,8 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
+_otel_available: bool = find_spec("opentelemetry.exporter") is not None
+
 # Default Suola rules path from monorepo
 _suola_rules = Path("packages/suola/rules.yaml").resolve()
 
@@ -96,7 +102,7 @@ class Settings(BaseSettings):
     )
 
     TRACING_ENABLED: bool = Field(
-        True,
+        _otel_available,
         description="Enable OpenTelemetry tracing.",
     )
 
@@ -114,6 +120,7 @@ class Settings(BaseSettings):
     )
 
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
+    MAX_WORKERS: int = Field(3, description="Maximum number of worker threads for processing articles.")
 
     PROMPT_DIR: Path = Field(Path(user_config_dir(PKG_NAME), "prompts"), description="Directory to store prompt templates.")
 
