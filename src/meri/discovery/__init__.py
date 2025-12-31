@@ -6,14 +6,8 @@ article content. Discoverers fetch lists of URLs from various sources like
 RSS feeds, APIs, or HTML pages.
 
 Usage:
-    from meri.discovery import registry, SourceDiscoverer, RSSDiscoverer
-    
-    # Get a discoverer
-    discoverer_class = registry.get("rss")
-    
-    # Get an instance
-    discoverer = registry.get_instance("rss")
-    
+    from meri.discovery import registry
+
     # Invoke directly
     articles = registry.invoke("rss", "https://example.com/feed.xml")
 """
