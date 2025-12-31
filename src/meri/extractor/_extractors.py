@@ -1,19 +1,16 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 from random import randint
-from typing import Generator, Iterable, Optional
 
-import fastfeedparser
 from opentelemetry import trace
-from pydantic import AnyHttpUrl, HttpUrl
+from pydantic import AnyHttpUrl
 from structlog import get_logger
 
 from meri.abc import ArticleMeta, LinkLabel, article_url
-from meri.article import Article
 from meri.scraper import get_user_agent
 from meri.utils import clean_url, detect_language
 
-from ._common import HtmlArticle, merge_article_lists
+from ._common import HtmlArticle
 
 tracer = trace.get_tracer(__name__)
 
@@ -62,6 +59,9 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
         date_extraction_params={"outputformat": date_iso_format, "deferred_url_extractor": True, "max_date": None },
     )
 
+    if not document:
+        raise ValueError(f"Failed to extract article from URL {url}")
+
     # # TODO: find_date is bad at finding "created" dates, it often finds "modified" dates instead
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
     # date_modified = find_date(downloaded, url=url, outputformat=iso_format, original_date=False, deferred_url_extractor=True)
@@ -87,7 +87,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     # Check if the date is tz-aware.
     if document and document.date:
         parsed_date = datetime.fromisoformat(document.date)
-        article.updated_at = parsed_date
+        article.updated_at = parsed_date or datetime.min.replace(tzinfo=timezone.utc)
 
         # TODO: Implement timezone mapping if not present in the extracted date.
         if parsed_date.tzinfo is None:
