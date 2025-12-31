@@ -8,6 +8,7 @@ from opentelemetry import trace
 from rich.pretty import pprint  # TODO: remove from production code
 from structlog import get_logger
 
+from .abc import ArticleLabels
 from meri.article import Article
 from meri.settings import settings
 
@@ -112,6 +113,9 @@ def run():
 
     # Remove articles that can't be hash-matched to Rahti entries
     latest_articles = [a for a in latest_articles if any(url.signature for url in a.urls)]
+
+    # Remove paywalled articles
+    latest_articles = [a for a in latest_articles if ArticleLabels.PAYWALLED not in a.labels]
 
     # Early stop if no articles to process
     if not latest_articles:
