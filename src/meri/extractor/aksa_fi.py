@@ -2,7 +2,7 @@ from structlog import get_logger
 
 from ..discovery.rss import RSSDiscoverer
 
-from ._common import Outlet
+from ._common import Outlet, domain
 
 
 from ._extractors import TrafilaturaExtractorMixin
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 
 class AksaFi(TrafilaturaExtractorMixin, Outlet):
     name = "Aksa.fi"
-    valid_url = r"https://aksa.fi/"
+    valid_url = domain("aksa.fi")
     weight = 50
 
 

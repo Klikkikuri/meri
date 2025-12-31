@@ -1,7 +1,8 @@
 from abc import ABC
 from datetime import datetime, timedelta
 from re import Pattern
-from typing import Callable, Generic, Iterable, Optional, Protocol, TypeVar
+import re
+from typing import Callable, Generic, Iterable, List, Optional, Protocol, TypeVar
 
 from pydantic import AnyHttpUrl, Field, HttpUrl
 from structlog import get_logger
@@ -12,6 +13,12 @@ logger = get_logger(__name__)
 
 T = TypeVar('T', bound=Article)
 """ Type variable for generic types. """
+
+def domain(str):
+    """
+    Helper to generate regexp rules for matching domains.
+    """
+    return re.compile(r"^https?://(www\.)?" + re.escape(str) + r"/")
 
 class OutletProtocol(Protocol, Generic[T]):
     name: str
@@ -31,11 +38,11 @@ class HtmlArticle(Article):
 # TODO: Make as pydantic model
 class Outlet(ABC):
     name: Optional[str] = None
-    valid_url: Pattern | list[Pattern] | str
+    valid_url: Pattern | List[Pattern] | str | List[str]
 
     weight: Optional[int] = 50
 
-    processors: list[Callable] = []
+    processors: List[Callable] = []
 
     def __init__(self) -> None:
         self.processors = []
@@ -112,7 +119,7 @@ class Outlet(ABC):
         # Old article might have some metadata that the fetcher does not extract.
 
         full_article = self.fetch(url)
-        full_article.merge(article)
+        full_article.update(article)
 
         return full_article
 

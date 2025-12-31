@@ -3,26 +3,17 @@ from datetime import datetime, timedelta
 from pytz import utc
 from structlog import get_logger
 
-from ._common import Outlet, PolynomialDelayEstimator
-from ._extractors import TrafilaturaArticle, TrafilaturaExtractorMixin
-from ._processors import label_paywalled_content
+from ._iltapulu import _IltapuluABC
+
+from ._common import PolynomialDelayEstimator, domain
 
 
 logger = get_logger(__name__)
 
-class IltapuluABC(TrafilaturaExtractorMixin, Outlet):
 
-    def fetch(self, source) -> TrafilaturaArticle:
-        article: TrafilaturaArticle = super().fetch(source)  # type: ignore
-
-        article = label_paywalled_content(article)
-
-        return article
-
-
-class Iltalehti(IltapuluABC):
+class Iltalehti(_IltapuluABC):
     name = "Iltalehti"
-    valid_url = r"//www.iltalehti.fi/"
+    valid_url = domain("iltalehti.fi")
     weight = 50
 
     # To see how the polynomial was calculated, see the notebook `notebooks/iltalehti_delay_estimator.ipynb`
@@ -42,10 +33,3 @@ class Iltalehti(IltapuluABC):
             dt = datetime.now(utc)
 
         return self._frequency(dt)
-
-    def fetch(self, source) -> TrafilaturaArticle:
-        article: TrafilaturaArticle = super().fetch(source)  # type: ignore
-
-        article = label_paywalled_content(article)
-
-        return article
