@@ -11,14 +11,22 @@ from .abc import ArticleLabels, ArticleTypeLabels, ClickbaitScale, LinkLabel
 from .settings.rahti import RahtiFileSettings, RahtiGithubSettings, RahtiSettings
 
 COMMIT_MESSAGE = r"""
-[🤖 bot]: Updated list with {{articles | length}} additions or updates, and removed {{removed_articles | length}} old entries.
-
+[🤖 bot]: Updated list with {{articles | length}} additions or updates, and removed {{removed | length}} old entries.
+{% if titles %}
 New or updated entries:
 {% for entry in articles %}
-- {{entry.href.signature[0:7]}}: {{titles[loop.index0].title | truncate(68)}}
+- {{entry.urls[0].sign[0:7]}}: {{titles[loop.index0].title | truncate(68)}}
+
   {{titles[loop.index0].contemplator | wordwrap(77) | indent(2)}}
 {% endfor %}
+{% endif %}
 
+{% if removed %}
+Removed entries:
+{% for entry in removed %}
+- {{entry.urls[0].sign[0:7]}}: {{entry.title | truncate(68)}}
+{% endfor %}
+{% endif %}
 """.strip()
 
 logger = logging.getLogger(__name__)
