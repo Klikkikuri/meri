@@ -1,4 +1,3 @@
-from io import StringIO
 import logging
 from pathlib import Path
 
@@ -9,12 +8,9 @@ try:
 except ImportError:
     import click
 
-from pydantic import BaseModel
-from ruamel.yaml import YAML  # type: ignore
-from pydantic_yaml import parse_yaml_raw_as, to_yaml_str
-from ruamel.yaml.comments import CommentedMap
+from pydantic_yaml import to_yaml_str
 
-from .settings import Settings, DEFAULT_CONFIG_PATH
+from .settings import DEFAULT_CONFIG_PATH, Settings
 
 logger = logging.getLogger(__name__)
 
