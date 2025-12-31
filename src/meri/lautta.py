@@ -109,7 +109,7 @@ def prune_partition(rahti: List[RahtiEntry]) -> Tuple[List[RahtiEntry], List[Rah
     max_age = max((
         source.max_age_days for source in settings.sources
         if source.enabled and source.max_age_days is not None
-    ))
+    ), default=None)
     if max_age is None:
         logger.info("No max_age_days set for any source, skipping pruning")
         return rahti, []  # Nothing to prune

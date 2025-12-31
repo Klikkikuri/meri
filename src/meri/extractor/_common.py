@@ -14,11 +14,11 @@ logger = get_logger(__name__)
 T = TypeVar('T', bound=Article)
 """ Type variable for generic types. """
 
-def domain(str):
+def domain(domain_str: str):
     """
     Helper to generate regexp rules for matching domains.
     """
-    return re.compile(r"^https?://(www\.)?" + re.escape(str) + r"/")
+    return re.compile(r"^https?://(www\.)?" + re.escape(domain_str) + r"/")
 
 class OutletProtocol(Protocol, Generic[T]):
     name: str

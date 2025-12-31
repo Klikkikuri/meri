@@ -165,8 +165,6 @@ def run():
         logger.info("Processed article", url=article.get_url(), title=title.title)
         rahti_entry = convert_for_rahti(article, title)
         # If article is in rahti already, replace the old entry
-        print(article.__hash__())
-
         if article in updated_articles_map.keys():
             idx = updated_articles_map[article]
             logger.debug("Merging updated article %r into existing Rahti entry", old_data.entries[idx].title)

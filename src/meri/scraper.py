@@ -40,7 +40,7 @@ def get_extractor(url: AnyHttpUrl | str) -> Outlet:
         if not isinstance(outlet_urls, list):
             outlet_urls = [outlet_urls]
 
-        # Convert into regext patterns if needed
+        # Convert into regex patterns if needed
         for i, outlet_url_rule in enumerate(outlet_urls):
             match outlet_url_rule:
                 case Pattern():

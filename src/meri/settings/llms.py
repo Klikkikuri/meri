@@ -116,7 +116,7 @@ class OpenRouterSettings(GeneratorSettings):
     generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
         "provider": {  # https://openrouter.ai/docs/guides/routing/provider-selection
-            "sort": "price",  # Prefer cheaper pr
+            "sort": "price",  # Prefer cheaper providers
             "zdr": True,  # Zero Data Retention providers only
         },
     }, description="OpenRouter generation arguments.")

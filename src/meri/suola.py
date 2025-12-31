@@ -32,7 +32,7 @@ def hash_url(url: Url) -> str | None:
     try:
         return inst(url)
     except Exception as e:
-        logger.debug("Error hashing URL %s: %s", url, e)
+        logger.exception("Error hashing URL %s: %s", url, e)
         raise
 
 

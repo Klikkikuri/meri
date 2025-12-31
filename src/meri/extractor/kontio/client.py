@@ -57,8 +57,8 @@ class KontioApiClient(requests.Session):
 _client_ctx: contextvars.ContextVar["KontioApiClient"] = contextvars.ContextVar(f"{__name__}.kontio_client", default=KontioApiClient())
 
 def client() -> KontioApiClient:
-	client = _client_ctx.get()
-	if client is None:
-		client = KontioApiClient()
-		_client_ctx.set(client)
-	return client
+    client = _client_ctx.get()
+    if client is None:
+        client = KontioApiClient()
+        _client_ctx.set(client)
+    return client
