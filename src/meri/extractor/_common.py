@@ -2,7 +2,7 @@ from abc import ABC
 from datetime import datetime, timedelta
 from re import Pattern
 import re
-from typing import Callable, Generic, Iterable, List, Optional, Protocol, TypeVar
+from typing import Generic, Iterable, List, Optional, Protocol, TypeVar
 
 from pydantic import AnyHttpUrl, Field, HttpUrl
 from structlog import get_logger
@@ -20,6 +20,7 @@ def domain(domain_str: str):
     """
     return re.compile(r"^https?://(www\.)?" + re.escape(domain_str) + r"/")
 
+
 class OutletProtocol(Protocol, Generic[T]):
     name: str
 
@@ -35,35 +36,11 @@ class HtmlArticle(Article):
     html: str = Field(..., description="Raw HTML of the article as a string.")
 
 
-# TODO: Make as pydantic model
 class Outlet(ABC):
     name: Optional[str] = None
     valid_url: Pattern | List[Pattern] | str | List[str]
 
     weight: Optional[int] = 50
-
-    processors: List[Callable] = []
-
-    def __init__(self) -> None:
-        self.processors = []
-        # Get classes this instance is a subclass of, and add their processors
-        logger.debug("Adding processors from %s", self.__class__.__name__, extra={"base_classes": self.__class__.__mro__})
-        for cls in self.__class__.__mro__:
-            logger.debug("Checking class %s", cls.__name__)
-            if cls in [Outlet, object]:
-                break
-            if class_processors := cls.__dict__.get("processors"):
-                logger.debug("Adding %d processors from %r", len(class_processors), cls.__name__)
-                self.processors += class_processors
-
-        logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
-
-    def __getattr__(self, name: str):
-        if name == "name":
-            return self.__class__.__name__
-        elif name == "weight":
-            return 50
-
 
     def frequency(self, dt: datetime | None) -> timedelta:
         """

@@ -107,11 +107,6 @@ class TrafilaturaExtractorMixin:
     Use :class:`trafilatura.Extractor` to extract information from a news article.
     """
 
-    # processors: list[Callable] = [
-    #     check_robots_txt_access,
-    #     trafilatura_extractor,
-    # ]
-
     def fetch_by_url(self, url: AnyHttpUrl | str) -> TrafilaturaArticle:
         """
         Fetch the article from the URL using :class:`trafilatura.Extractor`.
