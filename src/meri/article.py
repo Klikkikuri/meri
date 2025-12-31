@@ -53,7 +53,7 @@ class Article(BaseModel):
     urls: list[ArticleUrl] = Field(default_factory=list)
 
     # title: Optional[ArticleTitle] = Field("")
-    text: Optional[str] = Field(...)
+    text: Optional[str] = Field(None)
 
     created_at: Optional[datetime] = Field(None)
     updated_at: Optional[datetime] = Field(None)
