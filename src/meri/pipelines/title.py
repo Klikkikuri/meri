@@ -11,6 +11,7 @@ from meri.abc import ArticleTitleResponse
 from meri.llm import (
     PROMPT_TEMPLATE_ARTICLE,
     PROMPT_TEMPLATE_ARTICLE_TITLE,
+    PROMPT_TEMPLATE_ARTICLE_UPDATED,
     PROMPT_TEMPLATE_OUTPUT_FORMAT,
     get_prompt_template,
 )
@@ -27,14 +28,16 @@ class TitlePredictor(StructuredPipeline):
     PIPELINE_NAME = "title"
 
     prompt_templates: dict[str, str] = {
-        "article_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_TITLE),
         "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
+        "article_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_TITLE),
+        "previous_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_UPDATED),
         "output_format": get_prompt_template(PROMPT_TEMPLATE_OUTPUT_FORMAT),
     }
 
     def run(self, article, context: List[Document] = [], **kwargs):
 
-        prompt_vars = article.model_dump()
+        prompt_vars = kwargs.copy()
+        prompt_vars.update(article.model_dump())
 
         prompt_vars["context"] = context
         prompt_vars["article"] = article
