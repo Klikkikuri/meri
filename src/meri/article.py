@@ -146,13 +146,14 @@ class Article(BaseModel):
 
         return self
 
-    def __eg__(self, other: object) -> bool:
+    def __eq__(self, other: object) -> bool:
         """
         Compare two articles for equality based on their url signature.
 
         If both articles have a canonical URL, compare those.
         Otherwise, compare all URLs.
         """
+
         if not isinstance(other, Article):
             return super().__eq__(other)
 
