@@ -15,7 +15,7 @@ COMMIT_MESSAGE = r"""
 {% if titles %}
 New or updated entries:
 {% for entry in articles %}
-- {{entry.urls[0].sign[0:7]}}: {{titles[loop.index0].title | truncate(68)}}
+- {{entry.urls[0].signature[0:7]}}: {{titles[loop.index0].title | truncate(68)}}
 
   {{titles[loop.index0].contemplator | wordwrap(77) | indent(2)}}
 {% endfor %}
