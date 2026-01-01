@@ -21,6 +21,9 @@ RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 
 RE_THINK_BLOCK = re.compile(r"(<think>(.*?)</think>)", re.MULTILINE | re.DOTALL)
 
+RE_CONTROL_CHARS = re.compile(r"[\x00-\x1F\x7F-\x9F]+")
+""" Regular expression to match control characters. """
+
 logger = logging.getLogger(__name__)
 
 
@@ -36,6 +39,40 @@ def extract_json(response: str):
         return m[-1]
     return None
 
+def remove_control_chars(text: str) -> str:
+    """
+    Remove control characters (non-printing characters) from a string.
+
+    Some LLM's like to insert control characters in their output, which can
+    break JSON parsing. They can be safely removed – we are not controlling
+    printers here.
+    """
+    #return re.sub(r"[\x00-\x1F\x7F-\x9F]", "", s)
+
+    matches = list(RE_CONTROL_CHARS.finditer(text))
+    if matches:
+        _logger = logger.getChild("remove_control_chars")
+
+        window = 10  # Number of characters to show around the bad character
+        _logger.info("Removed control characters from LLM output: %r", [m.group(0) for m in matches], extra={"num_removed": len(matches)})
+
+        # Show some context around the removed characters
+        if settings.DEBUG:
+            for m in matches:
+                for match in matches:
+                    char_hex = hex(ord(match.group()))
+                    start_pos = match.start()
+                    
+                    # Calculate a window of text around the character
+                    snippet_start = max(0, start_pos - window)
+                    snippet_end = min(len(text), start_pos + window + 1)
+
+                    # Use repr() on the snippet so the bad character is visible as a code
+                    context_snippet = repr(text[snippet_start:snippet_end])
+
+                    _logger.debug(f"Char {char_hex} at index {start_pos} inside snippet: {context_snippet}")
+        return RE_CONTROL_CHARS.sub("", text)
+    return text
 
 @component
 class PydanticOutputParser:
@@ -53,6 +90,13 @@ class PydanticOutputParser:
     def run(self, replies: List[ChatMessage]):
         self.iteration_counter += 1
         msg = replies[0].text
+
+        if not msg:
+            logger.warning("OutputValidator at Iteration %d: Empty response from LLM - Let's try again.", self.iteration_counter)
+            return {"invalid_replies": msg, "error_message": "Empty response from LLM."}
+
+        # Remove control characters from the message, they can break JSON parsing
+        msg = remove_control_chars(msg)
 
         ## Try to parse the LLM's reply ##
         # If the LLM's reply is a valid object, return `"valid_replies"`
