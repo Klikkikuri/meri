@@ -19,7 +19,7 @@ from .iltalehti import IltalehtiFeedDiscoverer
 from .kontio import KontioDiscoverer
 from .rss import RSSDiscoverer
 from .sitemap import SitemapDiscoverer
-
+from .links import LinksDiscoverer
 __all__ = [
     # Base classes
     "SourceDiscoverer",
@@ -30,6 +30,7 @@ __all__ = [
     "IltalehtiFeedDiscoverer",
     "KontioDiscoverer",
     "SitemapDiscoverer",
+    "LinksDiscoverer",
     
     # Registry instance
     "registry",
