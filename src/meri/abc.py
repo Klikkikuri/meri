@@ -1,15 +1,13 @@
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from re import Pattern
 from textwrap import dedent
-from typing import Annotated, Final, List, Literal, NewType, Optional, TypeAlias, Union
+from typing import Annotated, List, Optional
 from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
 from opentelemetry import trace
-from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, WithJsonSchema, computed_field
-from pydantic.json import pydantic_encoder
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, computed_field
 from structlog import get_logger
 
 from .utils import clean_url
@@ -289,14 +287,13 @@ class ArticleUrl(BaseModel):
     href: AnyHttpUrl = Field()
     labels: list[LinkLabel] = Field(default_factory=list)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    #signature: Optional[str] = Field(None, description="Hashed signature of the URL.", alias="sign")
     @computed_field
     @property
     def signature(self) -> str:
         """
-        Compute a simple signature for the URL.
+        Compute a signature for the URL.
         """
         if not self.href:
             return ""
