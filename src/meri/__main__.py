@@ -100,9 +100,13 @@ def run():
             logger.debug("Matched article not in latest articles, skipping", extra={"index": idx, "url": article.get_url()})
             continue
 
-        updated = article.updated_at or article.created_at or datetime.now(timezone.utc)
+        # We kinda ignore update / created times, and always use the latest, as articles
+        # might have been re-published without changing the timestamps.
+        minimum_date = datetime.min.replace(tzinfo=timezone.utc)
+        updated = max(article.updated_at or minimum_date,
+                      article.created_at or minimum_date)
         if updated > rahti_entry.updated:
-            logger.debug("Article updated: %r (was %r, now %r)", article.get_url(), rahti_entry.updated, article.updated_at, extra={"index": idx})
+            logger.debug("Article updated: %r (was %r, now %r)", article.get_url(), rahti_entry.updated, updated, extra={"index": idx})
             updated_articles_map[article] = idx
         else:
             # Remove from latest_articles to avoid re-processing
@@ -151,6 +155,7 @@ def run():
         pprint(titles)
 
     valid_rahti, expired_rahti = prune_partition(old_data.entries)
+    logger.info("Pruned Rahti entries: %d valid, %d expired", len(valid_rahti), len(expired_rahti))
 
     commit_message = Template(COMMIT_MESSAGE).render(
         articles=articles,

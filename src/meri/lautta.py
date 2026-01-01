@@ -336,9 +336,13 @@ def convert_for_rahti(article: Article, title: ArticleTitleResponse) -> RahtiEnt
     """
     Convert an Article and its title data into a RahtiEntry.
     """
+    minimum_date = datetime.min.replace(tzinfo=pytz.UTC)
+
+    updated = max(article.updated_at or minimum_date,
+                  article.created_at or minimum_date)
 
     entry = RahtiEntry(
-        updated=article.updated_at or article.created_at or datetime.now(pytz.UTC),
+        updated=updated,
         urls=[
             RahtiUrl(
                 sign=url.signature,
