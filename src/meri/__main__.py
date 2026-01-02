@@ -106,14 +106,15 @@ def run():
         updated = max(article.updated_at or minimum_date,
                       article.created_at or minimum_date)
         if updated > rahti_entry.updated:
-            logger.debug("Article updated: %r (was %r, now %r)", article.get_url(), rahti_entry.updated, updated, extra={"index": idx})
+            logger.debug("Article updated: %r (rahti: %s; updated: %s)", article.get_url(), rahti_entry.updated, updated, extra={"index": idx})
             updated_articles_map[article] = idx
         else:
             # Remove from latest_articles to avoid re-processing
-            logger.debug("Article not updated: %r", article.get_url(), extra={"index": idx})
             latest_articles.remove(article)
 
     latest_articles = fetch_full_articles(latest_articles)
+
+    # TODO: Prune here already articles that are not needed to be processed further.
 
     # Remove articles that can't be hash-matched to Rahti entries
     latest_articles = [a for a in latest_articles if any(url.signature for url in a.urls)]
@@ -128,21 +129,26 @@ def run():
 
     logger.debug("Fetched full articles for %d updated articles", len(latest_articles))
 
-    # Collect old titles for comparison
+
+    ## Collect old rahti entries for informing title generation.
+    # List is aligned with latest_articles, so that old_entries[i] corresponds to latest_articles[i]
+    # If article is new, old_entries[i] is None
     old_entries: list[RahtiEntry | None] = []
 
     updated_articles = list(updated_articles_map.keys())
-
     for article in latest_articles:
         v = None
+
         if article in updated_articles:
             idx = updated_articles_map[article]
             v = old_data.entries[idx]
+            logger.debug("Article is updated, marking old Rahti entry for update: %r", v.title)
         old_entries.append(v)
 
     # Process titles
     logger.info("Processing titles for %d articles", len(latest_articles))
     title_results = generate_titles(latest_articles, old_entries)
+
 
     # Partition results
     articles = []
@@ -154,15 +160,6 @@ def run():
     if settings.DEBUG:
         pprint(titles)
 
-    valid_rahti, expired_rahti = prune_partition(old_data.entries)
-    logger.info("Pruned Rahti entries: %d valid, %d expired", len(valid_rahti), len(expired_rahti))
-
-    commit_message = Template(COMMIT_MESSAGE).render(
-        articles=articles,
-        titles=titles,
-        removed=expired_rahti,
-    )
-
     new_entries: List[RahtiEntry] = []
 
     # Store results back to Rahti
@@ -172,10 +169,25 @@ def run():
         # If article is in rahti already, replace the old entry
         if article in updated_articles_map.keys():
             idx = updated_articles_map[article]
-            logger.debug("Merging updated article %r into existing Rahti entry", old_data.entries[idx].title)
             old_data.entries[idx] = rahti_entry
         else:
             new_entries.append(rahti_entry)
+
+    # HACK: Free memory, and also avoid accidental usage later
+    del latest_articles
+    del updated_articles
+    del title_results
+
+    # Prune old entries
+    valid_rahti, expired_rahti = prune_partition(old_data.entries)
+    logger.info("Pruned Rahti entries: %d valid, %d expired", len(valid_rahti), len(expired_rahti))
+
+    # Prepare commit message
+    commit_message = Template(COMMIT_MESSAGE).render(
+        articles=articles,
+        titles=titles,
+        removed=expired_rahti,
+    )
 
     rahti_cargo = old_data.model_copy(update={
         "status": "ok",
