@@ -107,6 +107,10 @@ def get_discoverer(source: NewsSource) -> SourceDiscoverer:
     :raises ValueError: If no discoverer is found for the source type
     """
     discoverer = registry.get_instance(source.type)
+    if discoverer is None:
+        raise ValueError(f"No discoverer found for source type {source.type!r}")
+
+    discoverer.set_source(source)
     
     if discoverer is None:
         available = registry.list_names()
