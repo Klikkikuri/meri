@@ -6,7 +6,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: production
-    command: python -m meri run --sample
+    command: python -m meri run
     volumes:
       - ./instance:/app/instance:rw,cached
       #- ./:/app:rw,cached
