@@ -1,31 +1,36 @@
 from copy import deepcopy
-import datetime
+from datetime import datetime, timezone
 from random import randint
-from pydantic import AnyHttpUrl
+
 from opentelemetry import trace
+from pydantic import AnyHttpUrl
+from structlog import get_logger
 
-from meri.utils import clean_url, detect_language
-from meri.abc import Article, ArticleMeta, LinkLabel, article_url
+from meri.abc import ArticleMeta, LinkLabel, article_url
 from meri.scraper import get_user_agent
+from meri.utils import clean_url, detect_language
 
-
-from ._processors import (
-    extract_article_url,
-    article_canonical_url,
-    article_to_markdown,
-    check_robots_txt_access,
-)
-
+from ._common import HtmlArticle
 
 tracer = trace.get_tracer(__name__)
 
+logger = get_logger(__name__)
+
+
+class TrafilaturaArticle(HtmlArticle):
+    """
+    An article extracted using the trafilatura library.
+    """
+
+    pass
+
 
 @tracer.start_as_current_span(name="trafilatura_extractor", kind=trace.SpanKind.CLIENT)
-def trafilatura_extractor(url: AnyHttpUrl | str) -> Article:
+def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     """
     Extract the article using the trafilatura library.
     """
-    from trafilatura import fetch_url, bare_extraction
+    from trafilatura import bare_extraction, fetch_url
     from trafilatura.settings import DEFAULT_CONFIG
 
     # Find date in ISO 8601 format
@@ -33,7 +38,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> Article:
 
     # https://trafilatura.readthedocs.io/en/latest/settings.html
     config = deepcopy(DEFAULT_CONFIG)
-    config["DEFAULT"].setdefault("USER_AGENTS", get_user_agent())
+    config["DEFAULT"]["USER_AGENTS"] = get_user_agent()
     config["DEFAULT"].setdefault("DOWNLOAD_TIMEOUT", str(randint(5, 12)))  # nosec
     config["DEFAULT"].setdefault("SLEEP_TIME", str(randint(1, 5)))  # nosec
 
@@ -51,14 +56,23 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> Article:
         include_tables=True,
         include_links=True,
         config=config,
-        date_extraction_params={"outputformat": date_iso_format, "deferred_url_extractor": True, "max_date": None },
+        date_extraction_params={
+            "outputformat": date_iso_format,
+            "deferred_url_extractor": True,
+            "max_date": None,
+            "url": url,
+        },
     )
+
+    if not document:
+        raise ValueError(f"Failed to extract article from URL {url}")
 
     # # TODO: find_date is bad at finding "created" dates, it often finds "modified" dates instead
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
     # date_modified = find_date(downloaded, url=url, outputformat=iso_format, original_date=False, deferred_url_extractor=True)
 
-    article = Article(
+
+    article = TrafilaturaArticle(
         meta=ArticleMeta(
             title=document.title,
             language=document.language or detect_language(document.text),
@@ -66,14 +80,27 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> Article:
             date=document.date,
         ),
         text=document.text,
-        html=downloaded,
         urls=[
-            article_url(document.url, labels=[LinkLabel.LINK_CANONICAL], created_at=document.date),
+            article_url(document.url, labels=[LinkLabel.LINK_CANONICAL]),
         ],
+        created_at=None,
+        updated_at=None,
 
-        created_at=document.date or datetime.datetime.now(datetime.timezone.utc),
-        updated_at=document.date or datetime.datetime.now(datetime.timezone.utc)
+        html=downloaded
     )
+
+
+    # Check if the date is tz-aware.
+    if document and document.date:
+        parsed_date = datetime.fromisoformat(document.date)
+        article.updated_at = parsed_date or datetime.min.replace(tzinfo=timezone.utc)
+
+        # TODO: Implement timezone mapping if not present in the extracted date.
+        if parsed_date.tzinfo is None:
+            logger.warning("Extracted date is not timezone-aware. Implement timezone mapping if needed.", extracted_date=document.date)
+
+    else:
+        article.created_at = datetime.now(timezone.utc)
 
     if document.url != url:
         article.urls.append(article_url(url, type=LinkLabel.LINK_MOVED))
@@ -86,7 +113,14 @@ class TrafilaturaExtractorMixin:
     Use :class:`trafilatura.Extractor` to extract information from a news article.
     """
 
-    processors: list[callable] = [
-        check_robots_txt_access,
-        trafilatura_extractor,
-    ]
+    def fetch_by_url(self, url: AnyHttpUrl | str) -> TrafilaturaArticle:
+        """
+        Fetch the article from the URL using :class:`trafilatura.Extractor`.
+        """
+        url = clean_url(str(url))
+
+        article = trafilatura_extractor(url)
+        if not article or not article.text:
+            raise ValueError(f"Failed to extract article from URL {url}")
+
+        return article

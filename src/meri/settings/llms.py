@@ -1,9 +1,10 @@
 import logging
 import os
 from abc import ABC
-from typing import Optional, Self
+from typing import Literal, Optional, Self
+from typing_extensions import Annotated
 
-from pydantic import AnyHttpUrl, Field, model_validator
+from pydantic import AnyHttpUrl, Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -25,8 +26,6 @@ class MissingGeneratorError(ImportError):
 
 class GeneratorSettings(BaseSettings, ABC):
     name: str = Field(..., description="Name of the generator.")
-    provider: str = Field(..., description="Provider of the generator.")
-
 
     _generator: str
     """ Generator class to use. """
@@ -65,20 +64,20 @@ class OpenAISettings(GeneratorSettings):
 
     ..seealso:: https://docs.haystack.deepset.ai/docs/openaigenerator
     """
-    provider: str = "openai"
+    provider: Literal["openai"] = "openai"
 
-    api_key: str = Field(os.getenv("OPENAI_API_KEY"), description="OpenAI API key.")
+    api_key: str = Field(description="OpenAI API key.")
     model: str = Field("gpt-4o-mini", description="OpenAI model.")
     api_base_url: Optional[AnyHttpUrl] = Field(None, description="(Optional) OpenAI API base URL.")
     generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
     }, description="OpenAI generation arguments.")
 
-    _generator: str = "haystack.components.generators.OpenAIGenerator"
+    _generator: str = "haystack.components.generators.chat.OpenAIChatGenerator"
 
 
 class OllamaSettings(GeneratorSettings):
-    provider: str = "ollama"
+    provider: Literal["ollama"] = "ollama"
     model: str = Field(..., description="Ollama model.")
 
     url: AnyHttpUrl = Field('http://ollama:11434/api', description="Ollama API base URL.")
@@ -87,7 +86,7 @@ class OllamaSettings(GeneratorSettings):
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
 
-    _generator: str = "haystack_integrations.components.generators.ollama.OllamaGenerator"
+    _generator: str = "haystack_integrations.components.generators.ollama.OllamaChatGenerator"
 
 
 class GoogleGeminiSettings(GeneratorSettings):
@@ -97,27 +96,35 @@ class GoogleGeminiSettings(GeneratorSettings):
     Alternatively, you can use the OpenAI compatibility to access Gemini models.
     https://ai.google.dev/gemini-api/docs/openai
     """
-    provider: str = Field("google")
-    api_key: str = Field(..., description="Google Gemini API key.")
+    provider: Literal["google"] = "google"
+    api_key: str = Field(description="Google Gemini API key.")
     model: str = Field('gemini-2.0-flash', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
     generation_config: Optional[dict] = Field({
         "temperature": 0.0,
     }, description="Google Gemini generation arguments.")
     # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
 
-    _generator: str = "haystack_integrations.components.generators.google_ai.GoogleAIGeminiGenerator"
+    _generator: str = "haystack_integrations.components.generators.google_genai.GoogleGenAIChatGenerator"
 
 
-# class MistralSettings(GeneratorSettings):
-#     provider: str = Field("mistral")
-#     api_key: str = Field(..., description="Mistral API key.")
-#     model: str = Field(..., description="Mistral model.")
+
+class OpenRouterSettings(GeneratorSettings):
+    provider: Literal["openrouter"] = "openrouter"
+    api_key: Optional[str] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
+    model: str = Field('openai/gpt-oss-120b', description="OpenRouter model.")
+    api_base_url: AnyHttpUrl = Field('https://openrouter.ai/api/v1', description="OpenRouter API base URL.")
+    generation_kwargs: Optional[dict] = Field({
+        "temperature": 0.0,
+        "provider": {  # https://openrouter.ai/docs/guides/routing/provider-selection
+            "sort": "price",  # Prefer cheaper providers
+            "zdr": True,  # Zero Data Retention providers only
+        },
+    }, description="OpenRouter generation arguments.")
+
+    _generator: str = "haystack_integrations.components.generators.openrouter.OpenRouterChatGenerator"
 
 
-# class TogetherAiSettings(GeneratorSettings):
-#     provider: str = Field("together")
-#     api_key: str = Field(..., description="Together API key.")
-#     model: str = Field(..., description="Together model.")
+LLMSetting = Annotated[OpenAISettings | OllamaSettings | GoogleGeminiSettings | OpenRouterSettings, Field(discriminator="provider")]
 
 
 def detect_generators(values: dict):
@@ -141,6 +148,13 @@ def detect_generators(values: dict):
         logger.debug("Using OpenAI API key from environment variable")
         settings.append(OpenAISettings(
             name="OpenAI",
+            api_key=api_key,
+        ))
+
+    if api_key := values.get("openrouter_api_key"):
+        logger.debug("Using OpenRouter API key from environment variable")
+        settings.append(OpenRouterSettings(
+            name="OpenRouter",
             api_key=api_key,
         ))
 

@@ -17,16 +17,17 @@ Order of precedence:
         - Devcontainer user settings: `/app/config.yaml`
 
 """
-from importlib.util import find_spec
 import logging
 import os
-from contextvars import ContextVar
 from importlib.metadata import PackageNotFoundError, metadata
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Literal, Type
 
+# Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
+from dotenv import load_dotenv
 from platformdirs import site_config_dir, user_config_dir
-from pydantic import Field, root_validator
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -34,35 +35,39 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
+from .const import (
+    DEFAULT_BOT_ID,
+    PKG_NAME,
+)
 from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
-    OllamaSettings,
-    GoogleGeminiSettings,
-    OpenAISettings,
+    LLMSetting,
     detect_generators,
 )
+from .newssources import NewsSource
+from .rahti import RahtiSettings
 
-LLMSetting = OpenAISettings | OllamaSettings | GoogleGeminiSettings | GeneratorSettings
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+if os.getenv("DEBUG", "0") == "1":
+    logger.setLevel(logging.DEBUG)
 
-DEFAULT_BOT_ID = "Klikkikuri"
+_pkg_metadata: dict = {}
 
-_pkg_name: str = __package__
 try:
-    _pkg_name, *_ = __package__.split(".")
+    _pkg_name, *_ = PKG_NAME.split(".")
     _pkg_metadata = dict(metadata(_pkg_name))
 except (IndexError, PackageNotFoundError):
-    _pkg_name = __package__
+    _pkg_name = PKG_NAME
     _pkg_metadata = dict(metadata(_pkg_name))
 finally:
     # Set the homepage from the metadata
     _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
 
-
 # User defined settings
-_user_config_path = Path(user_config_dir("meri"), "config.yaml")
+_user_config_path = Path(user_config_dir(PKG_NAME), "config.yaml")
 DEFAULT_CONFIG_PATH = _user_config_path
 
 # Locations to look for the settings file
@@ -71,7 +76,7 @@ _settings_file_location: list[Path] = [
     Path("/app/config.yaml"),  # Devcontainer user settings
     Path("/config/config.yaml"),  # Docker settings
     Path.cwd() / "config.yaml",  # Local settings
-    Path(site_config_dir("meri")) / "config.yaml",  # System wide settings
+    Path(site_config_dir(PKG_NAME)) / "config.yaml",  # System wide settings
     _user_config_path
 ]
 if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
@@ -82,6 +87,11 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
+_otel_available: bool = find_spec("opentelemetry.exporter") is not None
+
+# Default Suola rules path from monorepo
+_suola_rules = Path("packages/suola/rules.yaml").resolve()
+
 
 class Settings(BaseSettings):
     DEBUG: bool = Field(
@@ -90,10 +100,9 @@ class Settings(BaseSettings):
     )
 
     TRACING_ENABLED: bool = Field(
-        True,
+        _otel_available,
         description="Enable OpenTelemetry tracing.",
     )
-
 
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
@@ -103,26 +112,37 @@ class Settings(BaseSettings):
     )
 
     # Logging settings
-    LOGGING_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO",
         description="Logging level.",
     )
 
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
+    MAX_WORKERS: int = Field(3, description="Maximum number of worker threads for processing articles.")
 
-    PROMPT_DIR: Path = Field(Path(user_config_dir("meri"), "prompts"), description="Directory to store prompt templates.")
+    PROMPT_DIR: Path = Field(Path(user_config_dir(PKG_NAME), "prompts"), description="Directory to store prompt templates.")
 
     llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
     pipelines: list[str] = Field([], description="List of pipeline definitions.")
 
-    @root_validator(pre=True)
+    sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
+
+    suola_rules: Path | None = Field(
+        _suola_rules if _suola_rules.exists() else None,
+        description="Path to Suola rules file. If not set, inbuilt rules will be used.",
+    )
+
+    rahti: RahtiSettings
+
+    @model_validator(mode="before")
+    @classmethod
     def parse_llm_settings(cls, values):
         _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
         _logger.debug(f"Values: {values}")
         llm_list = values.get('llm', [])
 
         # Map provider literal to class
-        provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
+        provider_to_class = {model_cls.model_fields['provider'].default: model_cls for model_cls in GeneratorSettings.__subclasses__()}
         _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
@@ -142,7 +162,8 @@ class Settings(BaseSettings):
         return values
 
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def _compute_user_agent(cls, values):
         """
         Compute the user-agent string.
@@ -153,6 +174,15 @@ class Settings(BaseSettings):
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
+    model_config = SettingsConfigDict(
+        secrets_dir='/run/secrets' if Path('/run/secrets').exists() else None,
+        yaml_file=_settings_file_location,
+        yaml_file_encoding="utf-8",
+        env_file='.env',
+        env_file_encoding='utf-8',
+        extra='ignore',  # If dotenv contains extra keys, ignore them
+        env_nested_delimiter='__',
+    )
 
     @classmethod
     def settings_customise_sources(cls,
@@ -170,16 +200,14 @@ class Settings(BaseSettings):
             YamlConfigSettingsSource(settings_cls),
         )
 
-    model_config = SettingsConfigDict(
-        secrets_dir='/run/secrets',
-        yaml_file=_settings_file_location,
-        yaml_file_encoding="utf-8",
-        env_prefix="",
-        env_file='.env',
-        env_file_encoding='utf-8',
-        extra='ignore',  # If dotenv contains extra keys, ignore them
-    )
 
+settings: Settings = Settings()  # type: ignore
 
-settings_var: ContextVar[Settings] = ContextVar(f"{__package__}.settings_var", default=Settings())
-settings = settings_var.get()
+def init_settings(**kwargs) -> Settings:
+    """
+    Initialize and return the settings.
+    """
+    global settings
+    s = Settings(**kwargs)  # type: ignore
+    settings = s
+    return s

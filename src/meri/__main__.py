@@ -1,374 +1,180 @@
-import base64
-from datetime import datetime, timezone
-import hashlib
 import os
-import json
-from textwrap import wrap
+from datetime import datetime, timezone
+from importlib.util import find_spec
 
-import dotenv
-from pydantic import AnyUrl
+from jinja2 import Template
+from opentelemetry import trace
 from rich.pretty import pprint  # TODO: remove from production code
-import requests
-
-from meri.abc import ArticleTitleResponse, Article
-from .utils import setup_logging
 from structlog import get_logger
-from .scraper import extractor
-from .extractor.iltalehti import Iltalehti
-from .pipelines.title import TitlePredictor
-from meri.extractor._extractors import trafilatura_extractor
 
+from meri.settings import settings, init_settings
+
+from .lautta import (
+    RahtiCleaner,
+    convert_for_rahti,
+    fetch_full_articles,
+    fetch_latest,
+    generate_titles,
+    has_handled_url,
+    prune_rahti,
+)
+from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
+from .scraper import get_extractor, try_setup_requests_cache
+from .utils import setup_logging, setup_tracing
 
 try:
     import rich_click as click
 except ImportError:
     import click
 
-dotenv.load_dotenv()
 
-setup_logging()
 logger = get_logger(__package__)
+tracer = trace.get_tracer(__package__ or "__main__")
+
+# Check if requests_cache is available, since it is not a hard dependency and not installed by default
+_requests_cache_available: bool = find_spec("requests_cache") is not None
 
 
 @click.group()
 @click.version_option()
-@click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=os.getenv("REQUESTS_CACHE", True))
-def cli(cache: bool):
-    if cache:
-        import requests_cache
-        import tempfile
+@click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
+@click.option("--debug", help="Enable or disable debug mode.", default=bool(os.getenv("DEBUG", False)))
+def cli(cache: bool, debug: bool):
+    if debug:
+        os.environ["DEBUG"] = "1"
 
-        # get temp directory
-        tmp_dir = tempfile.gettempdir()
-        requests_cache.install_cache(f"{tmp_dir}/klikkikuri_requests_cache", expire_after=3600)
+    setup_logging(debug=debug)
+    init_settings(debug=debug)
+    setup_tracing()
+
+    if cache:
+        if not _requests_cache_available:
+            raise RuntimeError("requests_cache is not available, cannot enable caching.")
+
+        try_setup_requests_cache()
+
+    os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
 
 @cli.command()
-@click.argument("url", required=False, type=AnyUrl)
-def fetch(url=None):
-    """
-    Fetch article from URL.
-    """
-    if not url:
-        url = "https://www.iltalehti.fi/"
-        logger.info("Pulling latest from %r", url)
-        source = extractor(url)
-        latest = source.latest()
-        logger.debug("Retrieved %d latest articles", len(latest), latest=latest)
+@click.option("--sample", is_flag=True, help="Use limited data.")
+@tracer.start_as_current_span("cli.run")
+def run(sample: bool):
 
-        url = latest[0]
+    # Fetch old data from Rahti
+    rahti_repo = create_rahti(settings.rahti)
 
-    url = str(url)
-    logger.info("Fetching article from %r", url)
-    from meri.extractor._processors import process
+    hash_of_stored_file, old_data = rahti_repo.pull()
 
-    outlet = extractor(url)
-    processed = process(outlet, url)
-    logger.debug("Processed %d", len(processed), processed=processed)
+    logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
-    from rich.pretty import pprint
-    from .llm import extract_interest_groups
+    # Fetch latest articles from sources
+    latest_articles = fetch_latest(settings.sources)
 
-    pprint(extract_interest_groups(processed))
+    if sample:
+        sorted_articles = sorted(latest_articles, key=lambda a: a.article.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        latest_articles = sorted_articles[0:5]
+        logger.info("Sample mode enabled, limiting to %d articles", len(latest_articles))
 
+    logger.info("Fetched %d latest articles from sources", len(latest_articles), extra={"sources": [s.name for s in settings.sources]})
 
-ArticleTitleData = tuple[Article, ArticleTitleResponse]
-"""Needed for passing article URLs along with title processing results"""
+    # Initial cleanup: filter out articles that do not need updating
+    rahti = RahtiCleaner(old_data)
 
-RahtiEntry = ...
-"""Placeholder for future"""
+    latest_articles = [a for a in latest_articles if rahti.needs_updating(a.article)]
 
+    # Early stop if no articles need updating
+    if not latest_articles:
+        logger.info("No articles need updating, exiting")
+        return
 
-def hash_url(url: str) -> str:
-    url = str(url)
-    # TODO: Figure out this Wasm thingy.
-    # sign = suola.exports.GetSignature(link)
-    # suola = Instantiate("./suola/build/wasi.wasm")
-    return hashlib.sha256(bytes(url, encoding="utf-8")).hexdigest()
+    # Fetch full articles for those that need updating
+    logger.info("After checking for updates, %d articles need updating", len(latest_articles))
+    full_articles = fetch_full_articles(latest_articles)
 
+    # free and prevent accidental usage
+    del latest_articles
 
-def fetch_latest() -> list[Article]:
-    processor = Iltalehti()
-    links = processor.latest()
-    pprint(links)
+    nr = len(full_articles)
 
-    return links
+    # Prune out articles that are not needed to be processed further
+    full_articles = [a for a in full_articles if has_handled_url(a.article)]
 
+    logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 
-def process_titles(articles: list[Article]) -> list[ArticleTitleData]:
-    predictor = TitlePredictor()
-    results = []
-    for article in articles:
-        result = predictor.run(article)
-        results.append((article, result))
-    return results
+    ## Generate titles for articles
+    # Collect old titles
+    old_titles = []
+    for a in full_articles:
+        old_titles.append(rahti.find_by_article(a.article))
 
+    titles = generate_titles(full_articles, old_titles=old_titles)
 
-def convert_for_publish(results: list[ArticleTitleData]) -> list[RahtiEntry]:
-    """Convert results into the public Klikkikuri data format"""
-    entries = []
-    for article, title_obj in results:
-        urls = []
-        for url in article.urls:
-            sign = hash_url(str(url.href))
-            urls.append(
-                {
-                    "labels": [
-                        # TODO: Replace this default.
-                        "com.github.klikkikuri/link-rel=canonical"
-                    ],
-                    "sign": sign,
-                }
-            )
-        updated = str(article.updated_at.astimezone(timezone.utc))
-        title = title_obj.title
-        clickbaitiness = title_obj.original_title_clickbaitiness
+    # Match articles to old Rahti entries
+    for result in titles:
+        if not result.source:
+            logger.warning("Article result has no source, skipping: %r", result.article.get_url())
+            continue
 
-        entries.append(
-            {
-                "updated": updated,
-                "urls": urls,
-                "title": title,
-                "clickbaitiness": clickbaitiness,
-                "labels": [
-                    # TODO: Replace this default.
-                    "com.github.klikkikuri/article-type=article"
-                ],
-            }
-        )
+        rahti_entry = convert_for_rahti(result.source, result.article, result.title)
+        rahti.upsert(rahti_entry)
 
-    return entries
+    # Final pass - remove old entries that are no longer needed
+    cleaned_entries = prune_rahti(rahti.rahti.entries, settings.sources)
 
+    # collect removed entries for logging
+    removed_entries = [e for e in rahti.rahti.entries if e not in cleaned_entries]
+    rahti.rahti.entries = cleaned_entries
 
-RahtiData = dict
+    logger.info("After pruning Rahti entries, %d entries remain, %d removed", len(rahti.rahti.entries), len(removed_entries))
 
+    # Prepare commit message
+    articles_for_commit = [t.article for t in titles if t.source]
+    titles_for_commit = [t.title for t in titles if t.source]
 
-def fetch_old_data() -> tuple[str, RahtiData]:
-    old_data_file_obj = requests.get(
-        "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
-        headers={
-            "Accept": "application/vnd.github.object",
-            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-        timeout=30
-    ).json()
-
-    old_data = json.loads(base64.b64decode(old_data_file_obj["content"]))
-
-    return old_data_file_obj["sha"], old_data
-
-
-def filter_outdated(articles: list[Article], old_entries: list[RahtiEntry]) -> list[Article]:
-    # When signatures match, use the newer-released article's entry.
-    # Initially assume that we are just saving the old article already stored
-    # and now pulled from storage for possible update.
-    new_articles = []
-    old_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in old_entries]
-    new_signatures = [set(map(lambda url: hash_url(str(url.href)), x.urls)) for x in articles]
-    pprint(old_signatures)
-    pprint(new_signatures)
-    for i, news in enumerate(new_signatures):
-        for j, olds in enumerate(old_signatures):
-            if olds == news:
-                # Signature match! Dealing with an article already once processed.
-                new_datetime = articles[i].updated_at
-                old_datetime = datetime.fromisoformat(old_entries[j]["updated"])
-                if new_datetime > old_datetime:
-                    logger.info("Article updated, replacing old entry", url=articles[i].urls, new=new_datetime, old=old_datetime)
-                    # The new object has an updated version of the article, so
-                    # select that instead.
-                    new_articles.append(articles[i])
-                break
-        else:
-            # If this new object has no signatures matching any old one, the
-            # entry is totally new.
-            new_articles.append(articles[i])
-    return new_articles
-
-
-def fetch_articles(article_stubs: list[Article]) -> list[Article]:
-    """
-    Fetch full articles from the given article stubs.
-
-    Returned articles have metadata merged from the stubs.
-    """
-
-    articles = []
-
-    for stub in article_stubs:
-        if not (url := str(stub.get_url())):
-            raise ValueError(f"Article stub has no URL: {stub}")
-        
-        article_object = trafilatura_extractor(url)
-
-        # Merge the stub and the fetched article object.
-        # Use the latest updated_at and earliest created_at.
-        article_object.updated_at = max(stub.updated_at, article_object.updated_at)
-        article_object.created_at = min(stub.created_at, article_object.created_at)
-        # Merge missing metadata from stub to fetched object.
-        for k, v in stub.meta.items():
-            if k not in article_object.meta or not article_object.meta[k]:
-                article_object.meta[k] = v
-        # Append missing URLs from stub to fetched object.
-        existing_urls = set(map(lambda u: str(u.href), article_object.urls))
-        for url in stub.urls:
-            if str(url.href) not in existing_urls:
-                article_object.urls.append(url)
-
-        articles.append(article_object)
-
-    return articles
-
-
-
-def prune_old_entries(old_entries: list[RahtiEntry], max_age_days: int = 3) -> list[RahtiEntry]:
-    """
-    Remove entries older than max_age_days from the list of old entries.
-    """
-    pruned = []
-    now = datetime.now(timezone.utc)
-    for entry in old_entries:
-        entry_time = datetime.fromisoformat(entry["updated"])
-        age_days = (now - entry_time).days
-        if age_days <= max_age_days:
-            pruned.append(entry)
-        else:
-            logger.debug("Pruning old entry", title=entry["title"], age_days=age_days)
-    return pruned
-
-
-def merge_updates(old_entries: list[RahtiEntry], new_entries: list[RahtiEntry]) -> list[RahtiEntry]:
-    entries = old_entries
-    old_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in old_entries]
-    new_signatures = [set(map(lambda url: url["sign"], x["urls"])) for x in new_entries]
-    pprint(old_signatures)
-    pprint(new_signatures)
-    for i, news in enumerate(new_signatures):
-        for j, olds in enumerate(old_signatures):
-            if olds & news:
-                # At this point, the "new" one should be known to be an updated
-                # version of a previously processed article, and should thus
-                # replace the old version.
-                entries[j] = new_entries[i]
-                break
-        else:
-            # If this new object has no signatures matching any old one, the
-            # entry is totally new.
-            entries.append(new_entries[i])
-    return entries
-
-
-def store_results(hash_of_stored_file: str, entries: list[RahtiEntry], commit_message: str):
-    """
-    Add the result data of a processing run into the existing Rahti storage.
-
-    NOTE that any matching signatures of entries in existing and new list will
-    be replaced by the ones with the latest time stamp.
-    """
-    updated = str(datetime.now(timezone.utc))
-
-    data = {
-        "status": "ok",
-        "updated": updated,
-        "schema_version": "0.1.0",
-        "entries": entries,
-    }
-    pprint(data)
-
-    # Push the data to Rahti, finishing the processing run.
-    encoded_file_content = base64.b64encode(bytes(json.dumps(data, indent=2), encoding="utf-8")).decode("utf-8")
-    res = requests.put(
-        "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json",
-        headers={
-            "Accept": "application/vnd.github+json",
-            "Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-            "X-GitHub-Api-Version": "2022-11-28",
-        },
-        json={
-            "message": commit_message,
-            "committer": {
-                "name": "[🤖 bot] Klikkikuri harbormaster",
-                "email": "klikkikuri+satamamestari@protonmail.com",
-            },
-            "content": encoded_file_content,
-            "sha": hash_of_stored_file,
-        },
-        timeout=30
+    commit_message = Template(COMMIT_MESSAGE).render(
+        articles=articles_for_commit,
+        titles=titles_for_commit,
+        removed=removed_entries,
     )
 
-    res_json = res.json()
+    # Validate before pushing
+    test_json = rahti.model_dump_json()
+    assert RahtiData.model_validate_json(test_json)
 
-    if not res.ok:
-        raise Exception(f"Failed updating rahti: {res.status_code} - {json.dumps(res_json)}")
+    rahti_repo.push(
+        hash_of_stored_file,
+        rahti.rahti,
+        commit_message,
+    )
 
 
 @cli.command()
-@click.argument("article_limit", required=False, type=int)
-@click.option("--range-start", help="Start index to the source's list of article's", required=False, type=int)
-@click.option(
-    "--range-amount",
-    help="Amount of items to take from the source's list of article's",
-    required=False,
-    type=int,
-    default=1,
-)
-def run(article_limit, range_start, range_amount):
+def list_sources():
     """
-    Run the Meri title processing routine once.
+    List available extractors.
     """
-    # NOTE: Needed env variables:
-    # OPENAI_API_KEY, GITHUB_TOKEN
-    articles = fetch_latest()
+    import meri.settings
 
-    commit_message = []
+    for source in meri.settings.settings.sources:
+        print(f"Extractor: {source.name} (weight={source})")
 
-    if range_start:
-        articles = articles[range_start : range_start + range_amount]
-    if article_limit:
-        articles = articles[:article_limit]
 
-    print("ARTICLES:")
-    pprint(articles)
-    print("\n")
+@cli.command()
+@click.argument("url")
+def test(url):
+    extractor = get_extractor(url)
+    article = extractor.fetch_by_url(url)
+    if article.text:
+        print(article.text[0:200], "...", "\n", "...", article.text[-200:])
 
-    hash_of_stored_file, old_data = fetch_old_data()
-    old_entries = old_data["entries"]
-    pprint(old_entries)
-    # Use this for emptying Rahti while developing.
-    # store_results(hash_of_stored_file, []); return
-
-    new_articles = filter_outdated(articles, old_entries)
-
-    new_articles = fetch_articles(new_articles)
-
-    # remove old entries before merging in new ones.    
-    original_count = len(old_entries)
-    old_entries = prune_old_entries(old_entries)
-    pruned_count = len(old_entries)
-
-    title_data = process_titles(new_articles)
-
-    new_entries = convert_for_publish(title_data)
-
-    entries = merge_updates(old_entries, new_entries)
-    
-    commit_message.append(f"[🤖 bot]: Updated list with {len(new_entries)} additions or updates, and removed {original_count - pruned_count} old entries.")
-    if len(title_data) > 0:
-        commit_message.append("")
-        commit_message.append("New or updated entries:")
-        
-
-        for i, (a, t) in enumerate(title_data):
-            a: Article
-            t: ArticleTitleResponse
-            sign = new_entries[i]["urls"][0]["sign"]
-            commit_message.append("")
-            commit_message.append(f" - {sign}:")
-            commit_message += wrap(t.contemplator, initial_indent="   ", subsequent_indent="   ", break_long_words=False, width=72)
-
-    store_results(hash_of_stored_file, entries, "\n".join(commit_message))
+    from .pipelines.title import TitlePredictor
+    predictor = TitlePredictor()
+    result = predictor.run(article)
+    pprint(result.model_dump())
 
 
 if __name__ == "__main__":
-    cli()
+
+    with tracer.start_as_current_span("main") as span:
+        cli()

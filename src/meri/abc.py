@@ -1,24 +1,24 @@
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from enum import Enum
 from re import Pattern
 from textwrap import dedent
-from typing import Annotated, Final, List, Literal, NewType, Optional, TypeAlias, Union
+from typing import Annotated, List, Optional
 from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
 from opentelemetry import trace
-from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, WithJsonSchema
-from pydantic.json import pydantic_encoder
+from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, computed_field
 from structlog import get_logger
 
 from .utils import clean_url
+from .suola import hash_url
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 type PyObjectId = Annotated[str, BeforeValidator(str)]
+
 
 ContemplatorType = Annotated[
     str,
@@ -74,58 +74,6 @@ class ConfidenceLevel(str, Enum):
     NEUTRAL = "Neutral"
     CERTAIN = "Certain"
     HIGH = "Very Certain"
-
-
-# TODO: Make as pydantic model
-class Outlet:
-    name: Optional[str] = None
-    valid_url: Pattern | list[Pattern]
-
-    weight: Optional[int] = 50
-
-    processors: list[callable] = []
-
-    def __init__(self) -> None:
-        self.processors = []
-        # Get classes this instance is a subclass of, and add their processors
-        logger.debug("Adding processors from %s", self.__class__.__name__, extra={"base_classes": self.__class__.__mro__})
-        for cls in self.__class__.__mro__:
-            logger.debug("Checking class %s", cls.__name__)
-            if cls in [Outlet, object]:
-                break
-            if class_processors := cls.__dict__.get("processors"):
-                logger.debug("Adding %d processors from %r", len(class_processors), cls.__name__)
-                self.processors += class_processors
-
-        logger.debug("Outlet %s has %d processors", self.name, len(self.processors), extra={"processors": self.processors})
-
-    def __getattr__(self, name: str):
-        if name == "name":
-            return self.__class__.__name__
-        elif name == "weight":
-            return 50
-
-    def latest(self) -> list["Article"]:
-        raise NotImplementedError
-
-    def frequency(self, dt: datetime | None) -> timedelta:
-        """
-        Get the frequency of the outlet.
-
-        :param dt: Time of the article previously published.
-        """
-        default = timedelta(minutes=30)
-        logger.debug("Outlet %r does not provide a frequency, defaulting to %s", self.name, default)
-
-        return default
-
-    def fetch(self, url: AnyHttpUrl):
-        """
-        Fetch the article from the URL.
-
-        :param url: The URL of the article.
-        """
-        raise NotImplementedError
 
 
 class LinkLabel(str, Enum):
@@ -245,6 +193,25 @@ class ArticleTypeLabels(str, Enum):
     # """
 
 
+class ArticleLabels(str, Enum):
+    """
+    General labels for articles.
+
+    Labels:
+
+    - `com.github.klikkikuri/paywalled=true`:
+    
+        The article is behind a paywall and requires a subscription or payment to access the full content.
+
+    - `com.github.klikkikuri/sponsored=true`:
+        
+        The article is sponsored content, meaning it is paid for by an advertiser or sponsor and may have promotional intent.
+
+    """
+    PAYWALLED = "com.github.klikkikuri/paywalled=true"
+    SPONSORED = "com.github.klikkikuri/sponsored=true"
+
+
 class TitleQuorumLabel(str, Enum):
     """
     Indicates the level of agreement among LLMs when generating a title.
@@ -299,6 +266,9 @@ class ArticleTitleResponse(BaseModel):
 
     Order of fields:
      - Contemplation needs to be the first field in the response.
+     - Then evidence
+     - Then original title and its clickbaitiness
+     - Finally the suggested title.
     """
     contemplator: ContemplatorType
 
@@ -317,7 +287,18 @@ class ArticleUrl(BaseModel):
     href: AnyHttpUrl = Field()
     labels: list[LinkLabel] = Field(default_factory=list)
 
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    @computed_field
+    @property
+    def signature(self) -> str:
+        """
+        Compute a signature for the URL.
+        """
+        if not self.href:
+            return ""
+        sign = hash_url(self.href)
+        return sign if sign else ""
 
     def __str__(self):
         return str(self.href)
@@ -327,7 +308,7 @@ class ArticleUrl(BaseModel):
         if isinstance(other, str):
             return str(self.href) == other
         elif isinstance(other, ArticleUrl):
-            return self.href == other.href
+            return self.href == other.href or self.signature == other.signature
         return super().__eq__(other)
 
 
@@ -339,38 +320,6 @@ class ArticleMeta(TypedDict, total=False):
     language: Optional[str]
     "Language of the article (ISO 639-1 code)."
     outlet: Optional[str]
-
-
-class Article(BaseModel):
-    """
-    Article model
-    """
-    #id: Optional[PyObjectId] = Field(None, alias="_id")
-
-    text: Optional[str] = Field(...)
-    meta: ArticleMeta = Field(default_factory=ArticleMeta)
-    labels: list[ArticleTypeLabels] = Field(default_factory=list)
-    urls: list[ArticleUrl] = Field(default_factory=list)
-
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-    updated_at: datetime = Field(default_factory=datetime.utcnow)
-
-
-    def get_url(self) -> Optional[AnyHttpUrl]:
-        """
-        Get the primary URL of the article.
-
-        If multiple URLs are present, prefer the canonical URL.
-        """
-        if not self.urls:
-            return None
-
-        for url in self.urls:
-            # Prefer canonical URL if available
-            if LinkLabel.LINK_CANONICAL in url.labels:
-                return url.href
-
-        return self.urls[0].href
 
 
 class VestedGroup(BaseModel):

@@ -1,0 +1,158 @@
+# yamllint disable rule:comments-indentation
+---
+## Klikkikuri 🦈 Example Configuration
+## ===================================
+
+## --- General settings ---
+# DEBUG: false  # Enable debug mode, more verbose logging for selected components
+# TRACING_ENABLED: true  # Enable OpenTelemetry tracing (auto-detected if available)
+# BOT_ID: "Klikkikuri"  # Bot identifier
+# BOT_USER_AGENT: "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})"  # User agent string
+# LOG_LEVEL: INFO  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+# REQUESTS_CACHE: true  # Enable HTTP requests cache (auto-detected if available)
+# MAX_WORKERS: 3  # Maximum number of worker threads for article processing
+# PROMPT_DIR: "/app/prompts"  # Directory for prompt templates
+# suola_rules: "/app/packages/suola/rules.yaml"  # Optional: path to Suola rules file
+
+## --- News sources ---
+sources:
+  ## RSS and Atom feeds are widely used for publishing lists of recent articles or updates.
+  ## The RSS discoverer parses the feed and extracts article URLs, titles, descriptions, published dates, and more.
+  ## You can provide a single URL or a list of feed URLs. Each entry will be fetched and parsed for articles.
+  ## The implementation (see src/meri/discovery/rss.py) uses fastfeedparser and supports extracting rich metadata.
+  # - name: "Helsingin Sanomat - RSS"
+  #   type: rss
+  #   url: 
+  #     - https://www.hs.fi/rss/tuoreimmat.xml
+  #     - http://www.hs.fi/rss/teasers/etusivu.xml
+  #     - http://www.hs.fi/rss/suomi.xml
+  #     - http://www.hs.fi/rss/maailma.xml
+  #     - http://www.hs.fi/rss/talous.xml
+  #     - http://www.hs.fi/rss/politiikka.xml
+
+  ## Sitemaps are XML files that list URLs for a website, often used for news or content discovery.
+  ## Use type: sitemap for sources that provide a sitemap.xml or similar file.
+  ## The url should point to the sitemap file. Sitemaps can help discover articles that are not available via RSS.
+  # - name: "Helsingin Sanomat - Sitemap"
+  #   type: sitemap
+  #   url: https://www.hs.fi/rss/custom/news-sitemap.xml
+
+  ## For slower or less frequently updated sites, older articles can be kept longer by setting keep_days.
+  # - name: "Faktabaari"
+  #   type: sitemap
+  #   url: https://faktabaari.fi/sitemap.xml
+  #   max_age_days: 60
+
+  # - name: "Tivi"
+  #   type: rss
+  #   url: https://www.tivi.fi/api/feed/v2/rss/tv
+
+  ## The 'iltalehti' type uses a custom discoverer for the Iltalehti news API.
+  ## It fetches the latest articles from Iltalehti's JSON API endpoint, filtering out sponsored content.
+  ## The discoverer extracts article metadata (title, outlet, language, id, timestamps) and canonical URLs.
+  ## Only recent, non-sponsored articles are included. See src/meri/discovery/iltalehti.py for details.
+  # - name: iltalehti
+  #   type: iltalehti
+  #   url: https://api.il.fi/v1/articles/iltalehti/lists/latest?limit=90&image_sizes[]=size138
+
+  # - name: iltasanomat
+  #   type: rss
+  #   url: 
+  #     - https://www.is.fi/rss/tuoreimmat.xml
+  #     - http://www.iltasanomat.fi/rss/kotimaa.xml
+  #     - http://www.iltasanomat.fi/rss/ulkomaat.xml
+
+  ## The 'kontio' extractor is used for Keskisuomalainen and related sites.
+  ## It uses a custom parser for extracting articles from their web pages or APIs.
+  ## See src/meri/extractor/kontio/ for implementation details.
+  # - name: "Keskisuomalainen"
+  #   type: kontio
+  #   url: https://api.prod.kontio.diks.fi/api/v1/publications/ksml/feeds/uusimmat?page=1
+
+  # - name: "MTV Uutiset"
+  #   type: rss
+  #   url: https://www.mtvuutiset.fi/api/feed/rss/uutiset
+  #   enabled: true
+  #   language: fi-FI
+
+  - name: "Yle Uutiset"
+    type: rss
+    url:
+      - https://yle.fi/uutiset/rss/uutiset.rss
+      - https://yle.fi/rss/uutiset/paauutiset
+      - https://yle.fi/rss/uutiset/tuoreimmat
+      - https://yle.fi/rss/uutiset/luetuimmat
+      
+
+  # Swedish sources, we don't currently support Swedish language well enough
+
+  # - name: Yle Svenska
+  #   type: rss
+  #   url:
+  #     - http://svenska.yle.fi/rss/senaste-nytt
+  #     - http://svenska.yle.fi/rss/svenskaylefi
+
+  # - name: SVT Nyheter
+  #   type: rss
+  #   url: 
+  #     - https://www.svt.se/rss.xml
+
+rahti:
+  # File mode, writes to a local file:
+  # url: "file:///app/instance/rahti/data.json"
+
+  # GitHub mode example:
+  url: "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"
+  # auth_token: "ghp_..."  # Use GITHUB_TOKEN env variable for security
+  # timeout: 30
+  committer:
+    name: "[🤖 bot] Klikkikuri harbormaster"
+    email: "klikkikuri+satamamestari@protonmail.com"
+
+# --- LLM (Language Model) settings ---
+llm:
+
+  # See: https://openrouter.ai/docs/guides/routing/provider-selection
+  - name: "OpenRouter GPT-OSS-120b"
+    provider: openrouter
+    api_key: "..."  # Use OPENROUTER_API_KEY env variable for security
+    model: "openai/gpt-oss-120b"
+    api_base_url: "https://openrouter.ai/api/v1"
+    generation_kwargs:
+      temperature: 0.0
+      provider:
+        # sort: "price" | "throughput" | "latency"
+        #   - "price": prioritize lowest price (default)
+        #   - "throughput": prioritize highest throughput
+        #   - "latency": prioritize lowest latency
+        sort: price
+
+        # zdr: true restricts routing to only Zero Data Retention (ZDR) endpoints.
+        #   - Ensures your request only goes to providers that do not retain prompts.
+        zdr: true
+
+        # order: ["provider1", "provider2"]
+        #   - List of provider slugs to try in order. Disables load balancing.
+        # order: ["openai", "together"]
+
+  - name: "OpenAI GPT-4o-mini"
+    provider: openai
+    api_key: "sk-..."
+    model: "gpt-4o-mini"
+    generation_kwargs:
+      temperature: 0.0
+
+  - name: "Ollama Llama2"
+    provider: ollama
+    url: "http://ollama:11434/api"
+    model: "llama2"
+    timeout: 30
+    generation_kwargs:
+      temperature: 0.0
+
+  - name: "Google Gemini"
+    provider: google
+    api_key: "..."
+    model: "gemini-2.0-flash"
+    generation_config:
+      temperature: 0.0

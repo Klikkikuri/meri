@@ -5,6 +5,7 @@ Meta repository for the klikkikuri service
 
 - **meri 🌊**: The main service
 - **karikko 🪨**: Gradio based UI for testing the backend.
+- **suola 🧂**: WebAssembly module for url normalization.
 - **laituri ⚓**: Scheduler for the scraping jobs
 
     Laituri reads the extractors frequency and schedules the next scanning job accordingly.

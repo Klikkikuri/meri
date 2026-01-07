@@ -1,0 +1,8 @@
+{% if rahti %}
+### Article Updated
+
+Article has been updated since the last analysis. If the previous title is still relevant, take it into account and update it only if new information justifies a change.
+Previous title: '{{rahti.title|striptags|escape}}'
+Previous clickbait level: {{rahti.clickbaitiness.value}}
+
+{% endif %}

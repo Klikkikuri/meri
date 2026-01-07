@@ -1,0 +1,3 @@
+[submodule "packages/suola"]
+	path = packages/suola
+	url = ../suola.git

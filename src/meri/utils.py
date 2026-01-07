@@ -30,11 +30,14 @@ EXTRA_RESOURCE_DETECTOR = [
 
 EXTRA_INSTRUMENTOR = [
     ("opentelemetry.instrumentation.system_metrics", "SystemMetricsInstrumentor"),
-    ("opentelemetry.instrumentation.asyncio", "AsyncioInstrumentor"),
+    # ("opentelemetry.instrumentation.logging", "LoggingInstrumentor"),
+    # ("opentelemetry.instrumentation.asyncio", "AsyncioInstrumentor"),
     ("opentelemetry.instrumentation.urllib3", "URLLib3Instrumentor"),
     ("opentelemetry.instrumentation.requests", "RequestsInstrumentor"),
     ("opentelemetry.instrumentation.jinja2", "Jinja2Instrumentor"),
-    ("opentelemetry.instrumentation.openai", "OpenAIInstrumentor"),
+    ("opentelemetry.instrumentation.openai_v2", "OpenAIInstrumentor"),
+    ("opentelemetry.instrumentation.click", "ClickInstrumentor"),
+    ("opentelemetry.instrumentation.threading", "ThreadingInstrumentor"),
     # SQLAlchemyInstrumentor is not included here, it's included in the `get_db` function
 ]
 """ List of extra instrumentors to use, if available. """
@@ -77,36 +80,40 @@ def clean_url(url: str) -> str:
     return url_normalize(url)
 
 
-def add_open_telemetry_spans(_, __, event_dict):
-    span = trace.get_current_span()
-    if not span.is_recording():
-        event_dict["span"] = None
-        return event_dict  
+def setup_logging(debug=None):
+    """
+    Setup logging for the application.
 
-    ctx = span.get_span_context()
-    parent = getattr(span, "parent", None)
+    Configures structlog and standard logging.
+    """
 
-    event_dict["span"] = {
-        "span_id": hex(ctx.span_id),
-        "trace_id": hex(ctx.trace_id),
-        "parent_span_id": None if not parent else hex(parent.span_id),
-    }
+    # Determine root log level
+    match settings.LOG_LEVEL.upper():
+        case "DEBUG":
+            log_level = logging.DEBUG
+        case "INFO":
+            log_level = logging.INFO
+        case "WARNING":
+            log_level = logging.WARNING
+        case "ERROR":
+            log_level = logging.ERROR
+        case "CRITICAL":
+            log_level = logging.CRITICAL
+        case _:
+            log_level = logging.INFO
 
-    return event_dict
-
-
-def setup_logging(debug=settings.DEBUG):
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.stdlib.PositionalArgumentsFormatter(),
+        structlog.processors.TimeStamper(fmt="iso", utc=True),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+    ]
 
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            structlog.stdlib.add_log_level,
-            structlog.stdlib.add_logger_name,
-            structlog.stdlib.PositionalArgumentsFormatter(),
-            structlog.processors.StackInfoRenderer(),
-            structlog.processors.format_exc_info,
-            add_open_telemetry_spans,  # Add OpenTelemetry context to logs
+        processors=shared_processors + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -115,27 +122,31 @@ def setup_logging(debug=settings.DEBUG):
     )
 
     formatter = structlog.stdlib.ProcessorFormatter(
-        pass_foreign_args=True,
+        foreign_pre_chain=shared_processors,
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             structlog.dev.ConsoleRenderer()
         ],
     )
-    handler = logging.StreamHandler()
 
-    # Use OUR `ProcessorFormatter` to format all `logging` entries.
+    handler = logging.StreamHandler()
     handler.setFormatter(formatter)
 
-    root_logger = logging.getLogger()
-    root_logger.addHandler(handler)
+    # Use basicConfig with force=True to simplify handler management (Python 3.8+)
+    logging.basicConfig(
+        handlers=[handler],
+        level=log_level,
+        force=True
+    )
 
-    log_level = settings.LOGGING_LEVEL
-    root_logger.setLevel(log_level)
     logging.getLogger("haystack").setLevel(log_level)
 
     LoggingInstrumentor().instrument()
 
     # Set the top-level module to DEBUG if debug is True
+    if debug is None:
+        debug = os.getenv("DEBUG", "0") == "1"
+
     if debug:
         logging.getLogger(__package__).setLevel(logging.DEBUG)
         return
@@ -199,7 +210,7 @@ def setup_tracing(name: str = __package__):
                 instrumentor_cls = getattr(mod, cls)
                 instrumentor_cls().instrument()
             except ImportError as e:
-                logger.debug("Instrumentor %s.%s not found: %s", instrumentor_pkg, cls, e)
+                logger.info("Instrumentor %s.%s not found: %s", instrumentor_pkg, cls, e)
                 pass
 
     # Use tracer with haystack

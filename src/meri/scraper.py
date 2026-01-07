@@ -1,20 +1,31 @@
-import os
+from copy import deepcopy
+from datetime import timedelta
+from functools import lru_cache
 from pathlib import Path
 from re import Pattern
-from urllib.parse import urlparse
+import re
+from typing import List, cast
+
 
 from pydantic import AnyHttpUrl
 from structlog import get_logger
 
 from meri.settings import settings
+from meri.settings.newssources import NewsSource
 from platformdirs import user_cache_dir
 
-from .abc import Outlet
+from .extractor import Outlet
+from .discovery import SourceDiscoverer, registry, merge_article_lists
+from .article import Article
+
+from pydantic import HttpUrl
 
 logger = get_logger(__name__)
 
+DEFAULT_EXTRACTOR = "default"
 
-def extractor(url: AnyHttpUrl) -> Outlet:
+@lru_cache(maxsize=128)
+def get_extractor(url: AnyHttpUrl | str) -> Outlet:
     """
     Find the extractor for the given URL.
 
@@ -22,39 +33,26 @@ def extractor(url: AnyHttpUrl) -> Outlet:
     """
 
     from .extractor import get_extractors
+    url = str(url)
 
-    article_url_parts = urlparse(str(url))
-
-    # Find the outlet that matches the URL
-    # Warning: there be dragons here
     for outlet in get_extractors():
-        outlet_urls = outlet.valid_url
+        outlet_urls = deepcopy(outlet.valid_url)
+
         if not isinstance(outlet_urls, list):
             outlet_urls = [outlet_urls]
 
+        # Convert into regex patterns if needed
+        for i, outlet_url_rule in enumerate(outlet_urls):
+            match outlet_url_rule:
+                case Pattern():
+                    continue
+                case str():
+                    outlet_urls[i] = re.compile(r"^" + re.escape(outlet_url_rule))  # type: ignore
+                case _:
+                    raise ValueError(f"Invalid outlet URL rule type: {type(outlet_url_rule)}")
+
         for outlet_url_rule in outlet_urls:
-            logger.debug("Checking outlet %s rule %s", outlet.name, outlet_url_rule)
-            if isinstance(outlet_url_rule, Pattern):
-                if outlet_url_rule.match(url):
-                    logger.debug("Matched `re.Pattern` outlet %s for URL %s", outlet.name, url)
-                    return outlet
-
-                continue  # URL part does not match, try next outlet
-            elif isinstance(outlet_url_rule, str):
-                logger.debug("Converting string to ParseResult")
-                outlet_url_rule = urlparse(outlet_url_rule)
-                if outlet_url_rule.path == "/":
-                    # Drop the path to match any path
-                    outlet_url_rule = outlet_url_rule._replace(path="")
-
-            # Compare the parts of the URL that are defined in the matching URL
-            for key in outlet_url_rule._fields:
-                if outlet_part := getattr(outlet_url_rule, key):
-                    logger.debug("Checking outlet %s for URL %s part %s", outlet.name, url, key)
-                    if outlet_part != getattr(article_url_parts, key):
-                        logger.debug("Outlet url part %r does not match %r, try next outlet", outlet_part, getattr(article_url_parts, key))
-                        break  # URL part does not match, try next outlet
-            else:
+            if outlet_url_rule.match(url):
                 logger.debug("Matched outlet %s for URL %s", outlet.name, url)
                 return outlet
 
@@ -97,5 +95,91 @@ def try_setup_requests_cache():
 
     requests_cache.install_cache(
         cache_name=str(cache_path),
+        expire_after=timedelta(minutes=15),
+        ignored_parameters=["api_key", "Authorization"],
     )
     logger.debug("Cache set up at %s", cache_path)
+
+
+def get_discoverer(source: NewsSource) -> SourceDiscoverer:
+    """
+    Get the discoverer for the given news source.
+
+    :param source: The news source to get the discoverer for.
+    :return: Discoverer instance for the source
+    :raises ValueError: If no discoverer is found for the source type
+    """
+    discoverer = registry.get_instance(source.type)
+    if discoverer is None:
+        raise ValueError(f"No discoverer found for source type {source.type!r}")
+
+    discoverer.set_source(source)
+    
+    if discoverer is None:
+        available = registry.list_names()
+        raise ValueError(
+            f"No discoverer found for source {source.name!r} with type {source.type!r}. "
+            f"Available discoverers: {', '.join(available)}"
+        )
+    
+    return discoverer
+
+
+def discover_articles(source: NewsSource) -> list[Article]:
+    """
+    Discover articles from a news source and remove duplicates.
+
+    This function fetches articles from all URLs configured in the news source
+    using the appropriate discoverer, then merges the results and removes
+    any duplicate articles.
+
+    :param source: The news source to discover articles from.
+    :return: List of unique Article objects discovered from the source.
+    :raises ValueError: If no discoverer is found for the source type.
+    """
+    if not source.enabled:
+        logger.info("News source %s is disabled, skipping discovery", source.name)
+        return []
+
+    discoverer = get_discoverer(source)
+    article_lists = []
+
+    for url in source.url:
+        try:
+            logger.info("Discovering articles from %s using %s discoverer", url, source.type)
+            # Convert to HttpUrl if needed
+
+            http_url = HttpUrl(str(url))
+            # Pass language if available
+            kwargs = {}
+            if source.language:
+                kwargs['language'] = source.language
+            articles = discoverer.discover(http_url, **kwargs)
+            
+            # Set outlet name to source name if not already set by discoverer
+            for article in articles:
+                if not article.meta.get('outlet'):
+                    article.meta['outlet'] = source.name
+            
+            article_lists.append(articles)
+            logger.debug("Discovered %d articles from %s", len(articles), url)
+        except Exception as e:
+            logger.error(
+                "Failed to discover articles from URL",
+                url=url,
+                source=source.name,
+                error=str(e),
+                exc_info=True
+            )
+            continue
+
+    # Merge all article lists and remove duplicates
+    unique_articles = merge_article_lists(*article_lists)
+    logger.info(
+        "Discovered %d unique articles from %s (%d total before deduplication)",
+        len(unique_articles),
+        source.name,
+        sum(len(articles) for articles in article_lists)
+    )
+
+    return unique_articles

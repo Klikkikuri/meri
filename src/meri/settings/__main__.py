@@ -1,4 +1,3 @@
-from io import StringIO
 import logging
 from pathlib import Path
 
@@ -9,12 +8,9 @@ try:
 except ImportError:
     import click
 
-from pydantic import BaseModel
-from ruamel.yaml import YAML  # type: ignore
-from pydantic_yaml import parse_yaml_raw_as, to_yaml_str
-from ruamel.yaml.comments import CommentedMap
+from pydantic_yaml import to_yaml_str
 
-from .settings import Settings, DEFAULT_CONFIG_PATH
+from .settings import DEFAULT_CONFIG_PATH, Settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +25,8 @@ def cli(ctx: click.Context, debug: bool):
     """
     CLI for managing settings.
     """
-    settings = Settings(debug=debug)
+    from .settings import init_settings, settings
+    settings = init_settings(debug=debug)
 
     if ctx.invoked_subcommand is None:
         # If no subcommand is provided, show the help message
@@ -40,10 +37,7 @@ def cli(ctx: click.Context, debug: bool):
         # Set the debug mode based on the command line argument
         if debug:
             settings.DEBUG = True
-        logger.setLevel(logging.DEBUG if settings.DEBUG else settings.LOGGING_LEVEL)
-
-    from .settings import settings_var
-    settings_var.set(settings)
+        logger.setLevel(logging.DEBUG if settings.DEBUG else settings.LOG_LEVEL)
 
 
 @cli.command()
