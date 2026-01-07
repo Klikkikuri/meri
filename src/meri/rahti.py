@@ -42,10 +42,19 @@ class RahtiEntry(BaseModel):
     updated: datetime = Field(
         description="TZ Aware datetime (ISO 8601) when article was updated"
     )
-    urls: List[RahtiUrl]
-    title: str = Field(default="Generated title for the article")
+
+    urls: List[RahtiUrl] = Field(default_factory=list,
+        description="List of URLs associated with the article"
+    )
+    title: str = Field(default="Generated title for the article") 
     clickbaitiness: ClickbaitScale
     labels: List[ArticleLabels | ArticleTypeLabels]
+    
+    # Temporary field to track source of the article. Maps to :py:class:`meri.settings.sources.name`
+    outlet: str | None = Field(
+        None,
+        description="Name of the news outlet or source of the article",
+    )
 
     @field_validator("urls")
     @classmethod
@@ -73,13 +82,9 @@ class RahtiData(BaseModel):
     entries: List[RahtiEntry]
 
 
-
 class RahtiProtocol(Protocol):
-    def pull(self) -> tuple[str, RahtiData]:
-        ...
-
-    def push(self, hash_of_stored_file: str, data: RahtiData, commit_message: str):
-        ...
+    def pull(self) -> tuple[str, RahtiData]: ...
+    def push(self, hash_of_stored_file: str, data: RahtiData, commit_message: str): ...
 
 
 class RahtiFile(RahtiProtocol):
@@ -135,7 +140,6 @@ class RahtiRepo(RahtiProtocol):
 
         if not self.settings.auth_token:
             logger.warning("Rahti GitHub token not set.") 
-
 
         self._session.headers.update({
             "Accept": "application/vnd.github+json",
@@ -200,7 +204,7 @@ class RahtiRepo(RahtiProtocol):
 
         res.raise_for_status()
 
-def rahti(settings: RahtiSettings) -> RahtiProtocol:
+def create_rahti(settings: RahtiSettings) -> RahtiProtocol:
     """Factory function for Rahti storage backend."""
     if isinstance(settings, RahtiGithubSettings):
         return RahtiRepo(settings)  # type: ignore

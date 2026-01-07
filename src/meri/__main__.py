@@ -1,27 +1,24 @@
 import os
 from datetime import datetime, timezone
 from importlib.util import find_spec
-from typing import List
 
 from jinja2 import Template
 from opentelemetry import trace
 from rich.pretty import pprint  # TODO: remove from production code
 from structlog import get_logger
 
-from .abc import ArticleLabels
-from meri.article import Article
 from meri.settings import settings
 
 from .lautta import (
-    Matcher,
+    RahtiCleaner,
     convert_for_rahti,
     fetch_full_articles,
     fetch_latest,
     generate_titles,
-    prune_partition,
-    remove_unhandled,
+    has_handled_url,
+    prune_rahti,
 )
-from .rahti import COMMIT_MESSAGE, RahtiData, RahtiEntry, rahti
+from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
 from .utils import setup_logging, setup_tracing
 
@@ -59,149 +56,96 @@ def cli(cache: bool, debug: bool):
 
 
 @cli.command()
+@click.option("--sample", is_flag=True, help="Use limited data.")
 @tracer.start_as_current_span("cli.run")
-def run():
-
-    now = datetime.now(timezone.utc)
-
-    span = trace.get_current_span()
+def run(sample: bool):
 
     # Fetch old data from Rahti
-    rahti_repo = rahti(settings.rahti)
+    rahti_repo = create_rahti(settings.rahti)
 
     hash_of_stored_file, old_data = rahti_repo.pull()
 
-    span.set_attribute("rahti.url", str(settings.rahti.url))
-    span.set_attribute("rahti.stored_file_sha", hash_of_stored_file)
-    span.set_attribute("rahti.old_data_entry_count", len(old_data.entries))
     logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
-    latest_articles = list(remove_unhandled(latest_articles))
+
+    if sample:
+        sorted_articles = sorted(latest_articles, key=lambda a: a.article.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+        latest_articles = sorted_articles[0:5]
+        logger.info("Sample mode enabled, limiting to %d articles", len(latest_articles))
+
     logger.info("Fetched %d latest articles from sources", len(latest_articles), extra={"sources": [s.name for s in settings.sources]})
 
-    # if settings.DEBUG:
-    #     latest_articles = random.sample(latest_articles, min(5, len(latest_articles)))
-    #     logger.debug("Debug mode enabled, limiting to %d articles", len(latest_articles))
-
-    # Check which articles require updating
-    # Use enumerate to keep track of indices for matching with Rahti entries
-    updated_articles_map: dict[Article, int] = {}
-
     # Initial cleanup: filter out articles that do not need updating
-    matcher = Matcher(latest_articles)
-    for idx, rahti_entry in enumerate(old_data.entries):
-        article = matcher.match(rahti_entry)
+    rahti = RahtiCleaner(old_data)
 
-        # Skip if no matching article found
-        if not article: continue
-        if article not in latest_articles:
-            logger.debug("Matched article not in latest articles, skipping", extra={"index": idx, "url": article.get_url()})
-            continue
+    latest_articles = [a for a in latest_articles if rahti.needs_updating(a.article)]
 
-        # We kinda ignore update / created times, and always use the latest, as articles
-        # might have been re-published without changing the timestamps.
-        minimum_date = datetime.min.replace(tzinfo=timezone.utc)
-        updated = max(article.updated_at or minimum_date,
-                      article.created_at or minimum_date)
-        if updated > rahti_entry.updated:
-            logger.debug("Article updated: %r (rahti: %s; updated: %s)", article.get_url(), rahti_entry.updated, updated, extra={"index": idx})
-            updated_articles_map[article] = idx
-        else:
-            # Remove from latest_articles to avoid re-processing
-            latest_articles.remove(article)
-
-    latest_articles = fetch_full_articles(latest_articles)
-
-    # TODO: Prune here already articles that are not needed to be processed further.
-
-    # Remove articles that can't be hash-matched to Rahti entries
-    latest_articles = [a for a in latest_articles if any(url.signature for url in a.urls)]
-
-    # Remove paywalled articles
-    latest_articles = [a for a in latest_articles if ArticleLabels.PAYWALLED not in a.labels]
-
-    # Early stop if no articles to process
+    # Early stop if no articles need updating
     if not latest_articles:
-        logger.info("No updated articles to process, exiting")
+        logger.info("No articles need updating, exiting")
         return
 
-    logger.debug("Fetched full articles for %d updated articles", len(latest_articles))
+    # Fetch full articles for those that need updating
+    logger.info("After checking for updates, %d articles need updating", len(latest_articles))
+    full_articles = fetch_full_articles(latest_articles)
 
-
-    ## Collect old rahti entries for informing title generation.
-    # List is aligned with latest_articles, so that old_entries[i] corresponds to latest_articles[i]
-    # If article is new, old_entries[i] is None
-    old_entries: list[RahtiEntry | None] = []
-
-    updated_articles = list(updated_articles_map.keys())
-    for article in latest_articles:
-        v = None
-
-        if article in updated_articles:
-            idx = updated_articles_map[article]
-            v = old_data.entries[idx]
-            logger.debug("Article is updated, marking old Rahti entry for update: %r", v.title)
-        old_entries.append(v)
-
-    # Process titles
-    logger.info("Processing titles for %d articles", len(latest_articles))
-    title_results = generate_titles(latest_articles, old_entries)
-
-
-    # Partition results
-    articles = []
-    titles = []
-    for e in title_results:
-        articles.append(e.article)
-        titles.append(e.title)
-
-    if settings.DEBUG:
-        pprint(titles)
-
-    new_entries: List[RahtiEntry] = []
-
-    # Store results back to Rahti
-    for article, title in title_results:
-        logger.info("Processed article", url=article.get_url(), title=title.title)
-        rahti_entry = convert_for_rahti(article, title)
-        # If article is in rahti already, replace the old entry
-        if article in updated_articles_map.keys():
-            idx = updated_articles_map[article]
-            old_data.entries[idx] = rahti_entry
-        else:
-            new_entries.append(rahti_entry)
-
-    # HACK: Free memory, and also avoid accidental usage later
+    # free and prevent accidental usage
     del latest_articles
-    del updated_articles
-    del title_results
 
-    # Prune old entries
-    valid_rahti, expired_rahti = prune_partition(old_data.entries)
-    logger.info("Pruned Rahti entries: %d valid, %d expired", len(valid_rahti), len(expired_rahti))
+    nr = len(full_articles)
+
+    # Prune out articles that are not needed to be processed further
+    full_articles = [a for a in full_articles if has_handled_url(a.article)]
+
+    logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
+
+    ## Generate titles for articles
+    # Collect old titles
+    old_titles = []
+    for a in full_articles:
+        old_titles.append(rahti.find_by_article(a.article))
+
+    titles = generate_titles(full_articles, old_titles=old_titles)
+
+    # Match articles to old Rahti entries
+    for result in titles:
+        if not result.source:
+            logger.warning("Article result has no source, skipping: %r", result.article.get_url())
+            continue
+
+        rahti_entry = convert_for_rahti(result.source, result.article, result.title)
+        rahti.upsert(rahti_entry)
+
+    # Final pass - remove old entries that are no longer needed
+    cleaned_entries = prune_rahti(rahti.rahti.entries, settings.sources)
+
+    # collect removed entries for logging
+    removed_entries = [e for e in rahti.rahti.entries if e not in cleaned_entries]
+    rahti.rahti.entries = cleaned_entries
+
+    logger.info("After pruning Rahti entries, %d entries remain, %d removed", len(rahti.rahti.entries), len(removed_entries))
 
     # Prepare commit message
+    articles_for_commit = [t.article for t in titles if t.source]
+    titles_for_commit = [t.title for t in titles if t.source]
+
     commit_message = Template(COMMIT_MESSAGE).render(
-        articles=articles,
-        titles=titles,
-        removed=expired_rahti,
+        articles=articles_for_commit,
+        titles=titles_for_commit,
+        removed=removed_entries,
     )
 
-    rahti_cargo = old_data.model_copy(update={
-        "status": "ok",
-        "updated": now,
-        "entries": new_entries + valid_rahti,
-    }, deep=True)
-
     # Validate before pushing
-    test_json = rahti_cargo.model_dump_json()
-    RahtiData.model_validate_json(test_json)
+    test_json = rahti.model_dump_json()
+    assert RahtiData.model_validate_json(test_json)
+
+    print(commit_message)
 
     rahti_repo.push(
         hash_of_stored_file,
-        rahti_cargo,
+        rahti.rahti,
         commit_message,
     )
 
@@ -222,10 +166,13 @@ def list_sources():
 def test(url):
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)
-    print(article.text[0:200], "...", "\n", "...", article.text[-200:])
+    if article.text:
+        print(article.text[0:200], "...", "\n", "...", article.text[-200:])
 
-    _, p = generate_titles([article])[0]
-    pprint(p.model_dump())
+    from .pipelines.title import TitlePredictor
+    predictor = TitlePredictor()
+    result = predictor.run(article)
+    pprint(result.model_dump())
 
 
 if __name__ == "__main__":

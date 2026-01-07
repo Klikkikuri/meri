@@ -26,6 +26,8 @@ def title_validator(v: str) -> str:
     if v != normalized:
         logger.warning("Suspicious: Title normalization doesn't match: %r -> %r", v, normalized, extra={"original": v, "normalized": normalized})
 
+    return normalized
+
     # Check if contains non-printable characters
     if any(not c.isprintable() for c in v):
         raise ValidationError("Title contains non-printable characters")
@@ -140,8 +142,8 @@ class Article(BaseModel):
                         existing_urls.add(label)
                 continue
 
-        # If no text is present, use the other article's text.
-        if not self.text and other.text:
+        # Copy over text if the other article has more text
+        if len(self.text or "") < len(other.text or ""):
             self.text = other.text
 
         return self
