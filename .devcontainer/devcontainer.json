@@ -14,7 +14,7 @@
 
 	"features": {
 		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
-			"moby": true,
+			"moby": false,  // Not supported on trixie
 			"installDockerBuildx": true,
 			"version": "latest",
 			"dockerDashComposeVersion": "none"
@@ -75,6 +75,7 @@
 	},
 
 	"mounts": [
+		"source=${localWorkspaceFolder}/../suola,target=/app/packages/suola,type=bind,consistency=cached"
 	],
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
