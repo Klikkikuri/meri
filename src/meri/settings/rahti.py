@@ -48,7 +48,7 @@ class RahtiGithubSettings(RahtiBaseSettings):
         HttpUrl("https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"),
         description="Target URL for Rahti data.",
     )  
-    auth_token: Optional[SecretStr] = Field(
+    auth_token: SecretStr = Field(
         description="GitHub token for GitHub API access.",
         alias="GITHUB_TOKEN"
     )
