@@ -5,9 +5,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      target: build
+      target: production
+    command: python -m meri run --sample
+    volumes:
+      - ./instance:/app/instance:rw,cached
+      #- ./:/app:rw,cached
+      - /app/.venv
+    environment:
+      KLIKKIKURI_CONFIG_FILE: /app/instance/config.yaml
     networks:
       - meri
+    env_file:
+      - .env
 
   development:
     extends:

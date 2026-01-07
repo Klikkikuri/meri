@@ -79,8 +79,9 @@ ENV UV_LINK_MODE=copy
 ENV SENTRY_ENVIRONMENT="development"
 
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
-    PATH="${VIRTUAL_ENV}/bin/:${PATH}"
-
+    PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
+    XDG_CONFIG_HOME="/app/instance"
+    
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
     ANONYMIZED_TELEMETRY="False"
@@ -100,3 +101,37 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     chown -R vscode:vscode /app/.venv
 
 USER vscode
+
+# Production stage
+
+FROM python:${PYTHON_VERSION}-slim AS production
+
+ARG VIRTUAL_ENV
+
+WORKDIR /app
+
+VOLUME [ "/app/instance" ]
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    VIRTUAL_ENV=${VIRTUAL_ENV} \
+    PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
+    XDG_CONFIG_HOME="/app/instance"
+
+# Disable telemetry
+ENV HAYSTACK_TELEMETRY_ENABLED="False" \
+    ANONYMIZED_TELEMETRY="False" \
+    SENTRY_ENVIRONMENT="production"
+
+# Copy virtual environment from build stage
+COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
+
+# Copy application code
+COPY --from=build /app /app
+
+# Create non-root user
+RUN useradd -m -u 1000 meri && mkdir /app/instance && chown -R meri:meri /app/instance
+
+USER meri
+
+CMD ["python", "-m", "meri"]

@@ -75,6 +75,7 @@ DEFAULT_CONFIG_PATH = _user_config_path
 # notice: order is reversed to give precedence to the user defined settings
 _settings_file_location: list[Path] = [
     Path("/app/config.yaml"),  # Devcontainer user settings
+    Path("/app/instance/config.yaml"),  # Instance folder settings
     Path("/config/config.yaml"),  # Docker settings
     Path.cwd() / "config.yaml",  # Local settings
     Path(site_config_dir(PKG_NAME)) / "config.yaml",  # System wide settings

@@ -4,7 +4,6 @@ from importlib.util import find_spec
 
 from jinja2 import Template
 from opentelemetry import trace
-from rich.pretty import pprint  # TODO: remove from production code
 from structlog import get_logger
 
 from meri.settings import settings, init_settings
@@ -20,7 +19,12 @@ from .lautta import (
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
-from .utils import setup_logging, setup_tracing
+from .utils import setup_logging, setup_sentry, setup_tracing
+
+try:
+    from rich.pretty import pprint
+except ImportError:
+    from pprint import pprint
 
 try:
     import rich_click as click
@@ -45,6 +49,7 @@ def cli(cache: bool, debug: bool):
 
     setup_logging(debug=debug)
     init_settings(debug=debug)
+    setup_sentry()
     setup_tracing()
 
     if cache:
@@ -137,6 +142,10 @@ def run(sample: bool):
         titles=titles_for_commit,
         removed=removed_entries,
     )
+
+    # Log prepared articles
+    for t in titles:
+        logger.info("Prepared article for Rahti: %r -> %r", t.article.get_url(), t.title)
 
     # Validate before pushing
     test_json = rahti.model_dump_json()
