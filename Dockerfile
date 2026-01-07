@@ -76,6 +76,8 @@ COPY --chown=vscode:vscode --from=build /app /app
 
 ENV UV_LINK_MODE=copy
 
+ENV SENTRY_ENVIRONMENT="development"
+
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}"
 

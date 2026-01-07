@@ -14,6 +14,28 @@
 # PROMPT_DIR: "/app/prompts"  # Directory for prompt templates
 # suola_rules: "/app/packages/suola/rules.yaml"  # Optional: path to Suola rules file
 
+sentry:
+  ## Sentry DSN for error tracking. 
+  ## It is recommended to use the SENTRY_DSN environment variable for security.
+  # dsn: "https://examplePublicKey@o0.ingest.sentry.io/0"
+
+  ## Sentry environment (e.g. 'production', 'development').
+  ## Used to separate events from different environments in the Sentry UI.
+  # environment: production
+
+  ## Enable or disable sending personally identifiable information (PII) like IP addresses.
+  # send_default_pii: true
+
+  ## Sample rate for tracing (0.0 to 1.0). 0.1 means 10% of transactions are recorded.
+  # traces_sample_rate: 0.1
+
+  ## Whether to send application logs to Sentry as breadcrumbs or events.
+  send_logs: false
+
+  ## Integrations (auto-detected if libraries are installed)
+  # openai_integration: true  # Enable OpenAI integration for tracking LLM calls
+  # otel_integration: true    # Enable OpenTelemetry integration
+
 ## --- News sources ---
 sources:
   ## RSS and Atom feeds are widely used for publishing lists of recent articles or updates.

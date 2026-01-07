@@ -47,6 +47,7 @@ from .llms import (
 )
 from .newssources import NewsSource
 from .rahti import RahtiSettings
+from .sentry import SentrySettings
 
 load_dotenv()
 
@@ -102,6 +103,11 @@ class Settings(BaseSettings):
     TRACING_ENABLED: bool = Field(
         _otel_available,
         description="Enable OpenTelemetry tracing.",
+    )
+
+    sentry: SentrySettings = Field(
+        default_factory=SentrySettings,  # type: ignore
+        description="Sentry settings.",
     )
 
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")

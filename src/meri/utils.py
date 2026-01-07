@@ -18,7 +18,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from url_normalize import url_normalize
 
-from .settings import settings
 from .exceptions import UnknownLanguageException
 
 logger = structlog.get_logger(__name__)
@@ -87,6 +86,8 @@ def setup_logging(debug=None):
     Configures structlog and standard logging.
     """
 
+    from .settings import settings
+
     # Determine root log level
     match settings.LOG_LEVEL.upper():
         case "DEBUG":
@@ -152,17 +153,57 @@ def setup_logging(debug=None):
         return
 
 
-def setup_tracing(name: str = __package__):
+def setup_sentry():
+    import sentry_sdk
+    from .settings import settings
+
+    if not settings.sentry.dsn:
+        logger.debug("Sentry DSN not set, skipping Sentry initialization")
+        return
+
+    integrations = []
+    if not settings.sentry.send_logs:
+        try:
+            from sentry_sdk.integrations.logging import LoggingIntegration
+            integrations.append(LoggingIntegration(event_level=None, level=None))
+        except ImportError:
+            pass
+
+    if settings.sentry.openai_integration:
+        try:
+            from sentry_sdk.integrations.openai import OpenAIIntegration
+            integrations.append(OpenAIIntegration())
+        except ImportError:
+            logger.debug("OpenAIIntegration not available")
+
+    # Note: OpenTelemetry integration is handled in setup_tracing to avoid
+    # conflicts with custom TracerProvider setup.
+
+    sentry_sdk.init(
+        dsn=settings.sentry.dsn,
+        # Add data like request headers and IP for users,
+        # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+        environment=settings.sentry.environment,
+        send_default_pii=settings.sentry.send_default_pii,
+        traces_sample_rate=settings.sentry.traces_sample_rate,
+        integrations=integrations,
+    )
+
+
+def setup_tracing(name: str | None = __package__):
     """
     Setup OpenTelemetry tracing.
 
     Tracing is enabled by default, but can be disabled by setting the `KLIKKIKURI_TRACING_ENABLED` setting to `False`.
     """
 
+    from .settings import settings
+
     if not settings.TRACING_ENABLED:
         logger.debug("Tracing is disabled")
         return None
 
+    name = name or "meri"
     pkg_metadata = metadata(name)
 
     # Collect resources
@@ -183,6 +224,14 @@ def setup_tracing(name: str = __package__):
     resource = get_aggregated_resources(resources, resource)
 
     trace_provider = TracerProvider(resource=resource)
+
+    if settings.TRACING_ENABLED and settings.sentry.dsn and settings.sentry.otel_integration:
+        try:
+            from sentry_sdk.integrations.opentelemetry import SentrySpanProcessor
+            trace_provider.add_span_processor(SentrySpanProcessor())
+            logger.debug("SentrySpanProcessor added to TracerProvider")
+        except ImportError:
+            logger.debug("SentrySpanProcessor not available, skipping Sentry OTel integration")
 
     # Setup exporter to send traces to otel endpoint
     # TODO: Move to config file
