@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from pydantic import HttpUrl
-from requests_cache import Optional
+from typing import Optional
 
 from ..settings.newssources import NewsSource
 
