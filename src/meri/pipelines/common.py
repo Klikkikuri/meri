@@ -21,7 +21,7 @@ class StructuredPipeline:
     """
 
     pipeline: Optional[Pipeline]
-    output_model: type[BaseModel]
+    output_model: BaseModel
 
     PIPELINE_NAME: ClassVar = PipelineType.DEFAULT
     
@@ -53,7 +53,7 @@ class StructuredPipeline:
             ChatMessage.from_system(prompt_template)
         ])
 
-        self._llm = get_generator(self.PIPELINE_NAME)
+        self._llm = get_generator(self.PIPELINE_NAME, settings)
 
         self.pipeline = Pipeline(max_runs_per_component=5)
         self.pipeline.add_component("prompt_builder", self._prompt)
