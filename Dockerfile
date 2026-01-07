@@ -83,8 +83,6 @@ ENV VIRTUAL_ENV=$VIRTUAL_ENV \
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
     ANONYMIZED_TELEMETRY="False"
 
-ENV RAHTI__URL="file:///app/instance/rahti/data.json"
-
 RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
 # Not needed since the base image already has these installed
