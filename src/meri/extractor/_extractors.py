@@ -56,7 +56,12 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
         include_tables=True,
         include_links=True,
         config=config,
-        date_extraction_params={"outputformat": date_iso_format, "deferred_url_extractor": True, "max_date": None },
+        date_extraction_params={
+            "outputformat": date_iso_format,
+            "deferred_url_extractor": True,
+            "max_date": None,
+            "url": url,
+        },
     )
 
     if not document:
@@ -65,6 +70,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     # # TODO: find_date is bad at finding "created" dates, it often finds "modified" dates instead
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
     # date_modified = find_date(downloaded, url=url, outputformat=iso_format, original_date=False, deferred_url_extractor=True)
+
 
     article = TrafilaturaArticle(
         meta=ArticleMeta(
