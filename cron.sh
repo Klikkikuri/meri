@@ -8,6 +8,34 @@ set -euo pipefail
 # Configuration
 REPO_DIR="${REPO_DIR:-$(dirname "$(readlink -f "$0")")}"
 COMPOSE_SERVICE="${COMPOSE_SERVICE:-meri}"
+LOCK_FILE="${LOCK_FILE:-/tmp/meri-cron.lock}"
+LOCK_TIMEOUT=300  # 5 minutes
+
+# Cleanup function
+cleanup() {
+    rm -f "$LOCK_FILE"
+}
+
+# Exit trap
+trap cleanup EXIT
+
+# Acquire lock
+acquire_lock() {
+    local lock_age
+    if [ -f "$LOCK_FILE" ]; then
+        lock_age=$(( $(date +%s) - $(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+        if [ "$lock_age" -lt "$LOCK_TIMEOUT" ]; then
+            echo "Deployment already in progress (lock age: ${lock_age}s). Exiting."
+            exit 0
+        else
+            echo "Removing stale lock (age: ${lock_age}s)"
+            rm -f "$LOCK_FILE"
+        fi
+    fi
+    touch "$LOCK_FILE"
+}
+
+acquire_lock
 
 # Change to repository directory
 pushd "$REPO_DIR"
