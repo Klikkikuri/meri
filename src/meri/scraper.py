@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
 from re import Pattern
@@ -94,6 +95,8 @@ def try_setup_requests_cache():
 
     requests_cache.install_cache(
         cache_name=str(cache_path),
+        expire_after=timedelta(minutes=15),
+        ignored_parameters=["api_key", "Authorization"],
     )
     logger.debug("Cache set up at %s", cache_path)
 
