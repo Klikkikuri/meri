@@ -4,11 +4,11 @@
 ## ===================================
 
 ## --- General settings ---
-# DEBUG: false  # Enable debug mode
+# DEBUG: false  # Enable debug mode, more verbose logging for selected components
 # TRACING_ENABLED: true  # Enable OpenTelemetry tracing (auto-detected if available)
 # BOT_ID: "Klikkikuri"  # Bot identifier
 # BOT_USER_AGENT: "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})"  # User agent string
-# LOGGING_LEVEL: INFO  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL. Ignored if DEBUG is true.
+# LOG_LEVEL: INFO  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.
 # REQUESTS_CACHE: true  # Enable HTTP requests cache (auto-detected if available)
 # MAX_WORKERS: 3  # Maximum number of worker threads for article processing
 # PROMPT_DIR: "/app/prompts"  # Directory for prompt templates

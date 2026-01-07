@@ -17,16 +17,17 @@ Order of precedence:
         - Devcontainer user settings: `/app/config.yaml`
 
 """
-from importlib.util import find_spec
 import logging
 import os
-from contextvars import ContextVar
 from importlib.metadata import PackageNotFoundError, metadata
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Literal, Type
 
+# Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
+from dotenv import load_dotenv
 from platformdirs import site_config_dir, user_config_dir
-from pydantic import Field, HttpUrl, SecretStr, root_validator
+from pydantic import Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -34,27 +35,24 @@ from pydantic_settings import (
     YamlConfigSettingsSource,
 )
 
-from .rahti import RahtiSettings
-
-from .newssources import NewsSource
-
+from .const import (
+    DEFAULT_BOT_ID,
+    PKG_NAME,
+)
 from .llms import (
     GeneratorProviderError,
     GeneratorSettings,
     LLMSetting,
     detect_generators,
 )
+from .newssources import NewsSource
+from .rahti import RahtiSettings
 
-from .const import (
-    DEFAULT_BOT_ID,
-    PKG_NAME,
-)
+load_dotenv()
 
 logger = logging.getLogger(__name__)
-
-# Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
-from dotenv import load_dotenv
-load_dotenv()
+if os.getenv("DEBUG", "0") == "1":
+    logger.setLevel(logging.DEBUG)
 
 _pkg_metadata: dict = {}
 
@@ -78,7 +76,7 @@ _settings_file_location: list[Path] = [
     Path("/app/config.yaml"),  # Devcontainer user settings
     Path("/config/config.yaml"),  # Docker settings
     Path.cwd() / "config.yaml",  # Local settings
-    Path(site_config_dir("meri")) / "config.yaml",  # System wide settings
+    Path(site_config_dir(PKG_NAME)) / "config.yaml",  # System wide settings
     _user_config_path
 ]
 if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
@@ -114,7 +112,7 @@ class Settings(BaseSettings):
     )
 
     # Logging settings
-    LOGGING_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         "INFO",
         description="Logging level.",
     )
@@ -136,14 +134,15 @@ class Settings(BaseSettings):
 
     rahti: RahtiSettings
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def parse_llm_settings(cls, values):
         _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
         _logger.debug(f"Values: {values}")
         llm_list = values.get('llm', [])
 
         # Map provider literal to class
-        provider_to_class = {cls.__fields__['provider'].default: cls for cls in GeneratorSettings.__subclasses__()}
+        provider_to_class = {model_cls.model_fields['provider'].default: model_cls for model_cls in GeneratorSettings.__subclasses__()}
         _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
@@ -163,7 +162,8 @@ class Settings(BaseSettings):
         return values
 
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
+    @classmethod
     def _compute_user_agent(cls, values):
         """
         Compute the user-agent string.
@@ -201,6 +201,13 @@ class Settings(BaseSettings):
         )
 
 
-settings_var: ContextVar[Settings] = ContextVar(f"{__package__}.settings_var", default=Settings())
-settings = settings_var.get()
+settings: Settings = Settings()  # type: ignore
 
+def init_settings(**kwargs) -> Settings:
+    """
+    Initialize and return the settings.
+    """
+    global settings
+    s = Settings(**kwargs)  # type: ignore
+    settings = s
+    return s
