@@ -44,8 +44,9 @@ _requests_cache_available: bool = find_spec("requests_cache") is not None
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
 @click.option("--debug", help="Enable or disable debug mode.", default=bool(os.getenv("DEBUG", False)))
 def cli(cache: bool, debug: bool):
-    if debug:
-        os.environ["DEBUG"] = "1"
+
+    os.environ["DEBUG"] = "1" if debug else "0"
+    os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
     setup_logging(debug=debug)
     init_settings(debug=debug)
@@ -58,13 +59,16 @@ def cli(cache: bool, debug: bool):
 
         try_setup_requests_cache()
 
-    os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
 
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited data.")
+@click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of workers to use for fetching articles.")
 @tracer.start_as_current_span("cli.run")
-def run(sample: bool):
+def run(sample: bool, max_workers: int):
+
+    if max_workers is not None:
+        settings.MAX_WORKERS = max_workers
 
     # Fetch old data from Rahti
     rahti_repo = create_rahti(settings.rahti)
@@ -145,7 +149,7 @@ def run(sample: bool):
 
     # Log prepared articles
     for t in titles:
-        logger.info("Prepared article for Rahti: %r -> %r", t.article.get_url(), t.title)
+        logger.info("Prepared article for Rahti: %r -> %r", t.article.get_url(), t.title.title)
 
     # Validate before pushing
     test_json = rahti.model_dump_json()
