@@ -42,7 +42,10 @@ echo "Deployment completed successfully (commit: ${REMOTE_HASH:0:8})"
 
 # Optional: Clean up old images
 echo "Cleaning up dangling images..."
-docker image prune -f
+if [ -n "$BUILD_FLAG" ]; then
+    echo "Since a build was performed, pruning unused images..."
+    docker image prune -f
+fi
 
 popd
 exit 0
