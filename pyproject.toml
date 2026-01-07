@@ -15,6 +15,7 @@ dependencies = [
     "fastfeedparser>=0.4.4",
     "haystack-ai>=2.9.0",
     "htmldate[speed]>=1.9.3",
+    "jinja2-time>=0.2.0",
     "langdetect>=1.0.9",
     "lxml[html-clean]>=5.3.0",
     "markdownify>=0.14.1",

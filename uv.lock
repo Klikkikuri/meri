@@ -38,6 +38,19 @@ wheels = [
 ]
 
 [[package]]
+name = "arrow"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "python-dateutil" },
+    { name = "tzdata" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/33/032cdc44182491aa708d06a68b62434140d8c50820a087fac7af37703357/arrow-1.4.0.tar.gz", hash = "sha256:ed0cc050e98001b8779e84d461b0098c4ac597e88704a655582b21d116e526d7", size = 152931 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ed/c9/d7977eaacb9df673210491da99e6a247e93df98c715fc43fd136ce1d3d33/arrow-1.4.0-py3-none-any.whl", hash = "sha256:749f0769958ebdc79c173ff0b0670d59051a535fa26e8eba02953dc19eb43205", size = 68797 },
+]
+
+[[package]]
 name = "asttokens"
 version = "3.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -770,6 +783,19 @@ wheels = [
 ]
 
 [[package]]
+name = "jinja2-time"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "arrow" },
+    { name = "jinja2" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/de/7c/ee2f2014a2a0616ad3328e58e7dac879251babdb4cb796d770b5d32c469f/jinja2-time-0.2.0.tar.gz", hash = "sha256:d14eaa4d315e7688daa4969f616f226614350c48730bfa1692d2caebd8c90d40", size = 5701 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6a/a1/d44fa38306ffa34a7e1af09632b158e13ec89670ce491f8a15af3ebcb4e4/jinja2_time-0.2.0-py2.py3-none-any.whl", hash = "sha256:d3eab6605e3ec8b7a0863df09cc1d23714908fa61aa6986a845c20ba488b4efa", size = 6360 },
+]
+
+[[package]]
 name = "jiter"
 version = "0.12.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1070,6 +1096,7 @@ dependencies = [
     { name = "fastfeedparser" },
     { name = "haystack-ai" },
     { name = "htmldate", extra = ["speed"] },
+    { name = "jinja2-time" },
     { name = "langdetect" },
     { name = "lxml", extra = ["html-clean"] },
     { name = "markdownify" },
@@ -1129,6 +1156,7 @@ requires-dist = [
     { name = "fastfeedparser", specifier = ">=0.4.4" },
     { name = "haystack-ai", specifier = ">=2.9.0" },
     { name = "htmldate", extras = ["speed"], specifier = ">=1.9.3" },
+    { name = "jinja2-time", specifier = ">=0.2.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "lxml", extras = ["html-clean"], specifier = ">=5.3.0" },
     { name = "markdownify", specifier = ">=0.14.1" },

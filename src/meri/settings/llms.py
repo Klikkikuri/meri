@@ -1,7 +1,7 @@
 import logging
 import os
 from abc import ABC
-from typing import Literal, Optional, Self
+from typing import Literal, Optional, Self, TypedDict
 from typing_extensions import Annotated
 
 from pydantic import AnyHttpUrl, Field, SecretStr, model_validator
@@ -107,6 +107,15 @@ class GoogleGeminiSettings(GeneratorSettings):
     _generator: str = "haystack_integrations.components.generators.google_genai.GoogleGenAIChatGenerator"
 
 
+class _OpenRouterProviderSettings(TypedDict):
+    sort: Literal["latency", "quality", "price"]
+    "Prefer providers sorted by latency, quality, or price."
+    zdr: bool
+    "Use Zero Data Retention providers only."
+
+class _OpenRouterReasoningEffort(TypedDict):
+    effort: Literal["xhigh", "high", "medium", "low", "minimal", "none"]
+    exclude: bool
 
 class OpenRouterSettings(GeneratorSettings):
     provider: Literal["openrouter"] = "openrouter"
@@ -115,10 +124,14 @@ class OpenRouterSettings(GeneratorSettings):
     api_base_url: AnyHttpUrl = Field('https://openrouter.ai/api/v1', description="OpenRouter API base URL.")
     generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
-        "provider": {  # https://openrouter.ai/docs/guides/routing/provider-selection
-            "sort": "price",  # Prefer cheaper providers
-            "zdr": True,  # Zero Data Retention providers only
-        },
+        "provider": _OpenRouterProviderSettings(
+            sort="price",  # Prefer cheaper providers
+            zdr=True,  # Zero Data Retention providers only
+        ),
+        "reasoning": _OpenRouterReasoningEffort(
+            effort="minimal",
+            exclude=False,
+        ),
     }, description="OpenRouter generation arguments.")
 
     _generator: str = "haystack_integrations.components.generators.openrouter.OpenRouterChatGenerator"

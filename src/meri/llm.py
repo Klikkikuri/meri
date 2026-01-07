@@ -41,7 +41,7 @@ class PipelineType(Enum):
     DEFAULT = "default"
 
 
-def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings):
+def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings, **kwargs) -> object:
     """
     Get the generator based on the pipeline type and settings.
     
@@ -81,6 +81,11 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
 
         if param.annotation == HaystackSecret:
             generator_args[param.name] = HaystackSecret.from_token(generator_args[param.name])
+
+    # Deep merge with any additional kwargs
+    if kwargs:
+        generator_args.setdefault("generation_kwargs", {})
+        generator_args["generation_kwargs"].update(kwargs)
 
     # Create the generator instance
     r = generator_class(**generator_args)
