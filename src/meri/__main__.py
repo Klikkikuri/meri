@@ -7,7 +7,7 @@ from opentelemetry import trace
 from rich.pretty import pprint  # TODO: remove from production code
 from structlog import get_logger
 
-from meri.settings import settings
+from meri.settings import settings, init_settings
 
 from .lautta import (
     RahtiCleaner,
@@ -44,6 +44,7 @@ def cli(cache: bool, debug: bool):
         os.environ["DEBUG"] = "1"
 
     setup_logging(debug=debug)
+    init_settings(debug=debug)
     setup_tracing()
 
     if cache:
@@ -140,8 +141,6 @@ def run(sample: bool):
     # Validate before pushing
     test_json = rahti.model_dump_json()
     assert RahtiData.model_validate_json(test_json)
-
-    print(commit_message)
 
     rahti_repo.push(
         hash_of_stored_file,
