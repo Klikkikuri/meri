@@ -33,6 +33,7 @@ dependencies = [
     "trafilatura>=2.0.0",
     "ultimate-sitemap-parser>=1.6.0",
     "url-normalize>=1.4.3",
+    "wrapt>=1.17.2",
 ]
 requires-python = ">=3.12"
 
