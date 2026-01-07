@@ -1,3 +1,6 @@
 [submodule "packages/suola"]
 	path = packages/suola
 	url = ../suola.git
+[submodule "packages/rahti"]
+	path = packages/rahti
+	url = ../rahti.git

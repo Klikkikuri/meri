@@ -12,7 +12,7 @@ services:
       #- ./:/app:rw,cached
       - /app/.venv
     environment:
-      KLIKKIKURI_CONFIG_FILE: /app/instance/config.yaml
+      KLIKKIKURI_CONFIG_FILE: ${KLIKKIKURI_CONFIG_FILE:-/app/packages/rahti/config.yaml}
     networks:
       - meri
     env_file:
