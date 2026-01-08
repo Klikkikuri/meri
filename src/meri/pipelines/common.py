@@ -50,7 +50,8 @@ class StructuredPipeline:
         prompt_template = "\n\n".join(self.prompt_templates.values())
 
         self._prompt = ChatPromptBuilder([
-            ChatMessage.from_system(prompt_template)
+            ChatMessage.from_system(prompt_template),
+            ChatMessage.from_user("Now, please provide the response as per the response_schema."),
         ])
 
         self._llm = get_generator(self.PIPELINE_NAME, settings)
