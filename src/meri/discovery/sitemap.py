@@ -3,12 +3,10 @@ Sitemap page discoverer for extracting article URLs from XML sitemaps.
 """
 
 from datetime import datetime, timezone
-from typing import Generator, Iterable, Optional
 
 from pydantic import HttpUrl
 from structlog import get_logger
-from usp.tree import sitemap_tree_for_homepage
-from usp.web_client.requests_client import RequestsWebClient
+from usp.tree import sitemap_from_str
 import requests
 
 from meri.abc import ArticleMeta, article_url
@@ -19,31 +17,6 @@ from ._base import SourceDiscoverer
 from ._registry import registry
 
 logger = get_logger(__name__)
-
-
-def _create_web_client(timeout: int = 10) -> RequestsWebClient:
-    """
-    Create a RequestsWebClient configured with the application's user agent.
-    
-    :param timeout: Request timeout behavior (seconds to wait between requests)
-    :return: Configured RequestsWebClient instance
-    """
-    # Create a custom session with the user agent and timeout
-    session = requests.Session()
-    session.headers.update({
-        'User-Agent': settings.BOT_USER_AGENT
-    })
-    # Set timeout on the session's request method
-    original_request = session.request
-    def request_with_timeout(*args, **kwargs):
-        if 'timeout' not in kwargs:
-            kwargs['timeout'] = timeout
-        return original_request(*args, **kwargs)
-    session.request = request_with_timeout
-    
-    # Create the web client with the custom session
-    client = RequestsWebClient(session=session)
-    return client
 
 
 @registry.register("sitemap")
@@ -70,64 +43,16 @@ class SitemapDiscoverer(SourceDiscoverer):
             - 'max_depth': Maximum depth to traverse (default: 1, no traversal)
         :return: List of Article objects with metadata
         """
-        language = kwargs.get('language')
-        timeout = kwargs.get('timeout', 10)
-        max_depth = kwargs.get('max_depth', 1)  # Default: don't traverse nested sitemaps
-        parser = SitemapParser(str(source_url), language=language, timeout=timeout, max_depth=max_depth)
-        articles = parser.parse()
-        
-        return articles
-
-
-class SitemapParser(Iterable[Article]):
-    """
-    Convert sitemap data to a list of articles. Supports iteration over articles.
-    
-    This parser uses ultimate-sitemap-parser to discover and parse XML sitemaps
-    and converts pages to Article objects with metadata.
-    """
-    url: HttpUrl
-    language: Optional[str]
-
-    def __init__(self, url: str | HttpUrl, language: str | None = None, timeout: int = 10, max_depth: int = 1):
-        """
-        Initialize sitemap parser.
-        
-        :param url: URL of the website or direct sitemap URL
-        :param language: Default language for articles if not specified in sitemap
-        :param timeout: Request timeout in seconds (default: 10s)
-        :param max_depth: Maximum depth to traverse in sitemap index (default: 1 = no traversal)
-        """
-        self.url = HttpUrl(url)
-        self.language = language
-        self.timeout = timeout
-        self.max_depth = max_depth
-
-    def __iter__(self) -> Generator[Article, None, None]:
-        """Make the parser iterable using yield."""
-        try:
-            # Create web client with proper user agent and timeout
-            web_client = _create_web_client(timeout=self.timeout)
-            
-            # Define callback to prevent traversal of nested sitemaps
-            def prevent_traversal(url: str, depth: int, processed: set) -> bool:
-                """Prevent traversal beyond max_depth."""
-                return depth < self.max_depth
-            
-            tree = sitemap_tree_for_homepage(
-                str(self.url),
-                web_client=web_client,
-                recurse_callback=prevent_traversal  # Prevent traversal of nested sitemaps
-            )
-        except Exception as e:
-            logger.error(
-                "Failed to fetch sitemap tree",
-                url=str(self.url),
-                timeout=self.timeout,
-                max_depth=self.max_depth,
-                error=str(e)
-            )
-            return
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': settings.BOT_USER_AGENT,
+            'Accept-Encoding': 'gzip, deflate',
+        })
+        res = session.get(str(source_url), timeout=kwargs.get('timeout', 10))
+        res.raise_for_status()
+        sitemap_content = res.text
+        tree = sitemap_from_str(sitemap_content)
+        articles = []
 
         for page in tree.all_pages():
             url = page.url
@@ -173,10 +98,8 @@ class SitemapParser(Iterable[Article]):
                     change_freq = str(page.change_frequency).strip()
 
                 # Build metadata dict with Google News extensions if available
-                meta_dict: ArticleMeta = {
-                    "language": self.language,
-                }
-                
+                meta_dict: ArticleMeta = {}
+
                 # Extract Google News extensions if present
                 news_story = None
                 if hasattr(page, 'news_story') and page.news_story:
@@ -227,7 +150,7 @@ class SitemapParser(Iterable[Article]):
                 
                 logger.debug("Found article in sitemap", **log_data)
 
-                yield article
+                articles.append(article)
 
             except Exception as e:
                 logger.warning(
@@ -237,6 +160,4 @@ class SitemapParser(Iterable[Article]):
                 )
                 continue
 
-    def parse(self) -> list[Article]:
-        """Parse and return all articles as a list."""
-        return list(self)
+        return articles
