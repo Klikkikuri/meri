@@ -4,6 +4,7 @@ from importlib.util import find_spec
 
 from jinja2 import Template
 from opentelemetry import trace
+from sentry_sdk import monitor
 from structlog import get_logger
 
 from meri.settings import settings, init_settings
@@ -32,12 +33,14 @@ except ImportError:
     import click
 
 
+MERI_RUN_MONITOR_SLUG = "meri_run"
+
+
 logger = get_logger(__package__)
 tracer = trace.get_tracer(__package__ or "__main__")
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
-
 
 @click.group()
 @click.version_option()
@@ -65,6 +68,7 @@ def cli(cache: bool, debug: bool):
 @click.option("--sample", is_flag=True, help="Use limited data.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of workers to use for fetching articles.")
 @tracer.start_as_current_span("cli.run")
+@monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
 def run(sample: bool, max_workers: int):
 
     if max_workers is not None:
