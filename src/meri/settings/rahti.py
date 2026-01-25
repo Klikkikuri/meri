@@ -60,16 +60,22 @@ class RahtiGithubSettings(RahtiBaseSettings):
 
     committer: GitHubCommitter
 
-def match_by_url(v: dict) -> str:
+def match_by_url(v: object | dict) -> str:
     """
     Discriminator function to determine the Rahti settings type based on the URL.
     """
-    if isinstance(v, dict) and "url" in v:
-        url = v["url"]
-        if url.startswith("file://"):
-            return "file"
-        elif url.startswith("https://api.github.com"):
-            return "github"
+    url = ""
+    if hasattr(v, "url"):
+        url = v.url.strip()
+    elif isinstance(v, dict) and "url" in v:
+        url = v["url"].strip()
+    else:
+        raise ValueError("Rahti settings missing 'url' field")
+
+    if url.startswith("file://"):
+        return "file"
+    elif url.startswith("https://api.github.com"):
+        return "github"
 
     logger.error("Unknown Rahti settings type for value: %s", v)
     raise ValueError("Unknown Rahti settings type")
