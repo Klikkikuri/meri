@@ -51,10 +51,10 @@ def cli(cache: bool, debug: bool):
     os.environ["DEBUG"] = "1" if debug else "0"
     os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
-    setup_logging(debug=debug)
     init_settings(debug=debug)
-    setup_sentry()
+    setup_logging(debug=debug)
     setup_tracing()
+    setup_sentry()
 
     if cache:
         if not _requests_cache_available:

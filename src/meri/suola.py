@@ -40,7 +40,9 @@ def hash_url(url: Url) -> str | None:
 
             if not sign:
                 logger.debug("Suola returned no signature for URL: %s", url)
-            span.set_attribute("signature", "")
+                span.add_event("suola_no_signature")
+
+            span.set_attribute("signature", sign or "")
             return sign
         except Exception as e:
             span.record_exception(e)

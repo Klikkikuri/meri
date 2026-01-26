@@ -150,6 +150,7 @@ def setup_logging(debug=None):
 
     if debug:
         logging.getLogger(__package__).setLevel(logging.DEBUG)
+        logging.getLogger("haystack").setLevel(logging.DEBUG)
         return
 
 
@@ -187,6 +188,7 @@ def setup_sentry():
         send_default_pii=settings.sentry.send_default_pii,
         traces_sample_rate=settings.sentry.traces_sample_rate,
         integrations=integrations,
+        instrumenter="otel",
     )
 
 
