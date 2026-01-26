@@ -31,7 +31,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     """
     Extract the article using the trafilatura library.
     """
-    from trafilatura import bare_extraction, fetch_url,
+    from trafilatura import bare_extraction, fetch_url
     from trafilatura.settings import DEFAULT_CONFIG
     from trafilatura.settings import Document
 
