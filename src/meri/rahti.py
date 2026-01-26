@@ -129,8 +129,7 @@ class RahtiFile(RahtiProtocol):
 class RahtiRepo(RahtiProtocol):
     """
     Interact with remote rahti data.
-
-    """ 
+    """
     settings: RahtiGithubSettings
     _session: requests.Session
 
@@ -154,6 +153,7 @@ class RahtiRepo(RahtiProtocol):
             target_url,
             headers={
                 "Authorization": f"Bearer {auth_token!s}",
+                "Cache-Control": "no-cache",
             },
             timeout=30
         )
