@@ -39,10 +39,14 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     # https://trafilatura.readthedocs.io/en/latest/settings.html
     config = deepcopy(DEFAULT_CONFIG)
     config["DEFAULT"]["USER_AGENTS"] = get_user_agent()
+    config["DEFAULT"]["MAX_REDIRECTS"] = "3"  # Trafilature uses this also for retries
     config["DEFAULT"].setdefault("DOWNLOAD_TIMEOUT", str(randint(5, 12)))  # nosec
     config["DEFAULT"].setdefault("SLEEP_TIME", str(randint(1, 5)))  # nosec
 
     url = clean_url(str(url))
+
+    span = trace.get_current_span()
+    span.set_attribute("url", url)
 
     downloaded = fetch_url(url, config=config)
 
@@ -65,6 +69,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     )
 
     if not document:
+        logger.warning("Trafilatura failed to extract article from URL: %s", url, extra={"downloaded": downloaded})
         raise ValueError(f"Failed to extract article from URL {url}")
 
     # # TODO: find_date is bad at finding "created" dates, it often finds "modified" dates instead
