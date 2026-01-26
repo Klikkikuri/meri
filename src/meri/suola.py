@@ -16,7 +16,6 @@ _suola_var: ContextVar[Optional[Suola]] = ContextVar(f"{__name__}.suola", defaul
 type Url = str | HttpUrl | AnyHttpUrl
 
 logger = logging.getLogger(__name__)
-tracer = trace.get_tracer(__name__)
 
 
 def hash_url(url: Url) -> str | None:
@@ -25,6 +24,8 @@ def hash_url(url: Url) -> str | None:
     """
     url = str(url)
     url = url.strip()
+
+    tracer = trace.get_tracer(__name__)
 
     with tracer.start_as_current_span("suola.hash_url") as span:
         span.set_attribute("url", url)
