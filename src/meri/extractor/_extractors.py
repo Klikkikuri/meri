@@ -1,6 +1,7 @@
 from copy import deepcopy
 from datetime import datetime, timezone
 from random import randint
+from typing import cast
 
 from opentelemetry import trace
 from pydantic import AnyHttpUrl
@@ -30,8 +31,9 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     """
     Extract the article using the trafilatura library.
     """
-    from trafilatura import bare_extraction, fetch_url
+    from trafilatura import bare_extraction, fetch_url,
     from trafilatura.settings import DEFAULT_CONFIG
+    from trafilatura.settings import Document
 
     # Find date in ISO 8601 format
     date_iso_format = r"%Y-%m-%dT%H:%M:%S%z"
@@ -67,6 +69,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
             "url": url,
         },
     )
+    document = cast(Document | None, document)
 
     if not document:
         logger.warning("Trafilatura failed to extract article from URL: %s", url, extra={"downloaded": downloaded})
@@ -76,22 +79,27 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
     # date_modified = find_date(downloaded, url=url, outputformat=iso_format, original_date=False, deferred_url_extractor=True)
 
+    if not document.text:
+        logger.warning("Trafilatura extracted article has no text URL: %r", url, extra={"document": document})
+        raise ValueError(f"Extracted article has no text (url: {url!r})")
 
     article = TrafilaturaArticle(
         meta=ArticleMeta(
             title=document.title,
             language=document.language or detect_language(document.text),
             authors=[] if not document.author else [document.author],
-            date=document.date,
         ),
         text=document.text,
         urls=[
-            article_url(document.url, labels=[LinkLabel.LINK_CANONICAL]),
+            article_url(
+                document.url,  # type: ignore[arg-type]
+                labels=[LinkLabel.LINK_CANONICAL]
+            ),
         ],
         created_at=None,
         updated_at=None,
 
-        html=downloaded
+        html=downloaded  # type: ignore[arg-type]
     )
 
 
