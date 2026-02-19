@@ -16,6 +16,7 @@ from .lautta import (
     fetch_latest,
     generate_titles,
     has_handled_url,
+    has_text,
     prune_rahti,
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
@@ -111,7 +112,21 @@ def run(sample: bool, max_workers: int):
     nr = len(full_articles)
 
     # Prune out articles that are not needed to be processed further
-    full_articles = [a for a in full_articles if has_handled_url(a.article)]
+    for i, a in enumerate(full_articles):
+        with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
+            if not has_handled_url(a.article):
+                span.set_attribute("prune_reason", "unhandled_url")
+                logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
+                full_articles.pop(i)
+            elif not has_text(a.article):
+                span.set_attribute("prune_reason", "no_text")
+                logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
+                    "text": a.article.text
+                })
+                full_articles.pop(i)
+            else:
+                span.set_attribute("prune_reason", "keep")
+
 
     logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 

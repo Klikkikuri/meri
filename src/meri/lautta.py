@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import random
 import threading
-from typing import Iterable, List, NamedTuple, Optional, Tuple, cast
+from typing import Iterable, List, NamedTuple, Optional, cast
 
 import pytz
 import wrapt
@@ -19,6 +19,11 @@ from .settings.newssources import NewsSource
 from .utils import setup_logging
 
 MAX_PARALLEL_FETCHES = 3
+
+MINIMUM_TEXT_WORDS = 50
+""" Minimum number of words in article text to be considered valid. Articles with less text will be filtered out.
+This is a simple heuristic to remove articles that failed to extract properly or are not actual news articles
+(e.g. videos, galleries, etc.). """
 
 logger = logging.getLogger(__name__)
 
@@ -172,21 +177,21 @@ def fetch_full_articles(discovered_stubs: list[DiscoveredArticle]) -> list[Disco
 def prune_rahti(rahti: List[RahtiEntry], sources: list[NewsSource]) -> List[RahtiEntry]:
     """
     Filter RahtiEntry objects based on source-specific filtering settings.
-    
+
     Applies max_age_days and max_num_articles per source while maintaining original order.
     When max_num_articles is applied, keeps the newest entries and removes the oldest ones.
-    
+
     :param rahti: List of RahtiEntry objects to filter
     :param sources: List of NewsSource configurations with filtering rules
     :return: Filtered list of RahtiEntry objects in original order
     """
     # Build a lookup map from source name to source settings
     source_map = {source.name: source for source in sources if source.name and source.enabled}
-    
+
     if not source_map:
         logger.info("No enabled sources with names found, returning empty rahti")
         return []
-    
+
     now = datetime.now(pytz.UTC)
 
     # First pass: filter by max_age_days and enabled status
@@ -198,7 +203,7 @@ def prune_rahti(rahti: List[RahtiEntry], sources: list[NewsSource]) -> List[Raht
             continue
 
         source = source_map[entry.outlet]
-        
+
         # Apply max_age_days filter if set
         if source.max_age_days is not None:
             # TODO: Maybe pre-compute cutoff dates per source for efficiency
@@ -207,20 +212,20 @@ def prune_rahti(rahti: List[RahtiEntry], sources: list[NewsSource]) -> List[Raht
                 continue
 
         filtered_entries.append(entry)
-    
+
     # Second pass: apply max_num_articles per source, keeping newest entries
     # Group entries by source outlet
     entries_by_source: dict[str, List[tuple[int, RahtiEntry]]] = defaultdict(list)
     for idx, entry in enumerate(filtered_entries):
         entries_by_source[entry.outlet].append((idx, entry))  # type: ignore
-    
+
     # For each source, keep only the newest max_num_articles entries
     indices_to_keep = set()
     for outlet, indexed_entries in entries_by_source.items():
         source = source_map.get(outlet)
         if source is None:
             continue
-        
+
         if source.max_num_articles is not None:
             # Sort by updated timestamp (newest first), keep indices for ordering
             sorted_entries = sorted(indexed_entries, key=lambda x: x[1].updated, reverse=True)
@@ -230,7 +235,7 @@ def prune_rahti(rahti: List[RahtiEntry], sources: list[NewsSource]) -> List[Raht
         else:
             # No limit, keep all
             indices_to_keep.update(idx for idx, _ in indexed_entries)
-    
+
     # Return entries in original order
     return [entry for idx, entry in enumerate(filtered_entries) if idx in indices_to_keep]
 
@@ -255,6 +260,18 @@ def has_handled_url(article: Article) -> bool:
     if not article.urls:
         return False
     if not any(url.signature for url in article.urls):
+        return False
+    return True
+
+
+def has_text(article: Article) -> bool:
+    """
+    Check if the article has enough text content to be considered valid.
+    """
+    text = article.text.strip() if article.text else ""
+    word_count = len(text.split())
+    if word_count < MINIMUM_TEXT_WORDS:
+        logger.warning("Article has insufficient text content (word count: %d), filtering out: %r", word_count, article.get_url(), extra={"word_count": word_count, "url": str(article.get_url())})
         return False
     return True
 
