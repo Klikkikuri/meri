@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 import random
+import re
 import threading
 from typing import Iterable, List, NamedTuple, Optional, cast
 
@@ -26,6 +28,36 @@ This is a simple heuristic to remove articles that failed to extract properly or
 (e.g. videos, galleries, etc.). """
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class UrlMatcher:
+
+    substrings: list[str]
+    regexes: list[re.Pattern]
+
+    @classmethod
+    def from_config(cls, blacklist: list[str]) -> "UrlMatcher":
+        substrings, regexes = [], []
+        for pattern in blacklist:
+            if pattern.startswith("/") and pattern.endswith("/"):
+                try:
+                    regexes.append(re.compile(pattern[1:-1]))
+                except re.error as e:
+                    logger.warning("Invalid regex pattern in URL blacklist: %r (error: %s)", pattern, e)
+            else:
+                substrings.append(pattern)
+        return cls(substrings=substrings, regexes=regexes)
+
+    def matches(self, url: str) -> bool:
+        """Check if the URL matches any of the blacklist patterns."""
+        # For efficiency, check substrings first before regexes, since regexes are more expensive to evaluate.
+        # any() is lazy, so it will stop at the first match.
+        return (
+            any(substring in url for substring in self.substrings)
+            or any(regex.search(url) for regex in self.regexes)
+        )
+
 
 def fetch_source(source: NewsSource) -> List[Article]:
     """

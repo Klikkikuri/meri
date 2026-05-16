@@ -139,6 +139,13 @@ class Settings(BaseSettings):
         description="Path to Suola rules file. If not set, inbuilt rules will be used.",
     )
 
+    url_blacklist: list[str] = Field(default_factory=list, description="List of URL patterns to ignore.")
+    """
+    URL patterns to ignore. Can be substrings or regex patterns (if enclosed in slashes, e.g. `/pattern/`).
+
+    This is to limit the scope of scraping to relevant sites, and not to log suola errors for irrelevant sites.
+    """
+
     rahti: RahtiSettings
 
     @model_validator(mode="before")

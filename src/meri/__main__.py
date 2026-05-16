@@ -11,6 +11,7 @@ from meri.settings import settings, init_settings
 
 from .lautta import (
     RahtiCleaner,
+    UrlMatcher,
     convert_for_rahti,
     fetch_full_articles,
     fetch_latest,
@@ -75,6 +76,9 @@ def run(sample: bool, max_workers: int):
     if max_workers is not None:
         settings.MAX_WORKERS = max_workers
 
+    # Load url blacklist for filtering out unwanted articles early
+    url_filter = UrlMatcher.from_config(settings.url_blacklist or [])
+
     # Fetch old data from Rahti
     rahti_repo = create_rahti(settings.rahti)
 
@@ -84,6 +88,15 @@ def run(sample: bool, max_workers: int):
 
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
+
+    # articles with blacklisted URLs
+    filtered_articles = []
+    for a in latest_articles:
+        if url_filter.matches(str(a.article.get_url())):
+            logger.debug("Filtering out blacklisted URL: %r", a.article.get_url())
+        else:
+            filtered_articles.append(a)
+    latest_articles = filtered_articles
 
     if sample:
         sorted_articles = sorted(latest_articles, key=lambda a: a.article.created_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
