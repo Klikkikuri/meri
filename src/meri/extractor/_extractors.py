@@ -12,6 +12,7 @@ from meri.scraper import get_user_agent
 from meri.utils import clean_url, detect_language
 
 from ._common import HtmlArticle
+from ._cfchallenge import CloudflareStatus, cloudflare_status
 
 tracer = trace.get_tracer(__name__)
 
@@ -52,6 +53,10 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
 
     downloaded = fetch_url(url, config=config)
 
+    if not downloaded:
+        logger.warning("Trafilatura failed to download URL: %s", url)
+        raise ValueError(f"Failed to download URL {url}")
+
     document = bare_extraction(
         downloaded,
         url=url,
@@ -74,6 +79,17 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     if not document:
         logger.warning("Trafilatura failed to extract article from URL: %s", url, extra={"downloaded": downloaded})
         raise ValueError(f"Failed to extract article from URL {url}")
+
+    # Check for cloudflare block
+    match cloudflare_status(downloaded):
+        case CloudflareStatus.CHALLENGE:
+            logger.warning("Cloudflare __challenge__ detected for URL: %s", url, extra={"document": document})
+            raise ValueError(f"Cloudflare challenge detected for URL {url}")
+        case CloudflareStatus.BLOCKED:
+            logger.error("Cloudflare __block__ detected for URL: %s", url, extra={"document": document})
+            raise ValueError(f"Cloudflare block detected for URL {url}")
+        case CloudflareStatus.OK | True:
+            pass  # No challenge or block detected
 
     # # TODO: find_date is bad at finding "created" dates, it often finds "modified" dates instead
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
