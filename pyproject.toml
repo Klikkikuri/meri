@@ -54,7 +54,7 @@ profile = "black"
 line_length = 120
 
 [tool.ruff]
-ignore = ["E701"]
+lint.ignore = ["E701"]
 
 [tool.uv]
 dev-dependencies = [
