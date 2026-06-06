@@ -34,6 +34,7 @@ from pydantic_settings import (
     SettingsConfigDict,
     YamlConfigSettingsSource,
 )
+from yaml import YAMLError, safe_load
 
 from .const import (
     DEFAULT_BOT_ID,
@@ -85,6 +86,41 @@ if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
     _conf_file = Path(_conf_file)
     _settings_file_location.insert(0, _conf_file)
     DEFAULT_CONFIG_PATH = _conf_file
+
+
+def _lint_yaml_settings_files(paths: list[Path]) -> list[Path]:
+    """
+    Return existing, valid YAML config files and warn for invalid ones.
+
+    A valid settings file must parse as YAML and have a mapping at the root.
+    """
+    valid_paths: list[Path] = []
+
+    for path in paths:
+        if not path.exists() or not path.is_file():
+            continue
+
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                parsed = safe_load(f)
+        except (OSError, YAMLError) as e:
+            logger.warning("Ignoring invalid YAML settings file '%s': %s", path, e)
+            continue
+
+        if parsed is not None and not isinstance(parsed, dict):
+            logger.warning(
+                "Ignoring YAML settings file '%s': expected a mapping at root, got %s",
+                path,
+                type(parsed).__name__,
+            )
+            continue
+
+        valid_paths.append(path)
+
+    return valid_paths
+
+
+_settings_file_location = _lint_yaml_settings_files(_settings_file_location)
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
