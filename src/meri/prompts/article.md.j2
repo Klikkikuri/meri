@@ -9,8 +9,9 @@ Authors:{% for author in meta['authors'] %}
  - {{author|striptags|escape}}
 {% endfor %}{% endif %}
 
+Article content:
 ```markdown
-    {{text|indent(4)}}
+    {{text|indent(4)|striptags}}
 ```
 
 </article>
