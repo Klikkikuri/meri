@@ -135,7 +135,7 @@ class _OpenRouterReasoningEffort(TypedDict):
 
 class OpenRouterSettings(GeneratorSettings):
     provider: Literal["openrouter"] = "openrouter"
-    api_key: Optional[str] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
+    api_key: Optional[SecretStr] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
     model: str = Field('openai/gpt-oss-120b', description="OpenRouter model.")
     api_base_url: AnyHttpUrl = Field('https://openrouter.ai/api/v1', description="OpenRouter API base URL.")
     generation_kwargs: Optional[dict] = Field({
