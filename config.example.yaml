@@ -134,6 +134,12 @@ rahti:
 # --- LLM (Language Model) settings ---
 llm:
 
+  - name: "Google Gemini"
+    provider: gemini
+    model: "gemini-3.1-flash"
+    generation_config:
+      temperature: 0.0
+
   # See: https://openrouter.ai/docs/guides/routing/provider-selection
   - name: "OpenRouter GPT-OSS-120b"
     provider: openrouter
@@ -170,11 +176,4 @@ llm:
     model: "llama2"
     timeout: 30
     generation_kwargs:
-      temperature: 0.0
-
-  - name: "Google Gemini"
-    provider: google
-    api_key: "..."
-    model: "gemini-2.0-flash"
-    generation_config:
       temperature: 0.0
