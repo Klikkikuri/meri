@@ -114,7 +114,7 @@ class GoogleGeminiSettings(_OpenAISettingsBase):
     https://ai.google.dev/gemini-api/docs/openai
     """
     provider: Literal["gemini"] = "gemini"
-    api_key: SecretStr = Field(description="Google Gemini API key.", alias="gemini_api_key")
+    api_key: SecretStr = Field(description="Google Gemini API key.", validation_alias=AliasChoices("gemini_api_key", "api_key"))
     api_base_url: OpenAICompatibleUrl = Field("https://generativelanguage.googleapis.com/v1beta/openai", description="Google Gemini API base URL.")
     model: str = Field('gemini-3.1-flash-lite', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
     generation_kwargs: Optional[dict] = Field({
@@ -135,7 +135,7 @@ class _OpenRouterReasoningEffort(TypedDict):
 
 class OpenRouterSettings(GeneratorSettings):
     provider: Literal["openrouter"] = "openrouter"
-    api_key: Optional[str] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
+    api_key: Optional[str] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", validation_alias=AliasChoices("openrouter_api_key", "api_key"))
     model: str = Field('openai/gpt-oss-120b', description="OpenRouter model.")
     api_base_url: AnyHttpUrl = Field('https://openrouter.ai/api/v1', description="OpenRouter API base URL.")
     generation_kwargs: Optional[dict] = Field({

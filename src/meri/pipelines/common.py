@@ -1,4 +1,3 @@
-import json
 import logging
 from typing import Any, ClassVar, Optional
 
@@ -10,7 +9,6 @@ from pydantic import BaseModel
 from meri.settings import settings
 
 from ..llm import PipelineType, get_generator
-from ..pydantic_llm import PydanticOutputParser
 
 logger = logging.getLogger(__name__)
 
@@ -51,24 +49,17 @@ class StructuredPipeline:
 
         self._prompt = ChatPromptBuilder([
             ChatMessage.from_system(prompt_template),
-            ChatMessage.from_user("Now, please provide the response as per the response_schema."),
+            ChatMessage.from_user("Now, please generate the response."),
         ])
 
-        self._llm = get_generator(self.PIPELINE_NAME, settings)
+        # Request native structured output from the model by passing output_model to response_format
+        self._llm = get_generator(self.PIPELINE_NAME, settings, response_format=self.output_model)
 
-        self.pipeline = Pipeline(max_runs_per_component=5)
+        self.pipeline = Pipeline()
         self.pipeline.add_component("prompt_builder", self._prompt)
         self.pipeline.add_component("llm", self._llm)
-        self.pipeline.add_component("output_validator", PydanticOutputParser(self.output_model))
 
         self.pipeline.connect("prompt_builder", "llm")
-
-        if "response_schema" in self._prompt.variables:
-            self.pipeline.connect("llm", "output_validator")
-            self.pipeline.connect("output_validator.invalid_replies", "prompt_builder.invalid_replies")
-            self.pipeline.connect("output_validator.error_message", "prompt_builder.error_message")
-        else:
-            raise ValueError("Invalid template, missing response_schema")
 
         return self.pipeline
     
@@ -77,14 +68,6 @@ class StructuredPipeline:
 
         prompt_vars = {**prompt_vars, **kwargs}
         prompt_vars.setdefault("settings", settings)
-
-        if "response_schema" in self._prompt.variables:
-            prompt_vars["response_schema"] = json.dumps(
-                self.output_model.model_json_schema(mode="serialization"),
-                indent=2
-            )
-        else:
-            raise ValueError("Invalid pipeline, missing response_schema")
 
         # HACK: Haystack prompt -class bitches if it receives extra variables
         prompt_vars = {k: v for k, v in prompt_vars.items() if k in self._prompt.variables}
@@ -96,8 +79,14 @@ class StructuredPipeline:
             "prompt_builder": prompt_vars,
         })
         match results:
-            case {"output_validator": {"model_output": model_output}}:
+            case {"llm": {"replies": [reply, *rest]}}:
+                content = reply.text
+                if not content:
+                    raise ValueError("Empty response from LLM")
+                
+                # Parse the response using the output_model
+                model_output = self.output_model.model_validate_json(content)
                 return model_output
             case _:
                 logger.error("Invalid pipeline output", extra={"pipeline": pipeline, "results": results})
-                raise ValueError("Invalid pipeline output: %r", results)
+                raise ValueError(f"Invalid pipeline output: {results!r}")
