@@ -88,10 +88,12 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
         if param.annotation == HaystackSecret:
             generator_args[param.name] = HaystackSecret.from_token(generator_args[param.name])
 
-    # Deep merge with any additional kwargs
+    # Deep merge with any additional kwargs. Config may explicitly set
+    # generation_kwargs to null, so normalize None to an empty dict first.
     if kwargs:
-        generator_args.setdefault("generation_kwargs", {})
-        generator_args["generation_kwargs"].update(kwargs)
+        generation_kwargs = generator_args.get("generation_kwargs") or {}
+        generation_kwargs.update(kwargs)
+        generator_args["generation_kwargs"] = generation_kwargs
 
     # Create the generator instance
     r = generator_class(**generator_args)

@@ -3,7 +3,6 @@ import logging
 from meri.abc import ArticleContext
 from meri.llm import (
     PROMPT_TEMPLATE_ARTICLE,
-    PROMPT_TEMPLATE_OUTPUT_FORMAT,
     PROMPT_TEMPLATE_VESTED_GROUPS,
     get_prompt_template,
 )
@@ -22,7 +21,6 @@ class InterestGroupPredictor(StructuredPipeline):
     prompt_templates: dict[str, str] = {
         "article_title": get_prompt_template(PROMPT_TEMPLATE_VESTED_GROUPS),
         "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
-        "output_format": get_prompt_template(PROMPT_TEMPLATE_OUTPUT_FORMAT),
     }
 
     def run(self, article) -> ArticleContext:

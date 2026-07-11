@@ -114,7 +114,7 @@ class GoogleGeminiSettings(_OpenAISettingsBase):
     https://ai.google.dev/gemini-api/docs/openai
     """
     provider: Literal["gemini"] = "gemini"
-    api_key: SecretStr = Field(description="Google Gemini API key.", alias="gemini_api_key")
+    api_key: SecretStr = Field(description="Google Gemini API key.", validation_alias=AliasChoices("gemini_api_key", "api_key"))
     api_base_url: OpenAICompatibleUrl = Field("https://generativelanguage.googleapis.com/v1beta/openai", description="Google Gemini API base URL.")
     model: str = Field('gemini-3.1-flash-lite', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
     generation_kwargs: Optional[dict] = Field({
