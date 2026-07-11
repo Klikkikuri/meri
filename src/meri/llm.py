@@ -7,6 +7,7 @@ from pathlib import Path
 
 from haystack.utils.auth import Secret as HaystackSecret
 from platformdirs import user_data_dir
+from pydantic import SecretStr
 
 from .settings import (
     Settings,
@@ -44,7 +45,7 @@ class PipelineType(Enum):
 def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings, **kwargs) -> object:
     """
     Get the generator based on the pipeline type and settings.
-    
+
     The generator is selected based on the provider specified in the settings.
     """
 
@@ -72,6 +73,11 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
     # Create the generator instance
     generator_class = getattr(__import__(module, fromlist=[class_name]), class_name)
     generator_args = pipeline_llm.model_dump(exclude={"provider", "_generator", "name"})
+
+    # Convert SecretStr to string for Haystack compatibility
+    for key, value in generator_args.items():
+        if isinstance(value, SecretStr):
+            generator_args[key] = value.get_secret_value()
 
     # Haystack has some stupid design choices that are forced upon others.
     # Check the types of the arguments, and convert to Haystack secrets if necessary.
