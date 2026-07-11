@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from random import randint
 from typing import cast
+from zoneinfo import ZoneInfo
 
 from opentelemetry import trace
 from pydantic import AnyHttpUrl
@@ -17,6 +18,10 @@ from ._cfchallenge import CloudflareStatus, cloudflare_status
 tracer = trace.get_tracer(__name__)
 
 logger = get_logger(__name__)
+
+# Default timezone to assume for naive dates extracted from articles. This is used when the extracted date does not
+# include timezone information.
+DEFAULT_TIMEZONE = ZoneInfo("Europe/Helsinki")
 
 
 class TrafilaturaArticle(HtmlArticle):
@@ -119,14 +124,19 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     )
 
 
-    # Check if the date is tz-aware.
     if document and document.date:
         parsed_date = datetime.fromisoformat(document.date)
-        article.updated_at = parsed_date or datetime.min.replace(tzinfo=timezone.utc)
-
-        # TODO: Implement timezone mapping if not present in the extracted date.
         if parsed_date.tzinfo is None:
-            logger.warning("Extracted date is not timezone-aware. Implement timezone mapping if needed.", extracted_date=document.date)
+            logger.warning(
+                "Extracted date is not timezone-aware; assuming default timezone.",
+                extracted_date=document.date,
+                default_timezone=str(DEFAULT_TIMEZONE),
+            )
+            parsed_date = parsed_date.replace(tzinfo=DEFAULT_TIMEZONE)
+
+        parsed_date = parsed_date.astimezone(timezone.utc)
+
+        article.updated_at = parsed_date
 
     else:
         article.created_at = datetime.now(timezone.utc)
