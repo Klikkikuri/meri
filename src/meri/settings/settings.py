@@ -131,6 +131,15 @@ _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 _suola_rules = Path("packages/suola/rules.yaml").resolve()
 
 
+def _iter_subclasses(base_cls):
+    """
+    Helper function to iterate over all subclasses of a base class, including indirect subclasses.
+    """
+    for sub_cls in base_cls.__subclasses__():
+        yield sub_cls
+        yield from _iter_subclasses(sub_cls)
+
+
 class Settings(BaseSettings):
     DEBUG: bool = Field(
         False,
@@ -191,8 +200,13 @@ class Settings(BaseSettings):
         _logger.debug(f"Values: {values}")
         llm_list = values.get('llm', [])
 
-        # Map provider literal to class
-        provider_to_class = {model_cls.model_fields['provider'].default: model_cls for model_cls in GeneratorSettings.__subclasses__()}
+        # Find all subclasses of GeneratorSettings and map them by provider
+        provider_to_class = {}
+        for model_cls in _iter_subclasses(GeneratorSettings):
+            provider_field = model_cls.model_fields.get('provider')
+            if not provider_field:
+                continue
+            provider_to_class[provider_field.default] = model_cls
         _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class

@@ -4,7 +4,7 @@ from abc import ABC
 from typing import Literal, Optional, Self, TypedDict
 from typing_extensions import Annotated
 
-from pydantic import AnyHttpUrl, Field, SecretStr, model_validator
+from pydantic import AliasChoices, AnyHttpUrl, BeforeValidator, Field, SecretStr, TypeAdapter, model_validator
 from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
@@ -22,6 +22,17 @@ class MissingGeneratorError(ImportError):
     Error raised when a generator class is missing.
     """
     pass
+
+
+# URL type adapter to allow strings to be used as URLs, for OpenAI compatibility
+_url_adapter = TypeAdapter(AnyHttpUrl)
+type OpenAICompatibleUrl = Annotated[
+    AnyHttpUrl | str,  # Allow URL's to be defined as strings, to make life easier.
+    BeforeValidator(lambda v: _url_adapter.validate_python(v) if isinstance(v, str) else v)
+]
+""" A URL that is compatible with OpenAI's API """
+
+_openai_url_alias = AliasChoices('api_base_url', 'base_url', 'url')
 
 
 class GeneratorSettings(BaseSettings, ABC):
@@ -58,22 +69,28 @@ class GeneratorSettings(BaseSettings, ABC):
             return False
 
 
-class OpenAISettings(GeneratorSettings):
+class _OpenAISettingsBase(GeneratorSettings):
+    """
+    Base class for OpenAI API compatible providers.
+    """
+    model: str = Field(..., description="model.")
+    api_key: SecretStr = Field(description="API key.")
+    api_base_url: OpenAICompatibleUrl = Field("https://api.openai.com/v1", description="OpenAI API base URL.")
+    generation_kwargs: Optional[dict] = Field({
+        "temperature": 0.0,
+    }, description="generation arguments.")
+
+    _generator:  str = "haystack.components.generators.chat.OpenAIChatGenerator"
+
+
+class OpenAISettings(_OpenAISettingsBase):
     """
     OpenAI settings.
 
     ..seealso:: https://docs.haystack.deepset.ai/docs/openaigenerator
     """
-    provider: Literal["openai"] = "openai"
-
-    api_key: str = Field(description="OpenAI API key.")
     model: str = Field("gpt-4o-mini", description="OpenAI model.")
-    api_base_url: Optional[AnyHttpUrl] = Field(None, description="(Optional) OpenAI API base URL.")
-    generation_kwargs: Optional[dict] = Field({
-        "temperature": 0.0,
-    }, description="OpenAI generation arguments.")
-
-    _generator: str = "haystack.components.generators.chat.OpenAIChatGenerator"
+    provider: Literal["openai"] = "openai"
 
 
 class OllamaSettings(GeneratorSettings):
@@ -89,22 +106,21 @@ class OllamaSettings(GeneratorSettings):
     _generator: str = "haystack_integrations.components.generators.ollama.OllamaChatGenerator"
 
 
-class GoogleGeminiSettings(GeneratorSettings):
+class GoogleGeminiSettings(_OpenAISettingsBase):
     """
     Google Gemini settings.
 
     Alternatively, you can use the OpenAI compatibility to access Gemini models.
     https://ai.google.dev/gemini-api/docs/openai
     """
-    provider: Literal["google"] = "google"
-    api_key: str = Field(description="Google Gemini API key.")
-    model: str = Field('gemini-2.0-flash', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
-    generation_config: Optional[dict] = Field({
+    provider: Literal["gemini"] = "gemini"
+    api_key: SecretStr = Field(description="Google Gemini API key.", alias="gemini_api_key")
+    api_base_url: OpenAICompatibleUrl = Field("https://generativelanguage.googleapis.com/v1beta/openai", description="Google Gemini API base URL.")
+    model: str = Field('gemini-2.0-flash-lite', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
+    generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
     }, description="Google Gemini generation arguments.")
     # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
-
-    _generator: str = "haystack_integrations.components.generators.google_genai.GoogleGenAIChatGenerator"
 
 
 class _OpenRouterProviderSettings(TypedDict):
@@ -156,7 +172,7 @@ def detect_generators(values: dict):
     values.setdefault("ollama_host", os.getenv("OLLAMA_HOST"))
     values.setdefault("ollama_host", os.getenv("OLLAMA_BASE_URL"))  # open-webui compatible
     values.setdefault("ollama_model", os.getenv("OLLAMA_MODEL"))
-    
+
     if api_key := values.get("openai_api_key"):
         logger.debug("Using OpenAI API key from environment variable")
         settings.append(OpenAISettings(
@@ -173,11 +189,9 @@ def detect_generators(values: dict):
 
     if api_key := values.get("gemini_api_key"):
         # Use OpenAI api endpoint, so we can use the same generator class
-        settings.append(OpenAISettings(
+        settings.append(GoogleGeminiSettings(
             name="Gemini",
             api_key=api_key,
-            model="gemini-2.5-flash",
-            api_base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         ))
 
     if api_base_url := values.get("ollama_host"):
@@ -233,4 +247,3 @@ def _pull_default_ollama_model(api_base_url: str) -> Optional[str]:
     return get_first_model(f"{api_base_url}/api/ps") \
         or get_first_model(f"{api_base_url}/api/tags") \
         or None
-
