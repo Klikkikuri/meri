@@ -8,6 +8,7 @@ from sentry_sdk import monitor
 from structlog import get_logger
 
 from meri.settings import settings, init_settings
+from meri.abc import ArticleLabels
 
 from .lautta import (
     RahtiCleaner,
@@ -69,9 +70,10 @@ def cli(cache: bool, debug: bool):
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited data.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of workers to use for fetching articles.")
+@click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
 @tracer.start_as_current_span("cli.run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(sample: bool, max_workers: int):
+def run(sample: bool, max_workers: int, with_paywalled: bool):
 
     if max_workers is not None:
         settings.MAX_WORKERS = max_workers
@@ -124,22 +126,29 @@ def run(sample: bool, max_workers: int):
 
     nr = len(full_articles)
 
-    # Prune out articles that are not needed to be processed further
-    for i, a in enumerate(full_articles):
+    # Filter/prune out articles that are not needed to be processed further
+    filtered_full_articles = []
+    for a in full_articles:
         with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
+            is_paywalled_article = ArticleLabels.PAYWALLED in a.article.labels
+            source_allows_paywalled = getattr(a.source, "with_paywalled", False)
+
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
-                full_articles.pop(i)
+            elif is_paywalled_article and not with_paywalled and not source_allows_paywalled:
+                span.set_attribute("prune_reason", "paywalled")
+                logger.debug("Pruning paywalled article: %r", a.article.get_url())
             elif not has_text(a.article):
                 span.set_attribute("prune_reason", "no_text")
                 logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
                     "text": a.article.text
                 })
-                full_articles.pop(i)
             else:
                 span.set_attribute("prune_reason", "keep")
+                filtered_full_articles.append(a)
 
+    full_articles = filtered_full_articles
 
     logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 
@@ -207,9 +216,16 @@ def list_sources():
 
 @cli.command()
 @click.argument("url")
-def test(url):
+@click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
+@tracer.start_as_current_span("cli.test")
+def test(url, with_paywalled: bool):
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)
+
+    if ArticleLabels.PAYWALLED in article.labels and not with_paywalled:
+        print("Article is behind a paywall and --with-paywalled was not specified. Dropping.")
+        return
+
     if article.text:
         print(article.text[0:200], "...", "\n", "...", article.text[-200:])
 

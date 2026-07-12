@@ -37,6 +37,10 @@ class NewsSource(BaseModel):
         None,
         description="Default language of the news source content, e.g., 'fi-FI' for Finnish.",
     )
+    with_paywalled: bool = Field(
+        False,
+        description="Include paywalled articles for this news source.",
+    )
 
     # Rules to filter articles from this source
     min_content_length: Optional[int] = Field(
