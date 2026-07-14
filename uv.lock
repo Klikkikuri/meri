@@ -990,10 +990,14 @@ version = "0.1.0"
 source = { editable = "packages/luotsi" }
 dependencies = [
     { name = "pydantic" },
+    { name = "tenacity" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pydantic", specifier = ">=2.10.5" }]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.10.5" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+]
 
 [[package]]
 name = "lxml"

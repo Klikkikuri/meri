@@ -90,3 +90,26 @@ def test_csv_feedback_source():
     finally:
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
+
+@patch("time.sleep", return_value=None)
+@patch("requests.get")
+def test_sheets_feedback_source_retry_and_background(mock_get, mock_sleep):
+    import requests
+    from luotsi.sources.sheets import SheetsFeedbackSource
+
+    mock_response = MagicMock()
+    mock_response.text = MOCK_CSV_DATA
+    mock_response.status_code = 200
+
+    mock_get.side_effect = [requests.RequestException("Temporary network issue"), mock_response]
+
+    sheet_config = LuotsiFeedbackSourceSheets(
+        type="sheets",
+        spreadsheet_id="test-spreadsheet-id",
+        worksheet="Feedback"
+    )
+    sheet_src = SheetsFeedbackSource(sheet_config)
+
+    feedbacks = sheet_src.get_feedback()
+    assert len(feedbacks) == 3
+    assert mock_get.call_count == 2
