@@ -418,9 +418,10 @@ class RahtiCleaner:
         updated = max(entry.updated or minimum_date,
                       old_entry.updated or minimum_date)
 
-        merged_labels = list(set(old_entry.labels) | set(entry.labels))
+        # We used to merge labels, but can't remember why. Correct behaviour feels that it should use the new entry's
+        # labels, since they are generated from the article's current state.
+        # entry.labels = list(set(old_entry.labels) | set(entry.labels))
         entry.updated = updated
-        entry.labels = merged_labels
 
         if should_skip_processing(entry):
             entry.title = None
@@ -435,7 +436,7 @@ class RahtiCleaner:
         entry.outlet = entry.outlet or old_entry.outlet
 
         # Merge URLs
-        existing_signs = {url.sign for url in old_entry.urls}
+        existing_signs = {url.sign for url in entry.urls}
         for url in old_entry.urls:
             if url.sign not in existing_signs:
                 entry.urls.append(url)
