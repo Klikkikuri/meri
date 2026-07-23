@@ -72,6 +72,7 @@ dev-dependencies = [
     "pre-commit>=4.2.0",
     "ollama-haystack>=2.4.1",
     "pyright>=1.1.411",
+    "pytest>=9.1.1",
 ]
 [tool.uv.sources]
 suola = [

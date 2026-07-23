@@ -10,6 +10,7 @@ from typing import Iterable, List, NamedTuple, Optional, cast
 
 import pytz
 import wrapt
+from opentelemetry import trace
 
 from .abc import ArticleTitleResponse
 from .article import Article
@@ -21,6 +22,7 @@ from .settings import settings
 from .settings.newssources import NewsSource
 from .utils import setup_logging
 
+
 MAX_PARALLEL_FETCHES = 3
 
 MINIMUM_TEXT_WORDS = 50
@@ -28,6 +30,7 @@ MINIMUM_TEXT_WORDS = 50
 This is a simple heuristic to remove articles that failed to extract properly or are not actual news articles
 (e.g. videos, galleries, etc.). """
 
+tracer = trace.get_tracer(__name__)
 logger = logging.getLogger(__name__)
 
 
@@ -168,18 +171,25 @@ def fetch_latest[T: NewsSource](sources: Iterable[T]) -> List[DiscoveredArticle[
 
     # filter out disabled sources
     enabled_sources = [source for source in sources if source.enabled]
+    failed_count = 0
 
     with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
         futures = [executor.submit(fetch_source, source) for source in enabled_sources]
 
-        for future in futures:
-            try:
-                result = future.result()
-                source = enabled_sources[futures.index(future)]
-                ret.extend(DiscoveredArticle(source=source, article=article) for article in result)
-            except Exception as e:
-                # Log the error and continue with other sources
-                logger.error("Error fetching articles: %s", e, exc_info=True)
+        for idx, (source, future) in enumerate(zip(enabled_sources, futures)):
+            with tracer.start_as_current_span("fetch_latest.source", attributes={"source": source.name or "Unnamed"}) as span:
+                try:
+                    result = future.result()
+                    ret.extend(DiscoveredArticle(source=source, article=article) for article in result)
+                except Exception as e:
+                    failed_count += 1
+                    span.record_exception(e)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    # Log the error and continue with other sources
+                    logger.error("Error fetching articles for source %r: %s", source.name or "Unnamed", e, exc_info=True)
+
+    if enabled_sources and failed_count == len(enabled_sources):
+        raise RuntimeError("All enabled news sources failed to fetch articles.")
 
     logger.info("Fetched %d articles", len(ret))
 
@@ -218,20 +228,30 @@ def fetch_full_articles(discovered_stubs: list[DiscoveredArticle]) -> list[Disco
     random.shuffle(discovered_stubs)
 
     articles = []
+    failed_count = 0
 
     with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
         logger.info("Fetching %d articles using %d threads", len(discovered_stubs), executor._max_workers)
         for stub in discovered_stubs:
+            url_str = str(stub.article.get_url())
             future = executor.submit(fetch_article, stub.source, stub.article)
-            try:
-                article = future.result()
-                if not article:
-                    logger.warning("Fetched article is None", extra={"url": str(stub.article.get_url())})
+            with tracer.start_as_current_span("fetch_full_articles.item", attributes={"url": url_str}) as span:
+                try:
+                    article = future.result()
+                    if not article:
+                        failed_count += 1
+                        logger.warning("Fetched article is None", extra={"url": url_str})
+                        continue
+                    articles.append(article)
+                except Exception as e:
+                    failed_count += 1
+                    span.record_exception(e)
+                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    logger.error("Failed to fetch article %r: %s", url_str, e, exc_info=True, extra={"url": url_str})
                     continue
-                articles.append(article)
-            except Exception as e:
-                logger.error("Failed to fetch article: %s", e, exc_info=True, extra={"url": str(stub.article.get_url())})
-                continue
+
+    if discovered_stubs and failed_count == len(discovered_stubs):
+        raise RuntimeError("All full article fetches failed.")
 
     return articles
 
@@ -538,6 +558,9 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
 
     old_titles = cast(list, old_titles)
 
+    submitted_count = 0
+    failed_count = 0
+
     with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
         futures = []
         skip_reasons = []
@@ -549,13 +572,26 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
             else:
                 skip_reasons.append(None)
                 futures.append(executor.submit(predictor_run, article, old_title))
+                submitted_count += 1
 
         for (article, source), future, skip_reason in zip(articles, futures, skip_reasons):
             if skip_reason or future is None:
                 title_result = None
             else:
-                title_result = future.result()
+                url_str = str(article.get_url())
+                with tracer.start_as_current_span("generate_titles.item", attributes={"url": url_str}) as span:
+                    try:
+                        title_result = future.result()
+                    except Exception as e:
+                        failed_count += 1
+                        span.record_exception(e)
+                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                        logger.error("Failed to generate title for article %r: %s", url_str, e, exc_info=True)
+                        title_result = None
             results.append(ArticleTitleData(article, title_result, source, skip_reason))  # type: ignore
+
+    if submitted_count > 0 and failed_count == submitted_count:
+        raise RuntimeError("All article title generations failed.")
 
     return results
 

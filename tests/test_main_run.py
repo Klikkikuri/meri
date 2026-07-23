@@ -97,7 +97,7 @@ def test_run_splits_skipped_articles_before_generation(monkeypatch):
     monkeypatch.setattr("meri.__main__.settings.rahti", object(), raising=False)
     monkeypatch.setattr("meri.__main__.RahtiData.model_validate_json", staticmethod(lambda _payload: True))
 
-    run.callback(sample=False, max_workers=1, with_paywalled=False)
+    run.callback(sample=False, max_workers=1)
 
     assert generate_calls["articles"] == [processed_discovered]
     assert generate_calls["old_titles"] == [f"old:{processed_article.get_url()}"]
