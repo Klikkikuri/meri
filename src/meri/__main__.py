@@ -73,10 +73,9 @@ def cli(cache: bool, debug: bool):
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited data.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
-@click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
 @tracer.start_as_current_span("cli.run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(sample: bool, max_workers: int, with_paywalled: bool):
+def run(sample: bool, max_workers: int):
 
     if max_workers is not None:
         settings.MAX_WORKERS = max_workers
