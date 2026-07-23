@@ -392,6 +392,12 @@ class RahtiCleaner:
         """
         Replace RahtiEntry with the given article's data.
 
+        Invariant:
+            For non-skipped entries, callers must provide freshly generated
+            title metadata (`title` and `clickbaitiness`) when regeneration is
+            required. This cleaner does not infer missing generated metadata
+            from previous entries.
+
         Returns the updated RahtiEntry, or None if no matching entry was found.
         """
 
@@ -420,8 +426,12 @@ class RahtiCleaner:
             entry.title = None
             entry.clickbaitiness = None
         else:
-            entry.title = entry.title or old_entry.title
-            entry.clickbaitiness = entry.clickbaitiness or old_entry.clickbaitiness
+            # Non-skipped entries must arrive with explicit generated metadata.
+            if entry.title is None or entry.clickbaitiness is None:
+                raise ValueError(
+                    "Non-skipped RahtiEntry must include generated title metadata "
+                    "(title and clickbaitiness) before replace()."
+                )
         entry.outlet = entry.outlet or old_entry.outlet
 
         # Merge URLs
@@ -552,6 +562,10 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
 def convert_for_rahti(source: NewsSource, article: Article, title: Optional[ArticleTitleResponse] = None) -> RahtiEntry:
     """
     Convert an Article and its optional title data into a RahtiEntry.
+
+    Invariant:
+        A non-skipped article must be converted with generated title metadata
+        when regeneration is required.
     """
     minimum_date = datetime.min.replace(tzinfo=pytz.UTC)
 
@@ -559,6 +573,12 @@ def convert_for_rahti(source: NewsSource, article: Article, title: Optional[Arti
                   article.created_at or minimum_date)
 
     is_skipped = should_skip_processing(article)
+
+    if not is_skipped and title is None:
+        raise ValueError(
+            "Non-skipped article requires generated title metadata for Rahti conversion."
+        )
+
     entry_title = None if is_skipped else (title.title if title else None)
     clickbaitiness = None if is_skipped else (title.original_title_clickbaitiness if title else None)
 

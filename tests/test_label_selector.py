@@ -336,6 +336,64 @@ def test_pipeline_deduplication_and_upsert_behavior():
     assert set(cleaner.rahti.entries[0].labels) == {ArticleLabels.PAYWALLED, ArticleTypeLabels.TYPE_OPINION}
 
 
+def test_convert_for_rahti_requires_generated_title_for_non_skipped_article():
+    from datetime import datetime, timezone
+    from meri.abc import article_url
+    from meri.article import Article
+    from meri.lautta import convert_for_rahti
+    from meri.settings.newssources import NewsSource
+
+    source = NewsSource.model_construct(name="Yle Uutiset", type="rss", url="https://yle.fi")
+    article = Article(
+        urls=[article_url("https://yle.fi/a/3-12340000")],
+        labels=[],
+        created_at=datetime.now(timezone.utc),
+        text="Riittavan pitka teksti. " * 10,
+        updated_at=None,
+    )
+
+    with pytest.raises(ValueError, match="requires generated title metadata"):
+        convert_for_rahti(source, article, title=None)
+
+
+def test_replace_rejects_missing_generated_title_metadata_for_non_skipped_entry():
+    from datetime import datetime, timezone
+    from meri.abc import ClickbaitScale
+    from meri.lautta import RahtiCleaner
+    from meri.rahti import RahtiData, RahtiEntry, RahtiUrl
+
+    now = datetime.now(timezone.utc)
+    sign = "non-skipped-signature"
+
+    old_entry = RahtiEntry(
+        updated=now,
+        urls=[RahtiUrl(sign=sign, labels=[])],
+        title="Old generated title",
+        clickbaitiness=ClickbaitScale.NONE,
+        labels=[],
+        outlet="Test Source",
+    )
+    rahti_data = RahtiData(
+        status="ok",
+        schema_version="0.1.0",
+        updated=now,
+        entries=[old_entry],
+    )
+
+    cleaner = RahtiCleaner(rahti_data)
+    new_entry = RahtiEntry(
+        updated=now,
+        urls=[RahtiUrl(sign=sign, labels=[])],
+        title=None,
+        clickbaitiness=None,
+        labels=[],
+        outlet="Test Source",
+    )
+
+    with pytest.raises(ValueError, match="must include generated title metadata"):
+        cleaner.replace(new_entry)
+
+
 def test_selector_caching_performance():
     # Verify that LabelSelector.parse returns cached instances across repeated calls
     sel1 = LabelSelector.parse("paywalled=true, article-type in (opinion, review)")
