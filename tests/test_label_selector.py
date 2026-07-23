@@ -278,6 +278,64 @@ def test_short_key_collision_semantics():
     assert LabelSelector.parse("category != sports").matches(set1) is True
 
 
+def test_pipeline_deduplication_and_upsert_behavior():
+    from datetime import datetime, timedelta, timezone
+    from meri.abc import ArticleLabels, ArticleTypeLabels, article_url
+    from meri.article import Article
+    from meri.lautta import RahtiCleaner, convert_for_rahti
+    from meri.rahti import RahtiData
+    from meri.settings.newssources import NewsSource
+
+    now = datetime.now(timezone.utc)
+    source = NewsSource.model_construct(name="Yle Uutiset", type="rss", url="https://yle.fi")
+
+    # 1. Create a paywalled article
+    article = Article(
+        urls=[article_url("https://yle.fi/a/3-99999999")],
+        labels=[ArticleLabels.PAYWALLED],
+        created_at=now - timedelta(hours=2),
+        text="",
+        updated_at=None,
+    )
+
+    # 2. Empty Rahti dataset
+    rahti_data = RahtiData(
+        status="ok",
+        schema_version="0.1.0",
+        updated=now - timedelta(days=1),
+        entries=[],
+    )
+    cleaner = RahtiCleaner(rahti_data)
+
+    # 3. First upsert: inserts new entry without title
+    entry1 = convert_for_rahti(source, article, title=None)
+    cleaner.upsert(entry1)
+
+    assert len(cleaner.rahti.entries) == 1
+    assert cleaner.rahti.entries[0].title is None
+    assert ArticleLabels.PAYWALLED in cleaner.rahti.entries[0].labels
+
+    # 4. Article updated later with an additional label (e.g. TYPE_OPINION)
+    article_updated = Article(
+        urls=[article_url("https://yle.fi/a/3-99999999")],
+        labels=[ArticleLabels.PAYWALLED, ArticleTypeLabels.TYPE_OPINION],
+        created_at=now - timedelta(hours=2),
+        updated_at=now,
+        text="",
+    )
+
+    # 5. Check needs_updating logic correctly identifies the existing entry
+    assert cleaner.needs_updating(article_updated) is True
+
+    # 6. Second upsert: deduplicates via URL signature and updates existing entry instead of adding duplicate
+    entry2 = convert_for_rahti(source, article_updated, title=None)
+    cleaner.upsert(entry2)
+
+    assert len(cleaner.rahti.entries) == 1  # Deduplicated!
+    assert cleaner.rahti.entries[0].title is None
+    assert set(cleaner.rahti.entries[0].labels) == {ArticleLabels.PAYWALLED, ArticleTypeLabels.TYPE_OPINION}
+
+
 def test_selector_caching_performance():
     # Verify that LabelSelector.parse returns cached instances across repeated calls
     sel1 = LabelSelector.parse("paywalled=true, article-type in (opinion, review)")
