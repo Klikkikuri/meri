@@ -22,7 +22,7 @@ class StructuredPipeline:
     output_model: BaseModel
 
     PIPELINE_NAME: ClassVar = PipelineType.DEFAULT
-    
+
     prompt_templates: dict[str, str] = {}
 
     _prompt: ChatPromptBuilder
@@ -62,7 +62,7 @@ class StructuredPipeline:
         self.pipeline.connect("prompt_builder", "llm")
 
         return self.pipeline
-    
+
     def run(self, prompt_vars, **kwargs) -> BaseModel:
         pipeline = self._build_pipeline()
 
@@ -78,12 +78,15 @@ class StructuredPipeline:
         results = pipeline.run({
             "prompt_builder": prompt_vars,
         })
+
         match results:
-            case {"llm": {"replies": [reply, *rest]}}:
+            case {"llm": {"replies": [reply, *_]}}:
                 content = reply.text
                 if not content:
                     raise ValueError("Empty response from LLM")
-                
+
+                logger.debug("Pipeline output on model: %s", reply.meta['model'], extra=dict(reply.meta))
+
                 # Parse the response using the output_model
                 model_output = self.output_model.model_validate_json(content)
                 return model_output
