@@ -13,6 +13,7 @@ import wrapt
 
 from .abc import ArticleTitleResponse
 from .article import Article
+from .labels import LabelSelector, LabelSet
 from .pipelines.title import TitlePredictor
 from .rahti import RahtiData, RahtiEntry, RahtiUrl
 from .scraper import discover_articles, get_extractor
@@ -28,6 +29,34 @@ This is a simple heuristic to remove articles that failed to extract properly or
 (e.g. videos, galleries, etc.). """
 
 logger = logging.getLogger(__name__)
+
+
+def matching_selector(obj: Article | RahtiEntry | Iterable, selector_strings: Optional[list[str]] = None) -> Optional[LabelSelector]:
+    """
+    Return the first matching LabelSelector for an article or RahtiEntry, or None if no selector matches.
+    """
+    if selector_strings is None:
+        sk_settings = getattr(settings, "skip_processing", None)
+        selector_strings = sk_settings.labels if sk_settings else ["paywalled=true"]
+
+    if not selector_strings:
+        return None
+
+    raw_labels = getattr(obj, "labels", obj)
+    label_set = LabelSet(raw_labels)
+
+    for sel_str in selector_strings:
+        selector = LabelSelector.parse(sel_str)
+        if selector.matches(label_set):
+            return selector
+    return None
+
+
+def should_skip_processing(obj: Article | RahtiEntry | Iterable, selector_strings: Optional[list[str]] = None) -> bool:
+    """
+    Check if an article or RahtiEntry matches any label selector configured to skip title generation.
+    """
+    return matching_selector(obj, selector_strings) is not None
 
 
 @dataclass
@@ -123,8 +152,9 @@ class ArticleTitleData(NamedTuple):
     Result of title processing for an article.
     """
     article: Article
-    title: ArticleTitleResponse
+    title: Optional[ArticleTitleResponse]
     source: NewsSource
+    skip_reason: Optional[str] = None
 
 
 def fetch_latest[T: NewsSource](sources: Iterable[T]) -> List[DiscoveredArticle[T]]:
@@ -272,16 +302,16 @@ def prune_rahti(rahti: List[RahtiEntry], sources: list[NewsSource]) -> List[Raht
     return [entry for idx, entry in enumerate(filtered_entries) if idx in indices_to_keep]
 
 
-def remove_unhandled(articles: Iterable[Article]) -> Iterable[Article]:
+def remove_unhandled[T: Article | DiscoveredArticle](items: Iterable[T]) -> Iterable[T]:
     """
-    Remove articles that have no handled URLs.
+    Remove articles or discovered article stubs that have no handled URLs.
     """
-
-    for article in articles:
-        if not has_handled_url(article):
-            logger.debug("Removing article with no handled URLs: %r", article.get_url())
+    for item in items:
+        art = item.article if isinstance(item, DiscoveredArticle) else item
+        if not has_handled_url(art):
+            logger.debug("Removing article with no handled URLs: %r", art.get_url())
             continue
-        yield article
+        yield item
 
 
 def has_handled_url(article: Article) -> bool:
@@ -382,10 +412,16 @@ class RahtiCleaner:
         updated = max(entry.updated or minimum_date,
                       old_entry.updated or minimum_date)
 
+        merged_labels = list(set(old_entry.labels) | set(entry.labels))
         entry.updated = updated
-        entry.title = entry.title or old_entry.title
-        entry.labels = list(set(old_entry.labels) | set(entry.labels))  # TODO: Merge labels more intelligently
-        entry.clickbaitiness = entry.clickbaitiness or old_entry.clickbaitiness
+        entry.labels = merged_labels
+
+        if should_skip_processing(entry):
+            entry.title = None
+            entry.clickbaitiness = None
+        else:
+            entry.title = entry.title or old_entry.title
+            entry.clickbaitiness = entry.clickbaitiness or old_entry.clickbaitiness
         entry.outlet = entry.outlet or old_entry.outlet
 
         # Merge URLs
@@ -474,7 +510,7 @@ class RahtiCleaner:
 
 def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list[RahtiEntry | None]] = None) -> list[ArticleTitleData]:
     """
-    Process articles for titles.
+    Process articles for titles. Articles matching skip_processing.labels bypass LLM title generation.
     """
     results = []
 
@@ -493,24 +529,38 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
 
     with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
         futures = []
+        skip_reasons = []
         for (article, source), old_title in zip(articles, old_titles):
-            futures.append(executor.submit(predictor_run, article, old_title))
+            matched_sel = matching_selector(article)
+            if matched_sel:
+                skip_reasons.append(matched_sel.raw_expression)
+                futures.append(None)
+            else:
+                skip_reasons.append(None)
+                futures.append(executor.submit(predictor_run, article, old_title))
 
-        for (article, source), future in zip(articles, futures):
-            result = future.result()
-            results.append(ArticleTitleData(article, result, source))
+        for (article, source), future, skip_reason in zip(articles, futures, skip_reasons):
+            if skip_reason or future is None:
+                title_result = None
+            else:
+                title_result = future.result()
+            results.append(ArticleTitleData(article, title_result, source, skip_reason))  # type: ignore
 
     return results
 
 
-def convert_for_rahti(source: NewsSource, article: Article, title: ArticleTitleResponse) -> RahtiEntry:
+def convert_for_rahti(source: NewsSource, article: Article, title: Optional[ArticleTitleResponse] = None) -> RahtiEntry:
     """
-    Convert an Article and its title data into a RahtiEntry.
+    Convert an Article and its optional title data into a RahtiEntry.
     """
     minimum_date = datetime.min.replace(tzinfo=pytz.UTC)
 
     updated = max(article.updated_at or minimum_date,
                   article.created_at or minimum_date)
+
+    is_skipped = should_skip_processing(article)
+    entry_title = None if is_skipped else (title.title if title else None)
+    clickbaitiness = None if is_skipped else (title.original_title_clickbaitiness if title else None)
 
     entry = RahtiEntry(
         updated=updated,
@@ -520,8 +570,8 @@ def convert_for_rahti(source: NewsSource, article: Article, title: ArticleTitleR
                 labels=url.labels,
             ) for url in article.urls if url.signature
         ],
-        title=title.title,
-        clickbaitiness=title.original_title_clickbaitiness,
+        title=entry_title,
+        clickbaitiness=clickbaitiness,
         labels=article.labels,
         outlet=source.name
     )

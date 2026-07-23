@@ -2,7 +2,7 @@ import base64
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import List, Literal, Protocol
+from typing import List, Literal, Optional, Protocol
 
 import requests
 from pydantic import BaseModel, Field, field_validator
@@ -14,19 +14,26 @@ from .settings.rahti import RahtiFileSettings, RahtiGithubSettings, RahtiSetting
 
 COMMIT_MESSAGE = r"""
 [🤖 bot]: Updated list with {{articles | length}} additions or updates, and removed {{removed | length}} old entries.
-{% if titles %}
+{% if processed %}
 New or updated entries:
-{% for entry in articles %}
-- {{entry.urls[0].signature[0:7]}}: {{titles[loop.index0].title | truncate(68)}}
+{% for item in processed %}
+- {{item.article.urls[0].signature[0:7]}}: {{item.title.title | truncate(68)}}
 
-  {{titles[loop.index0].contemplator | wordwrap(77) | indent(2)}}
+  {{item.title.contemplator | wordwrap(77) | indent(2)}}
+{% endfor %}
+{% endif %}
+
+{% if unprocessed %}
+Identified but unprocessed entries:
+{% for item in unprocessed %}
+- {{item.article.urls[0].signature[0:7]}} [reason: {{item.skip_reason}}]
 {% endfor %}
 {% endif %}
 
 {% if removed %}
 Removed entries:
 {% for entry in removed %}
-- {{entry.urls[0].sign[0:7]}}: {{entry.title | truncate(68)}}
+- {{entry.urls[0].sign}}
 {% endfor %}
 {% endif %}
 """.strip()
@@ -46,13 +53,13 @@ class RahtiEntry(BaseModel):
     urls: List[RahtiUrl] = Field(default_factory=list,
         description="List of URLs associated with the article"
     )
-    title: str = Field(default="Generated title for the article") 
-    clickbaitiness: ClickbaitScale
-    labels: List[ArticleLabels | ArticleTypeLabels]
-    
+    title: Optional[str] = Field(default=None, description="Generated title for the article")
+    clickbaitiness: Optional[ClickbaitScale] = Field(default=None, description="Clickbaitiness score")
+    labels: List[ArticleLabels | ArticleTypeLabels] = Field(default_factory=list, description="Labels associated with article")
+
     # Temporary field to track source of the article. Maps to :py:class:`meri.settings.sources.name`
-    outlet: str | None = Field(
-        None,
+    outlet: Optional[str] = Field(
+        default=None,
         description="Name of the news outlet or source of the article",
     )
 
@@ -138,7 +145,7 @@ class RahtiRepo(RahtiProtocol):
         self._session = requests.Session()
 
         if not self.settings.auth_token:
-            logger.warning("Rahti GitHub token not set.") 
+            logger.warning("Rahti GitHub token not set.")
 
         self._session.headers.update({
             "Accept": "application/vnd.github+json",
