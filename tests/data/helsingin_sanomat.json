@@ -1,0 +1,37 @@
+{
+  "source": {
+    "name": "Helsingin Sanomat - Sitemap",
+    "url": [
+      "https://www.hs.fi/rss/custom/news-sitemap.xml"
+    ],
+    "type": "sitemap",
+    "enabled": true,
+    "language": "fi",
+    "with_paywalled": false,
+    "min_content_length": 300,
+    "max_num_articles": 100,
+    "max_age_days": 21
+  },
+  "articles": [
+    {
+      "url": "https://www.hs.fi/visio/art-2000012147573.html",
+      "signature": "c4733e5e48cd51b489c7584c0e39e0b76fd26f2c366f93fb88222dce636d318d",
+      "meta": {
+        "title": "Henkilö | Kurre Westerlundin kodissa asuu vannoutunut republikaani, ja sen huomaa heti ovella",
+        "authors": [
+          "HS"
+        ],
+        "language": "fi"
+      },
+      "labels": [
+        "com.github.klikkikuri/paywalled=true"
+      ],
+      "created_at": null,
+      "updated_at": "2026-07-23T00:00:00Z",
+      "expected": {
+        "skip_reason": "paywalled=true",
+        "is_skipped": true
+      }
+    }
+  ]
+}

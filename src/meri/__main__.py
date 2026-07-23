@@ -11,6 +11,7 @@ from meri.settings import settings, init_settings
 from meri.abc import ArticleLabels
 
 from .lautta import (
+    ArticleTitleData,
     RahtiCleaner,
     UrlMatcher,
     convert_for_rahti,
@@ -19,7 +20,9 @@ from .lautta import (
     generate_titles,
     has_handled_url,
     has_text,
+    matching_selector,
     prune_rahti,
+    should_skip_processing,
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
@@ -69,11 +72,10 @@ def cli(cache: bool, debug: bool):
 
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited data.")
-@click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of workers to use for fetching articles.")
-@click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
+@click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
 @tracer.start_as_current_span("cli.run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(sample: bool, max_workers: int, with_paywalled: bool):
+def run(sample: bool, max_workers: int):
 
     if max_workers is not None:
         settings.MAX_WORKERS = max_workers
@@ -127,18 +129,19 @@ def run(sample: bool, max_workers: int, with_paywalled: bool):
     nr = len(full_articles)
 
     # Filter/prune out articles that are not needed to be processed further
-    filtered_full_articles = []
+    processable_articles = []
+    title_slots: list[ArticleTitleData | int] = []
+    old_titles = []
     for a in full_articles:
         with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
-            is_paywalled_article = ArticleLabels.PAYWALLED in a.article.labels
-            source_allows_paywalled = getattr(a.source, "with_paywalled", False)
-
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
-            elif is_paywalled_article and not with_paywalled and not source_allows_paywalled:
-                span.set_attribute("prune_reason", "paywalled")
-                logger.debug("Pruning paywalled article: %r", a.article.get_url())
+            elif should_skip_processing(a.article):
+                matched_selector = matching_selector(a.article)
+                span.set_attribute("prune_reason", "keep_unprocessed")
+                logger.debug("Keeping article without title processing: %r", a.article.get_url())
+                title_slots.append(ArticleTitleData(a.article, None, a.source, matched_selector.raw_expression if matched_selector else None))
             elif not has_text(a.article):
                 span.set_attribute("prune_reason", "no_text")
                 logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
@@ -146,19 +149,17 @@ def run(sample: bool, max_workers: int, with_paywalled: bool):
                 })
             else:
                 span.set_attribute("prune_reason", "keep")
-                filtered_full_articles.append(a)
+                processable_articles.append(a)
+                old_titles.append(rahti.find_by_article(a.article))
+                title_slots.append(len(processable_articles) - 1)
 
-    full_articles = filtered_full_articles
+    full_articles = processable_articles
 
     logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 
     ## Generate titles for articles
-    # Collect old titles
-    old_titles = []
-    for a in full_articles:
-        old_titles.append(rahti.find_by_article(a.article))
-
-    titles = generate_titles(full_articles, old_titles=old_titles)
+    generated_titles = generate_titles(full_articles, old_titles=old_titles)
+    titles = [generated_titles[slot] if isinstance(slot, int) else slot for slot in title_slots]
 
     # Match articles to old Rahti entries
     for result in titles:
@@ -179,18 +180,22 @@ def run(sample: bool, max_workers: int, with_paywalled: bool):
     logger.info("After pruning Rahti entries, %d entries remain, %d removed", len(rahti.rahti.entries), len(removed_entries))
 
     # Prepare commit message
-    articles_for_commit = [t.article for t in titles if t.source]
-    titles_for_commit = [t.title for t in titles if t.source]
+    processed_titles = [t for t in titles if t.source and t.title]
+    unprocessed_titles = [t for t in titles if t.source and not t.title]
 
     commit_message = Template(COMMIT_MESSAGE).render(
-        articles=articles_for_commit,
-        titles=titles_for_commit,
+        articles=[t.article for t in titles if t.source],
+        processed=processed_titles,
+        unprocessed=unprocessed_titles,
         removed=removed_entries,
     )
 
     # Log prepared articles
     for t in titles:
-        logger.info("Prepared article for Rahti: %r -> %r", t.article.get_url(), t.title.title)
+        if t.title:
+            logger.info("Prepared article for Rahti: %r -> %r", t.article.get_url(), t.title.title)
+        else:
+            logger.info("Prepared unprocessed article for Rahti: %r", t.article.get_url())
 
     # Validate before pushing
     test_json = rahti.model_dump_json()

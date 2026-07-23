@@ -1,0 +1,35 @@
+{
+  "source": {
+    "name": "Yle Uutiset - Recent",
+    "url": [
+      "https://yle.fi/rss/v1/recent.xml"
+    ],
+    "type": "rss",
+    "enabled": true,
+    "language": "fi",
+    "with_paywalled": false,
+    "min_content_length": 300,
+    "max_num_articles": 100,
+    "max_age_days": 21
+  },
+  "articles": [
+    {
+      "url": "https://yle.fi/a/74-20237690",
+      "signature": "611672e21b031111f41687a3c17eeb6592d69b33ae09b6512af83c0504e5f9c7",
+      "meta": {
+        "title": "Asiakirjat paljastavat: ministeri Rydman epäsi rahaa tutkimuksilta, jotka saivat arvioinnissa huippupisteet",
+        "authors": [
+          "Yle Uutiset"
+        ],
+        "language": "fi"
+      },
+      "labels": [],
+      "created_at": null,
+      "updated_at": "2026-07-23T00:00:00Z",
+      "expected": {
+        "skip_reason": null,
+        "is_skipped": false
+      }
+    }
+  ]
+}
