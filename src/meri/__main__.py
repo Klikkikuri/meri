@@ -167,6 +167,10 @@ def run(sample: bool, max_workers: int):
             logger.warning("Article result has no source, skipping: %r", result.article.get_url())
             continue
 
+        if result.skip_reason is None and result.title is None:
+            logger.error("Title generation failed for article, skipping Rahti update: %r", result.article.get_url())
+            continue
+
         rahti_entry = convert_for_rahti(result.source, result.article, result.title)
         rahti.upsert(rahti_entry)
 
