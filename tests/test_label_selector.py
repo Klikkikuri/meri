@@ -399,3 +399,9 @@ def test_selector_caching_performance():
     sel1 = LabelSelector.parse("paywalled=true, article-type in (opinion, review)")
     sel2 = LabelSelector.parse("paywalled=true, article-type in (opinion, review)")
     assert sel1 is sel2
+
+
+def test_selector_cache_normalizes_outer_whitespace():
+    sel_trimmed = LabelSelector.parse("paywalled=true")
+    sel_padded = LabelSelector.parse(" paywalled=true ")
+    assert sel_trimmed is sel_padded

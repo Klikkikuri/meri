@@ -310,7 +310,8 @@ class LabelSelector:
         :return: LabelSelector instance.
         :raises InvalidLabelSelectorError: If the expression has invalid syntax.
         """
-        return _parse_selector_cached(expression)
+        normalized_expression = expression.strip()
+        return _parse_selector_cached(normalized_expression)
 
     def matches(self, label_set: LabelSet) -> bool:
         """
