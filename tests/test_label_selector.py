@@ -144,7 +144,7 @@ def test_parser_error_handling():
 
 def test_settings_validation():
     from pydantic import ValidationError
-    from meri.settings.settings import SkipProcessingSettings
+    from meri.settings.settings import Settings, SkipProcessingSettings
 
     # Valid settings
     valid = SkipProcessingSettings(labels=["paywalled=true", "article-type in (opinion, review)"])
@@ -153,6 +153,11 @@ def test_settings_validation():
     # Invalid setting fails fast on startup
     with pytest.raises(ValidationError):
         SkipProcessingSettings(labels=["article-type in (opinion,"])
+
+    # Full Settings load fails fast on invalid selector string in config dict
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(skip_processing={"labels": ["unclosed_paren("]})  # type: ignore
+    assert "Unclosed parenthesis" in str(exc_info.value)
 
 
 def test_convert_for_rahti_and_cleaner():

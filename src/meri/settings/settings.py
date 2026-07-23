@@ -27,7 +27,7 @@ from typing import Literal, Type
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
 from platformdirs import site_config_dir, user_config_dir
-from pydantic import Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -140,6 +140,26 @@ def _iter_subclasses(base_cls):
         yield from _iter_subclasses(sub_cls)
 
 
+class SkipProcessingSettings(BaseModel):
+    """
+    Settings for skipping article title processing.
+    """
+
+    labels: list[str] = Field(
+        default_factory=lambda: ["paywalled=true"],
+        description="List of Kubernetes-style label selectors (e.g. 'paywalled=true', 'article-type = opinion') that skip title generation and are stored in Rahti without processing.",
+    )
+
+    @field_validator("labels")
+    @classmethod
+    def validate_label_selectors(cls, v: list[str]) -> list[str]:
+        from meri.labels import LabelSelector
+
+        for selector_str in v:
+            LabelSelector.parse(selector_str)
+        return v
+
+
 class Settings(BaseSettings):
     DEBUG: bool = Field(
         False,
@@ -190,6 +210,11 @@ class Settings(BaseSettings):
 
     This is to limit the scope of scraping to relevant sites, and not to log suola errors for irrelevant sites.
     """
+
+    skip_processing: SkipProcessingSettings = Field(
+        default_factory=SkipProcessingSettings,
+        description="Settings for skipping article title processing.",
+    )
 
     rahti: RahtiSettings
 

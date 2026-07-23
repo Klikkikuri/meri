@@ -14,8 +14,16 @@
 # PROMPT_DIR: "/app/prompts"  # Directory for prompt templates
 # suola_rules: "/app/packages/suola/rules.yaml"  # Optional: path to Suola rules file
 
+## Settings for skipping article title processing while retaining entries in Rahti.
+## Each selector in the list evaluates OR; comma-separated requirements in a selector evaluate AND.
+# skip_processing:
+#   labels:
+#     - "paywalled=true, article-type = opinion" # Match if BOTH paywalled=true AND article-type=opinion
+#     - "sponsored=true"                         # OR match if sponsored=true
+#     - "article-type in (opinion, review)"      # OR match if opinion or review
+
 sentry:
-  ## Sentry DSN for error tracking. 
+  ## Sentry DSN for error tracking.
   ## It is recommended to use the SENTRY_DSN environment variable for security.
   # dsn: "https://examplePublicKey@o0.ingest.sentry.io/0"
 
@@ -44,7 +52,7 @@ sources:
   ## The implementation (see src/meri/discovery/rss.py) uses fastfeedparser and supports extracting rich metadata.
   # - name: "Helsingin Sanomat - RSS"
   #   type: rss
-  #   url: 
+  #   url:
   #     - https://www.hs.fi/rss/tuoreimmat.xml
   #     - http://www.hs.fi/rss/teasers/etusivu.xml
   #     - http://www.hs.fi/rss/suomi.xml
@@ -79,7 +87,7 @@ sources:
 
   # - name: iltasanomat
   #   type: rss
-  #   url: 
+  #   url:
   #     - https://www.is.fi/rss/tuoreimmat.xml
   #     - http://www.iltasanomat.fi/rss/kotimaa.xml
   #     - http://www.iltasanomat.fi/rss/ulkomaat.xml
@@ -104,7 +112,7 @@ sources:
       - https://yle.fi/rss/uutiset/paauutiset
       - https://yle.fi/rss/uutiset/tuoreimmat
       - https://yle.fi/rss/uutiset/luetuimmat
-      
+
 
   # Swedish sources, we don't currently support Swedish language well enough
 
@@ -116,7 +124,7 @@ sources:
 
   # - name: SVT Nyheter
   #   type: rss
-  #   url: 
+  #   url:
   #     - https://www.svt.se/rss.xml
 
 rahti:
