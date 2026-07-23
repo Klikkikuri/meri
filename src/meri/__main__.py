@@ -11,6 +11,7 @@ from meri.settings import settings, init_settings
 from meri.abc import ArticleLabels
 
 from .lautta import (
+    ArticleTitleData,
     RahtiCleaner,
     UrlMatcher,
     convert_for_rahti,
@@ -19,6 +20,7 @@ from .lautta import (
     generate_titles,
     has_handled_url,
     has_text,
+    matching_selector,
     prune_rahti,
     should_skip_processing,
 )
@@ -128,16 +130,19 @@ def run(sample: bool, max_workers: int, with_paywalled: bool):
     nr = len(full_articles)
 
     # Filter/prune out articles that are not needed to be processed further
-    filtered_full_articles = []
+    processable_articles = []
+    title_slots: list[ArticleTitleData | int] = []
+    old_titles = []
     for a in full_articles:
         with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
             elif should_skip_processing(a.article):
+                matched_selector = matching_selector(a.article)
                 span.set_attribute("prune_reason", "keep_unprocessed")
                 logger.debug("Keeping article without title processing: %r", a.article.get_url())
-                filtered_full_articles.append(a)
+                title_slots.append(ArticleTitleData(a.article, None, a.source, matched_selector.raw_expression if matched_selector else None))
             elif not has_text(a.article):
                 span.set_attribute("prune_reason", "no_text")
                 logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
@@ -145,19 +150,17 @@ def run(sample: bool, max_workers: int, with_paywalled: bool):
                 })
             else:
                 span.set_attribute("prune_reason", "keep")
-                filtered_full_articles.append(a)
+                processable_articles.append(a)
+                old_titles.append(rahti.find_by_article(a.article))
+                title_slots.append(len(processable_articles) - 1)
 
-    full_articles = filtered_full_articles
+    full_articles = processable_articles
 
     logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 
     ## Generate titles for articles
-    # Collect old titles
-    old_titles = []
-    for a in full_articles:
-        old_titles.append(rahti.find_by_article(a.article))
-
-    titles = generate_titles(full_articles, old_titles=old_titles)
+    generated_titles = generate_titles(full_articles, old_titles=old_titles)
+    titles = [generated_titles[slot] if isinstance(slot, int) else slot for slot in title_slots]
 
     # Match articles to old Rahti entries
     for result in titles:
