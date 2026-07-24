@@ -20,9 +20,7 @@ from niitti.settings.tracing import TracingSettings
 
 logger = structlog.get_logger(__name__)
 
-EXTRA_RESOURCE_DETECTOR = [
-    ("opentelemetry.resource.detector.container", "ContainerResourceDetector")
-]
+EXTRA_RESOURCE_DETECTOR = [("opentelemetry.resource.detector.container", "ContainerResourceDetector")]
 
 EXTRA_INSTRUMENTOR = [
     ("opentelemetry.instrumentation.system_metrics", "SystemMetricsInstrumentor"),
@@ -164,7 +162,9 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
                     emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
-                    node = span_node.add(f"{emoji} [bold white][{idx}] {span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)")
+                    node = span_node.add(
+                        f"{emoji} [bold white][{idx}] {span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)"
+                    )
                     if span.attributes:
                         attr_node = node.add("[dim]Attributes:[/dim]")
                         for k, v in span.attributes.items():
@@ -200,7 +200,9 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
                     emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
-                    sys.stderr.write(f" {emoji} [{idx}] Span: {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n")
+                    sys.stderr.write(
+                        f" {emoji} [{idx}] Span: {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n"
+                    )
                     if span.attributes:
                         for k, v in span.attributes.items():
                             sys.stderr.write(f"       - {k}: {v}\n")
@@ -210,7 +212,14 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
     sys.excepthook = crash_excepthook
 
 
-def setup_sentry(dsn: str | None = None, environment: str | None = None, send_logs: bool = True, send_default_pii: bool = True, traces_sample_rate: float = 0.1, openai_integration: bool = False):
+def setup_sentry(
+    dsn: str | None = None,
+    environment: str | None = None,
+    send_logs: bool = True,
+    send_default_pii: bool = True,
+    traces_sample_rate: float = 0.1,
+    openai_integration: bool = False,
+):
     """
     Setup Sentry SDK.
     """
@@ -224,6 +233,7 @@ def setup_sentry(dsn: str | None = None, environment: str | None = None, send_lo
     if not send_logs:
         try:
             from sentry_sdk.integrations.logging import LoggingIntegration
+
             integrations.append(LoggingIntegration(event_level=None, level=None))
         except ImportError:
             pass
@@ -231,6 +241,7 @@ def setup_sentry(dsn: str | None = None, environment: str | None = None, send_lo
     if openai_integration:
         try:
             from sentry_sdk.integrations.openai import OpenAIIntegration
+
             integrations.append(OpenAIIntegration())
         except ImportError:
             logger.debug("OpenAIIntegration not available")
@@ -265,10 +276,12 @@ def setup_tracing(settings: TracingSettings | None = None):
     except Exception:
         version = "0.1.0"
 
-    resource = Resource.create({
-        SERVICE_NAME: name,
-        SERVICE_VERSION: version,
-    })
+    resource = Resource.create(
+        {
+            SERVICE_NAME: name,
+            SERVICE_VERSION: version,
+        }
+    )
 
     resources = []
     for detector_pkg, cls in EXTRA_RESOURCE_DETECTOR:
@@ -290,6 +303,7 @@ def setup_tracing(settings: TracingSettings | None = None):
     if otel_endpoint:
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
             logger.debug("Setting tracing target to %s", otel_endpoint)
             exporter = OTLPSpanExporter(endpoint=otel_endpoint)
             span_processor = BatchSpanProcessor(exporter)
@@ -314,6 +328,7 @@ def setup_tracing(settings: TracingSettings | None = None):
 
     try:
         import haystack.tracing
+
         if hasattr(haystack.tracing, "enable_tracing") and hasattr(haystack.tracing, "OpenTelemetryTracer"):
             haystack.tracing.enable_tracing(haystack.tracing.OpenTelemetryTracer(tracer))
     except Exception as e:
@@ -322,6 +337,7 @@ def setup_tracing(settings: TracingSettings | None = None):
     # Restore logging configuration in case third-party imports modified structlog or handlers
     try:
         from niitti.logging import setup_logging
+
         setup_logging()
     except Exception as e:
         logger.debug("Logging restoration after tracing setup skipped: %s", e)

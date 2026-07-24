@@ -1,0 +1,149 @@
+"""
+Tests for niitti tracing subpackage.
+
+:purpose: Verify OpenTelemetry tracing setup, crash span dumper, emoji mapping, and Sentry integration.
+"""
+
+import sys
+from unittest.mock import MagicMock, patch
+
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+import niitti.tracing as tracing_module
+from niitti.settings.tracing import TracingSettings
+from niitti.tracing import (
+    DEFAULT_SPAN_EMOJI,
+    clear_crash_span_buffer,
+    get_span_emoji,
+    setup_crash_span_dumper,
+    setup_sentry,
+    setup_tracing,
+    span_id_to_emoji,
+)
+
+
+def test_get_span_emoji_mapping():
+    """
+    Verify get_span_emoji matches span names against SPAN_EMOJI_MAP or returns DEFAULT_SPAN_EMOJI.
+
+    :return: None
+    """
+    assert get_span_emoji("pipeline.run") == "🚀"
+    assert get_span_emoji("fetch_article_data") == "📰"
+    assert get_span_emoji("OPENAI_PROMPT_GENERATION") == "🧠"
+    assert get_span_emoji("meri_service") == "🌊"
+    assert get_span_emoji("db_query") == "🗄️"
+    assert get_span_emoji("unknown_action_xyz") == DEFAULT_SPAN_EMOJI
+
+
+def test_span_id_to_emoji_backwards_compatibility():
+    """
+    Verify span_id_to_emoji returns DEFAULT_SPAN_EMOJI.
+
+    :return: None
+    """
+    assert span_id_to_emoji(12345) == DEFAULT_SPAN_EMOJI
+    assert span_id_to_emoji("abc") == DEFAULT_SPAN_EMOJI
+    assert span_id_to_emoji(None) == DEFAULT_SPAN_EMOJI
+
+
+def test_clear_crash_span_buffer():
+    """
+    Verify clear_crash_span_buffer clears in-memory crash exporter if present.
+
+    :return: None
+    """
+    mock_exporter = MagicMock(spec=InMemorySpanExporter)
+    tracing_module._crash_span_exporter = mock_exporter
+
+    clear_crash_span_buffer()
+    mock_exporter.clear.assert_called_once()
+
+    # Reset
+    tracing_module._crash_span_exporter = None
+
+
+def test_setup_crash_span_dumper_and_excepthook():
+    """
+    Verify setup_crash_span_dumper configures excepthook and handles crashes cleanly.
+
+    :return: None
+    """
+    original_excepthook = sys.excepthook
+    provider = TracerProvider()
+
+    setup_crash_span_dumper(provider)
+    exporter = setup_crash_span_dumper(trace_provider=None)
+    assert exporter is not None
+    assert sys.excepthook != original_excepthook
+
+    # Test KeyboardInterrupt pass-through
+    mock_old_excepthook = MagicMock()
+    with patch("sys.excepthook", mock_old_excepthook):
+        try:
+            sys.excepthook(KeyboardInterrupt, KeyboardInterrupt("interrupted"), None)
+        finally:
+            sys.excepthook = original_excepthook
+
+    # Test Exception handling output
+    try:
+        current_hook = sys.excepthook
+        with patch("sys.stderr.write") as mock_stderr:
+            current_hook(RuntimeError, RuntimeError("test crash"), None)
+            assert mock_stderr.called
+    finally:
+        sys.excepthook = original_excepthook
+        tracing_module._crash_span_exporter = None
+
+
+def test_setup_sentry_disabled():
+    """
+    Verify setup_sentry does nothing when DSN is empty or None.
+
+    :return: None
+    """
+    with patch("sentry_sdk.init") as mock_init:
+        setup_sentry(dsn=None)
+        mock_init.assert_not_called()
+
+
+def test_setup_sentry_enabled():
+    """
+    Verify setup_sentry initializes sentry_sdk when DSN is provided.
+
+    :return: None
+    """
+    with patch("sentry_sdk.init") as mock_init:
+        setup_sentry(
+            dsn="https://key@sentry.io/123",
+            environment="production",
+            send_logs=False,
+            openai_integration=True,
+        )
+        mock_init.assert_called_once()
+        _, kwargs = mock_init.call_args
+        assert kwargs["dsn"] == "https://key@sentry.io/123"
+        assert kwargs["environment"] == "production"
+
+
+def test_setup_tracing_disabled():
+    """
+    Verify setup_tracing returns None when TRACING_ENABLED is False.
+
+    :return: None
+    """
+    settings = TracingSettings(TRACING_ENABLED=False)
+    result = setup_tracing(settings)
+    assert result is None
+
+
+def test_setup_tracing_enabled():
+    """
+    Verify setup_tracing initializes OpenTelemetry tracer when enabled.
+
+    :return: None
+    """
+    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_app")
+    tracer = setup_tracing(settings)
+    assert tracer is not None

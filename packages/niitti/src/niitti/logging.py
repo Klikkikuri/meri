@@ -71,7 +71,8 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
 
     structlog.reset_defaults()
     structlog.configure(
-        processors=shared_processors + [
+        processors=shared_processors
+        + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -81,6 +82,7 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
 
     try:
         from structlog.dev import rich_traceback
+
         exception_formatter = rich_traceback
     except ImportError:
         exception_formatter = structlog.dev.plain_traceback
