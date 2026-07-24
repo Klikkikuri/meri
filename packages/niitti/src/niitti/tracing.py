@@ -131,7 +131,21 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
         _crash_span_exporter = InMemorySpanExporter()
 
     if trace_provider is not None and _crash_span_exporter is not None:
-        trace_provider.add_span_processor(SimpleSpanProcessor(_crash_span_exporter))
+        # Check if InMemorySpanExporter processor is already registered on trace_provider
+        already_registered = False
+        if hasattr(trace_provider, "_active_span_processor"):
+            active_processor = getattr(trace_provider, "_active_span_processor")
+            if hasattr(active_processor, "_span_processors"):
+                for proc in active_processor._span_processors:
+                    if (
+                        isinstance(proc, SimpleSpanProcessor)
+                        and getattr(proc, "span_exporter", None) is _crash_span_exporter
+                    ):
+                        already_registered = True
+                        break
+
+        if not already_registered:
+            trace_provider.add_span_processor(SimpleSpanProcessor(_crash_span_exporter))
 
     old_excepthook = sys.excepthook
 
@@ -256,18 +270,30 @@ def setup_sentry(
     )
 
 
-def setup_tracing(settings: TracingSettings | None = None):
+_active_tracer_provider: TracerProvider | None = None
+_active_tracer: trace.Tracer | None = None
+_instrumented_packages: set[str] = set()
+
+
+def setup_tracing(settings: TracingSettings | None = None) -> trace.Tracer | None:
     """
-    Setup OpenTelemetry tracing.
+    Setup OpenTelemetry tracing idempotently.
 
     :param settings: TracingSettings instance. If None, default TracingSettings() will be initialized.
+    :return: OpenTelemetry Tracer instance or None if tracing is disabled.
     """
+    global _active_tracer_provider, _active_tracer, _instrumented_packages
+
     if settings is None:
         settings = TracingSettings()
 
     if not settings.TRACING_ENABLED:
         logger.debug("Tracing is disabled")
         return None
+
+    if _active_tracer is not None and _active_tracer_provider is not None:
+        logger.debug("Tracing is already initialized")
+        return _active_tracer
 
     name = settings.SERVICE_NAME
     try:
@@ -295,6 +321,7 @@ def setup_tracing(settings: TracingSettings | None = None):
 
     resource = get_aggregated_resources(resources, resource)
     trace_provider = TracerProvider(resource=resource)
+    _active_tracer_provider = trace_provider
 
     # Install crash span dumper with SimpleSpanProcessor & InMemorySpanExporter
     setup_crash_span_dumper(trace_provider)
@@ -313,18 +340,27 @@ def setup_tracing(settings: TracingSettings | None = None):
 
     trace.set_tracer_provider(trace_provider)
     tracer = trace.get_tracer(name, version, tracer_provider=trace_provider)
+    _active_tracer = tracer
 
     with tracer.start_as_current_span(f"{name}.tracing.auto_instrumentation") as span:
         if isinstance(span, trace.NonRecordingSpan):
             return None
 
         for instrumentor_pkg, cls in EXTRA_INSTRUMENTOR:
+            if instrumentor_pkg in _instrumented_packages:
+                continue
+
             try:
                 mod = import_module(instrumentor_pkg)
                 instrumentor_cls = getattr(mod, cls)
-                instrumentor_cls().instrument()
+                instrumentor = instrumentor_cls()
+                if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
+                    instrumentor.instrument()
+                _instrumented_packages.add(instrumentor_pkg)
             except ImportError as e:
                 logger.info("Instrumentor %s.%s not found: %s", instrumentor_pkg, cls, e)
+            except Exception as e:
+                logger.debug("Error initializing instrumentor %s.%s: %s", instrumentor_pkg, cls, e)
 
     try:
         import haystack.tracing

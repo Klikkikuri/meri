@@ -138,12 +138,19 @@ def test_setup_tracing_disabled():
     assert result is None
 
 
-def test_setup_tracing_enabled():
+def test_setup_tracing_enabled_and_idempotent():
     """
-    Verify setup_tracing initializes OpenTelemetry tracer when enabled.
+    Verify setup_tracing initializes OpenTelemetry tracer idempotently.
 
     :return: None
     """
+    tracing_module._active_tracer = None
+    tracing_module._active_tracer_provider = None
+
     settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_app")
-    tracer = setup_tracing(settings)
-    assert tracer is not None
+    tracer1 = setup_tracing(settings)
+    assert tracer1 is not None
+
+    # Second invocation returns the exact same tracer without duplicating setup
+    tracer2 = setup_tracing(settings)
+    assert tracer2 is tracer1
