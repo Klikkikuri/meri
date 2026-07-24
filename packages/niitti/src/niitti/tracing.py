@@ -1,6 +1,8 @@
 import logging
 import os
 import sys
+import threading
+from collections import deque
 from importlib import import_module
 from importlib.metadata import metadata
 import structlog
@@ -12,9 +14,13 @@ from opentelemetry.sdk.resources import (
     Resource,
     get_aggregated_resources,
 )
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    SimpleSpanProcessor,
+    SpanExporter,
+    SpanExportResult,
+)
 
 from niitti.settings.tracing import TracingSettings
 
@@ -74,6 +80,11 @@ SPAN_EMOJI_MAP: dict[str, str] = {
 
 DEFAULT_SPAN_EMOJI: str = "📌"
 
+# Default cap on the number of finished spans retained for crash dumping.
+# Bounded so long-running daemons (e.g. laituri's background scheduler) don't
+# grow this buffer unboundedly across many iterations.
+DEFAULT_CRASH_SPAN_BUFFER_SIZE = 5000
+
 
 def get_span_emoji(span_name: str, span_id: int | str | None = None) -> str:
     """
@@ -95,26 +106,86 @@ def span_id_to_emoji(span_id: int | str | None) -> str:
     return DEFAULT_SPAN_EMOJI
 
 
-# In-memory buffer for crash span dumping
-_crash_span_exporter: InMemorySpanExporter | None = None
+class RingBufferSpanExporter(SpanExporter):
+    """
+    A SpanExporter that retains only the most recently finished spans, up to a
+    fixed capacity, for crash-time diagnostics.
+
+    Unlike opentelemetry's InMemorySpanExporter, this exporter never grows
+    unbounded: once `maxlen` spans are stored, older spans are evicted
+    automatically as new ones arrive (FIFO eviction via a bounded deque).
+    This makes it safe to use in long-running processes (daemons, background
+    schedulers) without requiring callers to periodically clear the buffer.
+
+    Thread-safe: export()/get_finished_spans()/clear() all take an internal
+    lock, matching the behavior of the standard InMemorySpanExporter.
+    """
+
+    def __init__(self, maxlen: int = DEFAULT_CRASH_SPAN_BUFFER_SIZE) -> None:
+        if maxlen <= 0:
+            raise ValueError("maxlen must be a positive integer")
+        self._maxlen = maxlen
+        self._spans: deque[ReadableSpan] = deque(maxlen=maxlen)
+        self._lock = threading.Lock()
+        self._stopped = False
+
+    @property
+    def maxlen(self) -> int:
+        return self._maxlen
+
+    def export(self, spans) -> SpanExportResult:
+        if self._stopped:
+            return SpanExportResult.FAILURE
+        with self._lock:
+            self._spans.extend(spans)
+        return SpanExportResult.SUCCESS
+
+    def get_finished_spans(self) -> tuple[ReadableSpan, ...]:
+        with self._lock:
+            return tuple(self._spans)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._spans.clear()
+
+    def shutdown(self) -> None:
+        self._stopped = True
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+# In-memory ring buffer for crash span dumping
+_crash_span_exporter: RingBufferSpanExporter | None = None
 
 
 def clear_crash_span_buffer():
     """
-    Clear the in-memory crash span buffer.
+    Clear the crash span ring buffer.
 
-    Call this function in long-running daemons (e.g. laituri background scheduler)
-    after each top-level iteration loop completes to prevent unbounded memory growth.
+    Kept for backwards compatibility. Since the buffer is now a bounded ring
+    buffer (see RingBufferSpanExporter), calling this is no longer required
+    to prevent unbounded memory growth in long-running daemons; it remains
+    useful if you want to explicitly reset the buffer between iterations
+    (e.g. to avoid showing spans from a prior loop iteration on crash).
     """
     global _crash_span_exporter
     if _crash_span_exporter is not None:
         _crash_span_exporter.clear()
 
 
-def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
+def setup_crash_span_dumper(
+    trace_provider: TracerProvider | None = None,
+    max_spans: int = DEFAULT_CRASH_SPAN_BUFFER_SIZE,
+):
     """
-    Attach a SimpleSpanProcessor + InMemorySpanExporter and install a sys.excepthook
-    to dump active trace spans to console if the application crashes.
+    Attach a SimpleSpanProcessor + bounded RingBufferSpanExporter and install a
+    sys.excepthook to dump active trace spans to console if the application crashes.
+
+    :param trace_provider: TracerProvider to attach the crash span processor to.
+    :param max_spans: Maximum number of finished spans retained for crash dumping.
+        Older spans are evicted automatically once this cap is reached, so this
+        buffer is safe to use in long-running daemons without manual clearing.
     """
     global _crash_span_exporter
     if _crash_span_exporter is not None and trace_provider is None:
@@ -128,10 +199,10 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
             trace_provider = getattr(provider, "_tracer_provider")
 
     if _crash_span_exporter is None:
-        _crash_span_exporter = InMemorySpanExporter()
+        _crash_span_exporter = RingBufferSpanExporter(maxlen=max_spans)
 
     if trace_provider is not None and _crash_span_exporter is not None:
-        # Check if InMemorySpanExporter processor is already registered on trace_provider
+        # Check if the crash span exporter's processor is already registered on trace_provider
         already_registered = False
         if hasattr(trace_provider, "_active_span_processor"):
             active_processor = getattr(trace_provider, "_active_span_processor")
@@ -154,7 +225,7 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
             old_excepthook(exc_type, exc_value, exc_tb)
             return
 
-        spans = _crash_span_exporter.get_finished_spans() if _crash_span_exporter else []
+        spans = _crash_span_exporter.get_finished_spans() if _crash_span_exporter else ()
         current_span = trace.get_current_span()
 
         try:
@@ -170,7 +241,10 @@ def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
                 tree.add(f"[bold yellow]Span ID:[/bold yellow]  {ctx.span_id:016x}")
 
             if spans:
-                span_node = tree.add(f"[bold cyan]Recorded Spans ({len(spans)})[/bold cyan]")
+                buffer_note = (
+                    f" (ring buffer, max {_crash_span_exporter.maxlen})" if _crash_span_exporter else ""
+                )
+                span_node = tree.add(f"[bold cyan]Recorded Spans ({len(spans)}){buffer_note}[/bold cyan]")
                 for idx, span in enumerate(spans, 1):
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
@@ -351,7 +425,7 @@ def activate_tracing(
 
     _active_tracer_provider = trace_provider
 
-    # Install crash span dumper with SimpleSpanProcessor & InMemorySpanExporter
+    # Install crash span dumper with SimpleSpanProcessor & bounded RingBufferSpanExporter
     setup_crash_span_dumper(trace_provider)
 
     trace.set_tracer_provider(trace_provider)
