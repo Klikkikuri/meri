@@ -7,6 +7,10 @@ from niitti.settings.logging import LoggingSettings
 
 logger = structlog.get_logger(__name__)
 
+BAGGAGE_KEYS = {
+    "request_id",
+    "tenant_id",
+}
 
 def add_opentelemetry_context(logger, method_name, event_dict):
     """
@@ -19,10 +23,16 @@ def add_opentelemetry_context(logger, method_name, event_dict):
             event_dict["trace_id"] = f"{ctx.trace_id:032x}"
             event_dict["span_id"] = f"{ctx.span_id:016x}"
 
-    current_baggage = baggage.get_all()
-    if current_baggage:
-        event_dict["otel_baggage"] = dict(current_baggage)
+    # Don't log all baggage unless in debug mode, as it can be verbose and sensitive.
 
+    logging_settings = get_active_logging_settings()
+    current_baggage = baggage.get_all()
+    if current_baggage and logging_settings and logging_settings.DEBUG:
+        event_dict["otel_baggage"] = dict(current_baggage)
+    else:
+        event_dict["otel_baggage"] = {
+            key: value for key, value in current_baggage.items() if key in BAGGAGE_KEYS
+        }
     return event_dict
 
 
