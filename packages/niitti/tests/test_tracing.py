@@ -1,7 +1,7 @@
 """
 Tests for niitti tracing subpackage.
 
-:purpose: Verify OpenTelemetry tracing setup, crash span dumper, emoji mapping, and Sentry integration.
+:purpose: Verify OpenTelemetry tracing setup, crash span dumper, emoji mapping, Sentry integration, and flush/shutdown support.
 """
 
 import sys
@@ -15,10 +15,12 @@ from niitti.settings.tracing import TracingSettings
 from niitti.tracing import (
     DEFAULT_SPAN_EMOJI,
     clear_crash_span_buffer,
+    flush_tracing,
     get_span_emoji,
     setup_crash_span_dumper,
     setup_sentry,
     setup_tracing,
+    shutdown_tracing,
     span_id_to_emoji,
 )
 
@@ -154,3 +156,26 @@ def test_setup_tracing_enabled_and_idempotent():
     # Second invocation returns the exact same tracer without duplicating setup
     tracer2 = setup_tracing(settings)
     assert tracer2 is tracer1
+
+
+def test_flush_and_shutdown_tracing():
+    """
+    Verify flush_tracing and shutdown_tracing execute cleanly on active tracer provider.
+
+    :return: None
+    """
+    tracing_module._active_tracer = None
+    tracing_module._active_tracer_provider = None
+
+    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_flush_app")
+    tracer = setup_tracing(settings)
+    assert tracer is not None
+
+    # Verify flush returns True
+    flush_result = flush_tracing(timeout_millis=1000)
+    assert flush_result is True
+
+    # Verify shutdown cleans up active tracer state
+    shutdown_tracing(timeout_millis=1000)
+    assert tracing_module._active_tracer_provider is None
+    assert tracing_module._active_tracer is None

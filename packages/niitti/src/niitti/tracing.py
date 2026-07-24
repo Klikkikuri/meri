@@ -379,3 +379,57 @@ def setup_tracing(settings: TracingSettings | None = None) -> trace.Tracer | Non
         logger.debug("Logging restoration after tracing setup skipped: %s", e)
 
     return tracer
+
+
+def flush_tracing(timeout_millis: int = 30000) -> bool:
+    """
+    Force flush active tracing span processors (e.g., BatchSpanProcessor / OTLPSpanExporter).
+
+    :param timeout_millis: Maximum time in milliseconds to wait for export to complete.
+    :return: True if flush succeeded, False otherwise.
+    """
+    global _active_tracer_provider
+    if _active_tracer_provider is not None:
+        try:
+            return bool(_active_tracer_provider.force_flush(timeout_millis=timeout_millis))
+        except Exception as e:
+            logger.debug("Error flushing trace provider: %s", e)
+            return False
+
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "force_flush"):
+        try:
+            return bool(provider.force_flush(timeout_millis=timeout_millis))
+        except Exception as e:
+            logger.debug("Error flushing global tracer provider: %s", e)
+            return False
+
+    return True
+
+
+def shutdown_tracing(timeout_millis: int = 30000) -> None:
+    """
+    Shutdown active tracing span processors and clean up global tracer provider resources.
+
+    :param timeout_millis: Maximum time in milliseconds to wait for shutdown to complete.
+    :return: None
+    """
+    global _active_tracer_provider, _active_tracer
+    if _active_tracer_provider is not None:
+        try:
+            if hasattr(_active_tracer_provider, "shutdown"):
+                _active_tracer_provider.shutdown()
+        except Exception as e:
+            logger.debug("Error shutting down trace provider: %s", e)
+        finally:
+            _active_tracer_provider = None
+            _active_tracer = None
+        return
+
+    provider = trace.get_tracer_provider()
+    if hasattr(provider, "shutdown"):
+        try:
+            provider.shutdown()
+        except Exception as e:
+            logger.debug("Error shutting down global tracer provider: %s", e)
+    _active_tracer = None

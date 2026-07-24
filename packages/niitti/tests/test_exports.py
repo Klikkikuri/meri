@@ -21,6 +21,8 @@ def test_top_level_exports():
         "setup_logging",
         "add_opentelemetry_context",
         "setup_tracing",
+        "flush_tracing",
+        "shutdown_tracing",
         "setup_sentry",
         "setup_crash_span_dumper",
         "clear_crash_span_buffer",

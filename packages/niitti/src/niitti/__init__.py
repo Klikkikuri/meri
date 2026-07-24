@@ -4,10 +4,12 @@ from niitti.tracing import (
     DEFAULT_SPAN_EMOJI,
     SPAN_EMOJI_MAP,
     clear_crash_span_buffer,
+    flush_tracing,
     get_span_emoji,
     setup_crash_span_dumper,
     setup_sentry,
     setup_tracing,
+    shutdown_tracing,
     span_id_to_emoji,
 )
 
@@ -18,6 +20,8 @@ __all__ = [
     "setup_logging",
     "add_opentelemetry_context",
     "setup_tracing",
+    "flush_tracing",
+    "shutdown_tracing",
     "setup_sentry",
     "setup_crash_span_dumper",
     "clear_crash_span_buffer",

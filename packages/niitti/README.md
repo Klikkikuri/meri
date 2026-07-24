@@ -5,24 +5,27 @@
 ## Features
 
 - 🪵 **Structured Logging**: `structlog` setup with automatic TTY detection (colored console formatting on interactive terminals, JSON logs in non-interactive environments/containers).
-- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, and OpenTelemetry Baggage injection into all log messages.
+- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, and OpenTelemetry Baggage injection into all log messages. Idempotent tracing initialization via `setup_tracing()`.
+- 🔄 **Flush & Shutdown Support**: `flush_tracing()` to force flush queued batch spans, and `shutdown_tracing()` for clean application teardown.
 - 💥 **Crash Span Waterfall Dumper**: Visual tree waterfall of finished OpenTelemetry trace spans rendered to `stderr` on uncaught application crashes using `rich.tree.Tree` (with plain-text fallback).
 - 🎯 **Daemon Memory Safety**: `clear_crash_span_buffer()` helper to prevent memory growth in long-running services (e.g., `laituri`).
 - ⚙️ **Typed Settings Models**: Modular `LoggingSettings` and `TracingSettings` Pydantic models.
 
 ## Installation
 
-Within the Klikkikuri workspace:
+Install with specific extras or all features combined:
 
 ```bash
-uv add niitti
+uv add "niitti[logging,tracing,settings]"
+# Or install all features:
+uv add "niitti[all]"
 ```
 
 Or depend on it in your `pyproject.toml`:
 
 ```toml
 [dependencies]
-niitti = { workspace = true }
+niitti = { workspace = true, extras = ["all"] }
 ```
 
 ## Quick Start
@@ -30,15 +33,26 @@ niitti = { workspace = true }
 ### Logging & Tracing Setup
 
 ```python
-from niitti import setup_logging, setup_tracing, LoggingSettings, TracingSettings
+from niitti import (
+    LoggingSettings,
+    TracingSettings,
+    flush_tracing,
+    setup_logging,
+    setup_tracing,
+    shutdown_tracing,
+)
 
 # 1. Initialize logging
 log_settings = LoggingSettings(LOG_LEVEL="INFO")
 setup_logging(log_settings)
 
-# 2. Initialize tracing
+# 2. Initialize tracing (idempotent)
 trace_settings = TracingSettings(SERVICE_NAME="meri", TRACING_ENABLED=True)
 tracer = setup_tracing(trace_settings)
+
+# 3. Force flush or shutdown tracing on application exit
+flush_tracing(timeout_millis=5000)
+shutdown_tracing()
 ```
 
 ### Structlog with OTel Context
@@ -68,10 +82,11 @@ while True:
     clear_crash_span_buffer()  # Prevents in-memory span buffer growth
 ```
 
-## Dependency Groups
+## Optional Dependencies (Extras)
 
-`niitti` provides modular dependency groups in `pyproject.toml`:
+`niitti` provides modular optional dependency extras in `pyproject.toml`:
 
 - `logging`: `structlog`
 - `tracing`: `opentelemetry-sdk`, `opentelemetry-instrumentation-logging`, `sentry-sdk`
 - `settings`: `pydantic`, `pydantic-settings`
+- `all`: Installs all optional dependencies (`niitti[logging,settings,tracing]`)
