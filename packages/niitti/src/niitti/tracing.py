@@ -2,7 +2,7 @@ import logging
 import os
 import sys
 import threading
-from collections import deque
+from collections import defaultdict, deque
 from importlib import import_module
 from importlib.metadata import metadata
 import structlog
@@ -155,6 +155,72 @@ class RingBufferSpanExporter(SpanExporter):
         return True
 
 
+def _span_id(span: ReadableSpan) -> int | None:
+    ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+    return ctx.span_id if ctx else None
+
+
+def _parent_span_id(span: ReadableSpan) -> int | None:
+    parent = getattr(span, "parent", None)
+    return parent.span_id if parent is not None else None
+
+
+def _trace_id(span: ReadableSpan) -> int | None:
+    ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+    return ctx.trace_id if ctx else None
+
+
+def build_span_forest(
+    spans,
+) -> list[tuple[int | None, list[tuple[ReadableSpan, list]]]]:
+    """
+    Reconstruct parent/child span hierarchy from a flat list of finished spans.
+
+    Groups spans by trace_id (a crash buffer may contain spans from more than one
+    trace), and within each trace links children to parents via span_id /
+    parent_span_id. A span whose parent isn't present in the buffer (e.g. the
+    parent finished and was evicted from the ring buffer, or the parent belongs
+    to a different process) is treated as a root for display purposes.
+
+    :param spans: Iterable of finished ReadableSpan objects.
+    :return: List of (trace_id, roots) tuples, where each root is a
+        (span, children) tuple and children is recursively the same
+        (span, children) list structure, in the original span order.
+    """
+    spans_by_trace: dict[int | None, list[ReadableSpan]] = defaultdict(list)
+    for span in spans:
+        spans_by_trace[_trace_id(span)].append(span)
+
+    forest: list[tuple[int | None, list[tuple[ReadableSpan, list]]]] = []
+
+    for trace_id_value, trace_spans in spans_by_trace.items():
+        by_id: dict[int, ReadableSpan] = {}
+        for span in trace_spans:
+            sid = _span_id(span)
+            if sid is not None:
+                by_id[sid] = span
+
+        children_of: dict[int, list[ReadableSpan]] = defaultdict(list)
+        roots: list[ReadableSpan] = []
+        for span in trace_spans:
+            pid = _parent_span_id(span)
+            if pid is not None and pid in by_id:
+                children_of[pid].append(span)
+            else:
+                # No parent, or parent not present in this buffer (evicted or
+                # from another process) - render as a root.
+                roots.append(span)
+
+        def attach(span: ReadableSpan) -> tuple[ReadableSpan, list]:
+            sid = _span_id(span)
+            child_spans = children_of.get(sid, []) if sid is not None else []
+            return (span, [attach(child) for child in child_spans])
+
+        forest.append((trace_id_value, [attach(root) for root in roots]))
+
+    return forest
+
+
 # In-memory ring buffer for crash span dumping
 _crash_span_exporter: RingBufferSpanExporter | None = None
 
@@ -245,13 +311,14 @@ def setup_crash_span_dumper(
                     f" (ring buffer, max {_crash_span_exporter.maxlen})" if _crash_span_exporter else ""
                 )
                 span_node = tree.add(f"[bold cyan]Recorded Spans ({len(spans)}){buffer_note}[/bold cyan]")
-                for idx, span in enumerate(spans, 1):
+
+                def add_rich_node(parent_node, span: ReadableSpan, children: list) -> None:
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
                     emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
-                    node = span_node.add(
-                        f"{emoji} [bold white][{idx}] {span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)"
+                    node = parent_node.add(
+                        f"{emoji} [bold white]{span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)"
                     )
                     if span.attributes:
                         attr_node = node.add("[dim]Attributes:[/dim]")
@@ -261,6 +328,19 @@ def setup_crash_span_dumper(
                         event_node = node.add("[dim]Events:[/dim]")
                         for ev in span.events:
                             event_node.add(f"[magenta]{ev.name}:[/magenta] {ev.attributes}")
+                    for child_span, child_children in children:
+                        add_rich_node(node, child_span, child_children)
+
+                forest = build_span_forest(spans)
+                for trace_id_value, roots in forest:
+                    trace_label = f"{trace_id_value:032x}" if trace_id_value is not None else "unknown"
+                    trace_node = (
+                        span_node.add(f"[bold yellow]Trace {trace_label}[/bold yellow]")
+                        if len(forest) > 1
+                        else span_node
+                    )
+                    for root_span, root_children in roots:
+                        add_rich_node(trace_node, root_span, root_children)
             else:
                 tree.add("[dim]No finished spans recorded in buffer.[/dim]")
 
@@ -283,17 +363,30 @@ def setup_crash_span_dumper(
 
             if spans:
                 sys.stderr.write(f"Recorded Spans ({len(spans)}):\n")
-                for idx, span in enumerate(spans, 1):
+
+                def write_plain_node(span: ReadableSpan, children: list, depth: int) -> None:
+                    indent = "  " * depth
+                    branch = "└─ " if depth > 0 else ""
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
                     emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
                     sys.stderr.write(
-                        f" {emoji} [{idx}] Span: {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n"
+                        f"{indent}{branch}{emoji} {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n"
                     )
                     if span.attributes:
                         for k, v in span.attributes.items():
-                            sys.stderr.write(f"       - {k}: {v}\n")
+                            sys.stderr.write(f"{indent}       - {k}: {v}\n")
+                    for child_span, child_children in children:
+                        write_plain_node(child_span, child_children, depth + 1)
+
+                forest = build_span_forest(spans)
+                for trace_id_value, roots in forest:
+                    if len(forest) > 1:
+                        trace_label = f"{trace_id_value:032x}" if trace_id_value is not None else "unknown"
+                        sys.stderr.write(f"Trace {trace_label}:\n")
+                    for root_span, root_children in roots:
+                        write_plain_node(root_span, root_children, 0)
             sys.stderr.write("=" * 80 + "\n\n")
             old_excepthook(exc_type, exc_value, exc_tb)
 
