@@ -19,13 +19,15 @@ Order of precedence:
 """
 import logging
 import os
-from importlib.metadata import PackageNotFoundError, metadata
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Literal, Type
+from typing import Type
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
+from niitti.settings.logging import LoggingSettings
+from niitti.settings.settings import Settings as NiittiSettings
+from niitti.settings.tracing import TracingSettings
 from platformdirs import site_config_dir, user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import (
@@ -55,18 +57,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 if os.getenv("DEBUG", "0") == "1":
     logger.setLevel(logging.DEBUG)
-
-_pkg_metadata: dict = {}
-
-try:
-    _pkg_name, *_ = PKG_NAME.split(".")
-    _pkg_metadata = dict(metadata(_pkg_name))
-except (IndexError, PackageNotFoundError):
-    _pkg_name = PKG_NAME
-    _pkg_metadata = dict(metadata(_pkg_name))
-finally:
-    # Set the homepage from the metadata
-    _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
 
 # User defined settings
 _user_config_path = Path(user_config_dir(PKG_NAME), "config.yaml")
@@ -160,35 +150,17 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(BaseSettings):
-    DEBUG: bool = Field(
-        False,
-        description="Enable debug mode.",
-    )
-
-    TRACING_ENABLED: bool = Field(
-        _otel_available,
-        description="Enable OpenTelemetry tracing.",
-    )
-
+class Settings(NiittiSettings, LoggingSettings, TracingSettings):
     sentry: SentrySettings = Field(
         default_factory=SentrySettings,  # type: ignore
         description="Sentry settings.",
     )
-
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
         "Mozilla/5.0 (compatible;)",
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
-
-    # Logging settings
-    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        "INFO",
-        description="Logging level.",
-    )
-
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
     MAX_WORKERS: int = Field(3, description="Maximum number of worker threads for processing articles.")
 
@@ -257,7 +229,7 @@ class Settings(BaseSettings):
         """
         Compute the user-agent string.
         """
-        bot_info = _pkg_metadata.copy()
+        bot_info = cls.get_package_metadata().copy()
         bot_info.setdefault("BOT_ID", values.get("BOT_ID", DEFAULT_BOT_ID))
         user_agent = "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})".format(**bot_info)
         values.setdefault('BOT_USER_AGENT', user_agent)
