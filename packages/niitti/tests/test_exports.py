@@ -20,6 +20,8 @@ def test_top_level_exports():
         "TracingSettings",
         "setup_logging",
         "add_opentelemetry_context",
+        "configure_tracing",
+        "activate_tracing",
         "setup_tracing",
         "flush_tracing",
         "shutdown_tracing",

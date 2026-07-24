@@ -14,7 +14,9 @@ import niitti.tracing as tracing_module
 from niitti.settings.tracing import TracingSettings
 from niitti.tracing import (
     DEFAULT_SPAN_EMOJI,
+    activate_tracing,
     clear_crash_span_buffer,
+    configure_tracing,
     flush_tracing,
     get_span_emoji,
     setup_crash_span_dumper,
@@ -156,6 +158,42 @@ def test_setup_tracing_enabled_and_idempotent():
     # Second invocation returns the exact same tracer without duplicating setup
     tracer2 = setup_tracing(settings)
     assert tracer2 is tracer1
+
+
+def test_configure_tracing_disabled():
+    """
+    Verify configure_tracing returns (None, None) when TRACING_ENABLED is False.
+
+    :return: None
+    """
+    settings = TracingSettings(TRACING_ENABLED=False)
+    provider, tracer = configure_tracing(settings)
+    assert provider is None
+    assert tracer is None
+
+
+def test_configure_and_activate_tracing_separately():
+    """
+    Verify configure_tracing instantiates providers without activating, and activate_tracing activates them.
+
+    :return: None
+    """
+    tracing_module._active_tracer = None
+    tracing_module._active_tracer_provider = None
+
+    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_sep_app")
+    provider, tracer = configure_tracing(settings)
+    assert provider is not None
+    assert tracer is not None
+    # Global active tracer state is not updated yet
+    assert tracing_module._active_tracer_provider is None
+    assert tracing_module._active_tracer is None
+
+    # Now activate
+    activated_tracer = activate_tracing(provider, tracer)
+    assert activated_tracer is tracer
+    assert tracing_module._active_tracer_provider is provider
+    assert tracing_module._active_tracer is tracer
 
 
 def test_flush_and_shutdown_tracing():

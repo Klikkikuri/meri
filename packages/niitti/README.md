@@ -5,7 +5,7 @@
 ## Features
 
 - 🪵 **Structured Logging**: `structlog` setup with automatic TTY detection (colored console formatting on interactive terminals, JSON logs in non-interactive environments/containers).
-- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, and OpenTelemetry Baggage injection into all log messages. Idempotent tracing initialization via `setup_tracing()`.
+- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, and OpenTelemetry Baggage injection into all log messages. Conceptual separation of configuration (`configure_tracing()`) and activation (`activate_tracing()`), with idempotent tracing initialization via `setup_tracing()`.
 - 🔄 **Flush & Shutdown Support**: `flush_tracing()` to force flush queued batch spans, and `shutdown_tracing()` for clean application teardown.
 - 💥 **Crash Span Waterfall Dumper**: Visual tree waterfall of finished OpenTelemetry trace spans rendered to `stderr` on uncaught application crashes using `rich.tree.Tree` (with plain-text fallback).
 - 🎯 **Daemon Memory Safety**: `clear_crash_span_buffer()` helper to prevent memory growth in long-running services (e.g., `laituri`).
