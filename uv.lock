@@ -1120,7 +1120,7 @@ dependencies = [
     { name = "langdetect" },
     { name = "lxml", extra = ["html-clean"] },
     { name = "markdownify" },
-    { name = "niitti" },
+    { name = "niitti", extra = ["all"] },
     { name = "openrouter-haystack" },
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-sdk" },
@@ -1191,7 +1191,7 @@ requires-dist = [
     { name = "langdetect", specifier = ">=1.0.9" },
     { name = "lxml", extras = ["html-clean"], specifier = ">=5.3.0" },
     { name = "markdownify", specifier = ">=0.14.1" },
-    { name = "niitti", editable = "packages/niitti" },
+    { name = "niitti", extras = ["all"], editable = "packages/niitti" },
     { name = "openrouter-haystack", specifier = ">=0.4.0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
@@ -1299,7 +1299,9 @@ wheels = [
 name = "niitti"
 version = "0.1.0"
 source = { editable = "packages/niitti" }
-dependencies = [
+
+[package.optional-dependencies]
+all = [
     { name = "opentelemetry-instrumentation-logging" },
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
@@ -1307,8 +1309,6 @@ dependencies = [
     { name = "sentry-sdk" },
     { name = "structlog" },
 ]
-
-[package.dev-dependencies]
 logging = [
     { name = "structlog" },
 ]
@@ -1324,24 +1324,13 @@ tracing = [
 
 [package.metadata]
 requires-dist = [
-    { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
-    { name = "pydantic", specifier = ">=2.10.5" },
-    { name = "pydantic-settings", specifier = ">=2.7.1" },
-    { name = "sentry-sdk", specifier = ">=2.48.0" },
-    { name = "structlog", specifier = ">=25.1.0" },
-]
-
-[package.metadata.requires-dev]
-logging = [{ name = "structlog", specifier = ">=25.1.0" }]
-settings = [
-    { name = "pydantic", specifier = ">=2.10.5" },
-    { name = "pydantic-settings", specifier = ">=2.7.1" },
-]
-tracing = [
-    { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
-    { name = "opentelemetry-sdk", specifier = ">=1.29.0" },
-    { name = "sentry-sdk", specifier = ">=2.48.0" },
+    { name = "niitti", extras = ["logging", "settings", "tracing"], marker = "extra == 'all'", editable = "packages/niitti" },
+    { name = "opentelemetry-instrumentation-logging", marker = "extra == 'tracing'", specifier = ">=0.50b0" },
+    { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.29.0" },
+    { name = "pydantic", marker = "extra == 'settings'", specifier = ">=2.10.5" },
+    { name = "pydantic-settings", marker = "extra == 'settings'", specifier = ">=2.7.1" },
+    { name = "sentry-sdk", marker = "extra == 'tracing'", specifier = ">=2.48.0" },
+    { name = "structlog", marker = "extra == 'logging'", specifier = ">=25.1.0" },
 ]
 
 [[package]]

@@ -7,20 +7,9 @@ authors = [
     { name = "Teemu Autto", email = "teemu@rautakuu.org" }
 ]
 requires-python = ">=3.12"
-dependencies = [
-    "opentelemetry-instrumentation-logging>=0.50b0",
-    "opentelemetry-sdk>=1.29.0",
-    "pydantic>=2.10.5",
-    "pydantic-settings>=2.7.1",
-    "sentry-sdk>=2.48.0",
-    "structlog>=25.1.0",
-]
+dependencies = []
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[dependency-groups]
+[project.optional-dependencies]
 logging = [
     "structlog>=25.1.0",
 ]
@@ -33,3 +22,10 @@ settings = [
     "pydantic>=2.10.5",
     "pydantic-settings>=2.7.1",
 ]
+all = [
+    "niitti[logging,settings,tracing]",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
