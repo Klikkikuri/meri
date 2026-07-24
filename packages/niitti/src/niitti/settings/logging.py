@@ -1,7 +1,6 @@
 import sys
 from typing import Literal
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field
 
 
 def _default_log_format() -> Literal["json", "console"]:
@@ -9,10 +8,12 @@ def _default_log_format() -> Literal["json", "console"]:
     return "console" if sys.stdout.isatty() else "json"
 
 
-class LoggingSettings(BaseSettings):
+class LoggingSettings(BaseModel):
     """
     Logging configuration model for niitti logging system.
     """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default="INFO",

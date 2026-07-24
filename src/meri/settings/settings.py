@@ -150,7 +150,7 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(NiittiSettings, LoggingSettings, TracingSettings):
+class Settings(NiittiSettings, LoggingSettings, TracingSettings):  # pyright: ignore[reportIncompatibleVariableOverride]
     sentry: SentrySettings = Field(
         default_factory=SentrySettings,  # type: ignore
         description="Sentry settings.",

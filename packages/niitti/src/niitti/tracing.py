@@ -34,6 +34,69 @@ EXTRA_INSTRUMENTOR = [
     ("opentelemetry.instrumentation.threading", "ThreadingInstrumentor"),
 ]
 
+# Deterministic mapping dictionary for known operation types and microservice domains
+SPAN_EMOJI_MAP: dict[str, str] = {
+    # Pipelines & Core Tasks
+    "pipeline": "🚀",
+    "run": "🏁",
+    "main": "🎬",
+    "subtask": "⚡",
+    "task": "⚙️",
+    # Data & Content Retrieval
+    "article": "📰",
+    "fetch": "📡",
+    "scrape": "🕷️",
+    "http": "🌐",
+    "request": "📨",
+    "download": "📥",
+    # AI / LLM / Summarization
+    "llm": "🤖",
+    "openai": "🧠",
+    "prompt": "💬",
+    "generate": "✨",
+    "summary": "📝",
+    # Monorepo Components & Storage
+    "meri": "🌊",
+    "rahti": "🚢",
+    "suola": "🧂",
+    "kontio": "🐻",
+    "laituri": "⚓",
+    "lautta": "🛶",
+    "luotsi": "🧭",
+    "db": "🗄️",
+    "storage": "💾",
+    # System & Execution State
+    "error": "💥",
+    "fail": "❌",
+    "crash": "🔥",
+    "health": "❤️",
+    "setup": "🛠️",
+    "init": "🔌",
+}
+
+DEFAULT_SPAN_EMOJI: str = "📌"
+
+
+def get_span_emoji(span_name: str, span_id: int | str | None = None) -> str:
+    """
+    Deterministically map a span name to a stable emoji using SPAN_EMOJI_MAP.
+    Returns DEFAULT_SPAN_EMOJI ("📌") for spans without a mapping.
+    """
+    name_lower = span_name.lower()
+    for key, emoji in SPAN_EMOJI_MAP.items():
+        if key in name_lower:
+            return emoji
+
+    return DEFAULT_SPAN_EMOJI
+
+
+def span_id_to_emoji(span_id: int | str | None) -> str:
+    """
+    Backwards compatibility function for span ID emoji mapping.
+    """
+    return DEFAULT_SPAN_EMOJI
+
+
 # In-memory buffer for crash span dumping
 _crash_span_exporter: InMemorySpanExporter | None = None
 
@@ -50,14 +113,27 @@ def clear_crash_span_buffer():
         _crash_span_exporter.clear()
 
 
-def setup_crash_span_dumper(trace_provider: TracerProvider):
+def setup_crash_span_dumper(trace_provider: TracerProvider | None = None):
     """
     Attach a SimpleSpanProcessor + InMemorySpanExporter and install a sys.excepthook
     to dump active trace spans to console if the application crashes.
     """
     global _crash_span_exporter
-    _crash_span_exporter = InMemorySpanExporter()
-    trace_provider.add_span_processor(SimpleSpanProcessor(_crash_span_exporter))
+    if _crash_span_exporter is not None and trace_provider is None:
+        return _crash_span_exporter
+
+    if trace_provider is None:
+        provider = trace.get_tracer_provider()
+        if isinstance(provider, TracerProvider):
+            trace_provider = provider
+        elif isinstance(getattr(provider, "_tracer_provider", None), TracerProvider):
+            trace_provider = getattr(provider, "_tracer_provider")
+
+    if _crash_span_exporter is None:
+        _crash_span_exporter = InMemorySpanExporter()
+
+    if trace_provider is not None and _crash_span_exporter is not None:
+        trace_provider.add_span_processor(SimpleSpanProcessor(_crash_span_exporter))
 
     old_excepthook = sys.excepthook
 
@@ -86,7 +162,9 @@ def setup_crash_span_dumper(trace_provider: TracerProvider):
                 for idx, span in enumerate(spans, 1):
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
-                    node = span_node.add(f"[bold white][{idx}] {span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)")
+                    span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+                    emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
+                    node = span_node.add(f"{emoji} [bold white][{idx}] {span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)")
                     if span.attributes:
                         attr_node = node.add("[dim]Attributes:[/dim]")
                         for k, v in span.attributes.items():
@@ -98,9 +176,12 @@ def setup_crash_span_dumper(trace_provider: TracerProvider):
             else:
                 tree.add("[dim]No finished spans recorded in buffer.[/dim]")
 
+            from rich.traceback import Traceback
+
             console.print()
             console.print(tree)
             console.print()
+            console.print(Traceback.from_exception(exc_type, exc_value, exc_tb))
         except ImportError:
             # Plain-text fallback if rich is not installed
             sys.stderr.write("\n" + "=" * 80 + "\n")
@@ -117,13 +198,14 @@ def setup_crash_span_dumper(trace_provider: TracerProvider):
                 for idx, span in enumerate(spans, 1):
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
-                    sys.stderr.write(f" [{idx}] Span: {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n")
+                    span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
+                    emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
+                    sys.stderr.write(f" {emoji} [{idx}] Span: {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n")
                     if span.attributes:
                         for k, v in span.attributes.items():
                             sys.stderr.write(f"       - {k}: {v}\n")
             sys.stderr.write("=" * 80 + "\n\n")
-
-        old_excepthook(exc_type, exc_value, exc_tb)
+            old_excepthook(exc_type, exc_value, exc_tb)
 
     sys.excepthook = crash_excepthook
 

@@ -69,10 +69,16 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
         cache_logger_on_first_use=True,
     )
 
+    try:
+        from structlog.dev import rich_traceback
+        exception_formatter = rich_traceback
+    except ImportError:
+        exception_formatter = structlog.dev.plain_traceback
+
     renderer = (
         structlog.processors.JSONRenderer()
         if settings.LOG_FORMAT == "json"
-        else structlog.dev.ConsoleRenderer(colors=True)
+        else structlog.dev.ConsoleRenderer(colors=True, exception_formatter=exception_formatter)
     )
 
     formatter = structlog.stdlib.ProcessorFormatter(

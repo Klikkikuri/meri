@@ -1,10 +1,14 @@
 from niitti.logging import add_opentelemetry_context, setup_logging
 from niitti.settings import LoggingSettings, Settings, TracingSettings
 from niitti.tracing import (
+    DEFAULT_SPAN_EMOJI,
+    SPAN_EMOJI_MAP,
     clear_crash_span_buffer,
+    get_span_emoji,
     setup_crash_span_dumper,
     setup_sentry,
     setup_tracing,
+    span_id_to_emoji,
 )
 
 __all__ = [
@@ -17,4 +21,8 @@ __all__ = [
     "setup_sentry",
     "setup_crash_span_dumper",
     "clear_crash_span_buffer",
+    "SPAN_EMOJI_MAP",
+    "DEFAULT_SPAN_EMOJI",
+    "get_span_emoji",
+    "span_id_to_emoji",
 ]

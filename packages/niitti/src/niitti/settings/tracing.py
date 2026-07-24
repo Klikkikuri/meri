@@ -1,12 +1,13 @@
 from typing import Optional
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class TracingSettings(BaseSettings):
+class TracingSettings(BaseModel):
     """
     Tracing configuration model for niitti OpenTelemetry tracing system.
     """
+
+    model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     TRACING_ENABLED: bool = Field(
         default=True,
