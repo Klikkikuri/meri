@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 import threading
@@ -350,6 +349,12 @@ def setup_crash_span_dumper(
             console.print(tree)
             console.print()
             console.print(Traceback.from_exception(exc_type, exc_value, exc_tb))
+
+            # Chain to whatever excepthook was installed before ours (e.g. Sentry's
+            # crash reporter, or another library's). Without this, installing the
+            # crash span dumper silently disables any previously-registered
+            # excepthook whenever `rich` happens to be available.
+            old_excepthook(exc_type, exc_value, exc_tb)
         except ImportError:
             # Plain-text fallback if rich is not installed
             sys.stderr.write("\n" + "=" * 80 + "\n")
@@ -475,7 +480,7 @@ def configure_tracing(
     resources = []
     for detector_pkg, cls in EXTRA_RESOURCE_DETECTOR:
         try:
-            logging.debug("Loading extra resource detector %s", detector_pkg)
+            logger.debug("Loading extra resource detector %s", detector_pkg)
             mod = import_module(detector_pkg)
             detector_cls = getattr(mod, cls)
             resources.append(detector_cls().detect())
