@@ -319,4 +319,11 @@ def setup_tracing(settings: TracingSettings | None = None):
     except Exception as e:
         logger.debug("Haystack tracing initialization skipped: %s", e)
 
+    # Restore logging configuration in case third-party imports modified structlog or handlers
+    try:
+        from niitti.logging import setup_logging
+        setup_logging()
+    except Exception as e:
+        logger.debug("Logging restoration after tracing setup skipped: %s", e)
+
     return tracer

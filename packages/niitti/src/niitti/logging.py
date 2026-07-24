@@ -26,14 +26,23 @@ def add_opentelemetry_context(logger, method_name, event_dict):
     return event_dict
 
 
+_active_logging_settings: LoggingSettings | None = None
+
+
+def get_active_logging_settings() -> LoggingSettings | None:
+    return _active_logging_settings
+
+
 def setup_logging(settings: LoggingSettings | None = None) -> None:
     """
     Setup logging for the application using structlog and standard logging.
 
     :param settings: LoggingSettings instance. If None, default LoggingSettings() will be initialized.
     """
+    global _active_logging_settings
     if settings is None:
-        settings = LoggingSettings()
+        settings = _active_logging_settings or LoggingSettings()
+    _active_logging_settings = settings
 
     match settings.LOG_LEVEL.upper():
         case "DEBUG":
@@ -60,13 +69,14 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
         structlog.processors.format_exc_info,
     ]
 
+    structlog.reset_defaults()
     structlog.configure(
         processors=shared_processors + [
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,
-        cache_logger_on_first_use=True,
+        cache_logger_on_first_use=False,
     )
 
     try:
@@ -92,14 +102,16 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
     handler = logging.StreamHandler()
     handler.setFormatter(formatter)
 
-    logging.basicConfig(
-        handlers=[handler],
-        level=log_level,
-        force=True,
-    )
+    root_logger = logging.getLogger()
+    root_logger.handlers.clear()
+    root_logger.addHandler(handler)
+    root_logger.setLevel(log_level)
 
     logging.getLogger("haystack").setLevel(log_level)
-    LoggingInstrumentor().instrument()
+
+    instrumentor = LoggingInstrumentor()
+    if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
+        instrumentor.instrument()
 
     if settings.DEBUG:
         logging.getLogger().setLevel(logging.DEBUG)
