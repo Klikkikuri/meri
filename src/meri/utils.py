@@ -7,9 +7,7 @@ from .exceptions import UnknownLanguageException
 
 logger = structlog.get_logger(__name__)
 
-EXTRA_RESOURCE_DETECTOR = [
-    ("opentelemetry.resource.detector.container", "ContainerResourceDetector")
-]
+EXTRA_RESOURCE_DETECTOR = [("opentelemetry.resource.detector.container", "ContainerResourceDetector")]
 """ List of extra resource detectors to use, if available. """
 
 EXTRA_INSTRUMENTOR = [
@@ -61,7 +59,7 @@ def clean_url(url: str) -> str:
 
     :param url: URL to clean
     """
-    return url_normalize(url)
+    return str(url_normalize(url))
 
 
 def setup_logging(debug=None):
@@ -74,8 +72,8 @@ def setup_logging(debug=None):
 
     log_level = getattr(settings, "LOG_LEVEL", "INFO")
     debug_flag = debug if debug is not None else getattr(settings, "DEBUG", False)
-    log_settings = LoggingSettings(LOG_LEVEL=log_level, DEBUG=debug_flag)
-    _niitti_setup_logging(log_settings)
+    log_settings = LoggingSettings(LOG_LEVEL=log_level, DEBUG=debug_flag)  # pyright: ignore[reportArgumentType]
+    _niitti_setup_logging(log_settings, force=True)
 
 
 def setup_sentry():
