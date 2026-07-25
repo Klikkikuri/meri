@@ -71,7 +71,7 @@ def cli(ctx: click.Context, cache: bool, debug: bool):
 
 
 @cli.command()
-@click.option("--sample", is_flag=True, help="Use limited data.")
+@click.option("--sample", is_flag=True, help="Use limited dataset.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
 @click.pass_context
 @tracer.start_as_current_span("cli.run")
