@@ -7,7 +7,7 @@ from opentelemetry import trace
 from sentry_sdk import monitor
 from structlog import get_logger
 
-from meri.settings import settings
+from meri.settings import Settings
 from meri.abc import ArticleLabels
 
 
@@ -60,28 +60,28 @@ def cli(ctx: click.Context, cache: bool, debug: bool):
     os.environ["DEBUG"] = "1" if debug else "0"
     os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
-    ctx.obj = ctx.with_resource(setup(name="meri", debug=debug))
+    ctx.ensure_object(dict)
+    ctx.obj['settings']: Settings = ctx.with_resource(setup(name="meri", debug=debug)) # type: ignore
 
-
-
-    if cache:
+    if ctx.obj['settings'].REQUESTS_CACHE and not _requests_cache_available:
         if not _requests_cache_available:
             raise RuntimeError("requests_cache is not available, cannot enable caching.")
 
         try_setup_requests_cache()
 
 
-
-
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited data.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
+@click.pass_context
 @tracer.start_as_current_span("cli.run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(sample: bool, max_workers: int):
+def run(ctx: click.Context, sample: bool, max_workers: int):
 
     if max_workers is not None:
-        settings.MAX_WORKERS = max_workers
+        ctx.obj['settings'].MAX_WORKERS = max_workers
+
+    settings: Settings = ctx.obj['settings']
 
     # Load url blacklist for filtering out unwanted articles early
     url_filter = UrlMatcher.from_config(settings.url_blacklist or [])
@@ -216,30 +216,32 @@ def run(sample: bool, max_workers: int):
 
 
 @cli.command()
-def list_sources():
+@click.pass_context
+def list_sources(ctx: click.Context):
     """
     List available extractors.
     """
-    import meri.settings
-
-    for source in meri.settings.settings.sources:
-        print(f"Extractor: {source.name} (weight={source})")
+    settings: Settings = ctx.obj['settings']
+    for source in settings.sources:
+        click.echo(f"{source!r}")
 
 
 @cli.command()
 @click.argument("url")
 @click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
 @tracer.start_as_current_span("cli.test")
-def test(url, with_paywalled: bool):
+def test(url, with_paywalled: bool, ctx: click.Context):
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)
 
     if ArticleLabels.PAYWALLED in article.labels and not with_paywalled:
-        print("Article is behind a paywall and --with-paywalled was not specified. Dropping.")
+        click.echo("Article is behind a paywall and --with-paywalled was not specified. Dropping.")
         return
 
     if article.text:
-        print(article.text[0:200], "...", "\n", "...", article.text[-200:])
+        click.echo(article.text[0:200])
+        click.echo("...")
+        click.echo(article.text[-200:])
 
     from .pipelines.title import TitlePredictor
     predictor = TitlePredictor()
