@@ -1,6 +1,5 @@
 import functools
 import logging
-import os
 from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 from typing import Type, cast
@@ -146,8 +145,6 @@ class Settings(BaseSettings):
             site_cfg,
             user_cfg,
         ]
-        if conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
-            locations.insert(0, Path(conf_file))
 
         return lint_yaml_settings_files(locations)
 
