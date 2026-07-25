@@ -194,7 +194,6 @@ class Settings(NiittiSettings, LoggingSettings, TracingSettings):  # pyright: ig
     @classmethod
     def parse_llm_settings(cls, values):
         _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
-        _logger.debug(f"Values: {values}")
         llm_list = values.get('llm', [])
 
         # Find all subclasses of GeneratorSettings and map them by provider
