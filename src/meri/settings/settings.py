@@ -8,20 +8,19 @@ Order of precedence:
     1. Environment variables
     2. `.env` file
     3. Secrets directory (e.g. `/run/secrets`).
-    4. YAML configuration file, with the following locations:
-        - User defined settings file ($KLIKKIKURI_CONFIG_FILE)
-        - User defined settings ($XDG_CONFIG_HOME)
-        - System wide settings ($XDG_CONFIG_DIRS)
-        - Local settings: `./config.yaml`
-        - Docker settings: `/config/config.yaml`
+    4. YAML configuration file, with standard locations:
         - Devcontainer user settings: `/app/config.yaml`
+        - Instance folder settings: `/app/instance/config.yaml`
+        - Docker settings: `/config/config.yaml`
+        - Local settings: `./config.yaml`
+        - System wide settings ($XDG_CONFIG_DIRS / site_config_dir)
+        - User defined settings ($XDG_CONFIG_HOME / user_config_dir)
 
 """
 import logging
 import os
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Type
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
@@ -29,15 +28,9 @@ from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings as NiittiSettings
 from niitti.settings.tracing import TracingSettings
-from platformdirs import site_config_dir, user_config_dir
+from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-    YamlConfigSettingsSource,
-)
-from yaml import YAMLError, safe_load
+from pydantic_settings import SettingsConfigDict
 
 from .const import (
     DEFAULT_BOT_ID,
@@ -57,60 +50,6 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 if os.getenv("DEBUG", "0") == "1":
     logger.setLevel(logging.DEBUG)
-
-# User defined settings
-_user_config_path = Path(user_config_dir(PKG_NAME), "config.yaml")
-DEFAULT_CONFIG_PATH = _user_config_path
-
-# Locations to look for the settings file
-# notice: order is reversed to give precedence to the user defined settings
-_settings_file_location: list[Path] = [
-    Path("/app/config.yaml"),  # Devcontainer user settings
-    Path("/app/instance/config.yaml"),  # Instance folder settings
-    Path("/config/config.yaml"),  # Docker settings
-    Path.cwd() / "config.yaml",  # Local settings
-    Path(site_config_dir(PKG_NAME)) / "config.yaml",  # System wide settings
-    _user_config_path
-]
-if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
-    _conf_file = Path(_conf_file)
-    _settings_file_location.insert(0, _conf_file)
-    DEFAULT_CONFIG_PATH = _conf_file
-
-
-def _lint_yaml_settings_files(paths: list[Path]) -> list[Path]:
-    """
-    Return existing, valid YAML config files and warn for invalid ones.
-
-    A valid settings file must parse as YAML and have a mapping at the root.
-    """
-    valid_paths: list[Path] = []
-
-    for path in paths:
-        if not path.exists() or not path.is_file():
-            continue
-
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                parsed = safe_load(f)
-        except (OSError, YAMLError) as e:
-            logger.warning("Ignoring invalid YAML settings file '%s': %s", path, e)
-            continue
-
-        if parsed is not None and not isinstance(parsed, dict):
-            logger.warning(
-                "Ignoring YAML settings file '%s': expected a mapping at root, got %s",
-                path,
-                type(parsed).__name__,
-            )
-            continue
-
-        valid_paths.append(path)
-
-    return valid_paths
-
-
-_settings_file_location = _lint_yaml_settings_files(_settings_file_location)
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
@@ -234,31 +173,23 @@ class Settings(NiittiSettings, LoggingSettings, TracingSettings):  # pyright: ig
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
+    @model_validator(mode="after")
+    def _stamp_identity(self) -> "Settings":
+        """
+        Stamp service identity fields after model fields are populated.
+        """
+        if not self.SERVICE_NAME:
+            self.SERVICE_NAME = self.get_package_name()
+        return self
+
     model_config = SettingsConfigDict(
         secrets_dir='/run/secrets' if Path('/run/secrets').exists() else None,
-        yaml_file=_settings_file_location,
         yaml_file_encoding="utf-8",
         env_file='.env',
         env_file_encoding='utf-8',
         extra='ignore',  # If dotenv contains extra keys, ignore them
         env_nested_delimiter='__',
     )
-
-    @classmethod
-    def settings_customise_sources(cls,
-        settings_cls: Type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ):
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
-            YamlConfigSettingsSource(settings_cls),
-        )
 
 
 settings: Settings = Settings()  # type: ignore

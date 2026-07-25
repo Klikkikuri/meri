@@ -7,6 +7,7 @@ Tests for niitti tracing subpackage.
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
@@ -218,3 +219,17 @@ def test_flush_and_shutdown_tracing():
     shutdown_tracing(timeout_millis=1000)
     assert provider_module._active_tracer_provider is None
     assert provider_module._active_tracer is None
+
+
+def test_tracing_missing_service_name_raises_value_error():
+    """
+    Verify configure_tracing and setup_tracing raise ValueError when SERVICE_NAME is missing.
+
+    :return: None
+    """
+    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME=None)
+    with pytest.raises(ValueError, match="SERVICE_NAME is required"):
+        configure_tracing(settings)
+
+    with pytest.raises(ValueError, match="SERVICE_NAME is required"):
+        setup_tracing(settings)

@@ -173,22 +173,37 @@ def test_settings_class_methods():
     assert isinstance(locations, list)
 
 
-def test_settings_custom_config_env_var(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_get_default_config_locations_dynamic_package_name():
     """
-    Verify KLIKKIKURI_CONFIG_FILE environment variable precedence in config locations.
+    Verify get_default_config_locations builds locations dynamically based on package name.
 
-    :param tmp_path: pytest fixture providing temporary directory.
-    :param monkeypatch: pytest monkeypatch fixture.
     :return: None
     """
-    custom_cfg = tmp_path / "custom_config.yaml"
-    custom_cfg.write_text("custom: true\n", encoding="utf-8")
+    class CustomPackageSettings(Settings):
+        pass
 
-    monkeypatch.setenv("KLIKKIKURI_CONFIG_FILE", str(custom_cfg))
+    locations = CustomPackageSettings.get_default_config_locations()
+    assert isinstance(locations, list)
+    pkg_name = CustomPackageSettings.get_package_name()
+    assert pkg_name in ("tests", "niitti", "test_settings")
 
-    locations = Settings.get_default_config_locations()
-    assert custom_cfg in locations
-    assert locations[0] == custom_cfg
+
+def test_meri_settings_mro_and_package_name_derivation():
+    """
+    Verify meri.Settings derives package name 'meri' dynamically and inherits NiittiSettings methods via MRO.
+    """
+    from meri.settings.settings import Settings as MeriSettings
+
+    assert MeriSettings.get_package_name() == "meri"
+    locations = MeriSettings.get_default_config_locations()
+    assert isinstance(locations, list)
+
+    # Assert settings_customise_sources comes from NiittiSettings via MRO
+    assert MeriSettings.settings_customise_sources.__func__ is Settings.settings_customise_sources.__func__
+
+    # Verify identity stamping on instantiation
+    inst = MeriSettings()  # type: ignore
+    assert inst.SERVICE_NAME == "meri"
 
 
 def test_import_niitti_settings_no_import_side_effects():
