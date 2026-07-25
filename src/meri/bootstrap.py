@@ -3,12 +3,12 @@ Application bootstrap logic for meri.
 """
 
 from contextlib import contextmanager
-from typing import Iterator
+from typing import Generator
 import structlog
 
-from niitti.logging import setup_logging as niitti_setup_logging
-from niitti.sentry import setup_sentry as niitti_setup_sentry
-from niitti.tracing import flush_tracing, setup_tracing as niitti_setup_tracing
+from niitti.logging import setup_logging
+from niitti.sentry import setup_sentry
+from niitti.tracing import flush_tracing, setup_tracing
 
 from meri.settings.settings import Settings, clear_settings, get_settings, set_active_settings
 
@@ -26,7 +26,7 @@ def setup(
     settings: Settings | None = None,
     name: str | None = None,
     debug: bool | None = None,
-) -> Iterator[Settings]:
+) -> Generator[Settings]:
     """
     Bootstrap application logging, OpenTelemetry tracing, and Sentry for meri.
 
@@ -66,9 +66,9 @@ def setup(
     elif not telemetry.service_name:
         telemetry = telemetry.model_copy(update={"service_name": "meri"})
 
-    niitti_setup_logging(settings.logging, force=True)
-    niitti_setup_tracing(telemetry)
-    niitti_setup_sentry(settings.sentry)
+    setup_logging(settings.logging, force=True)
+    setup_tracing(telemetry)
+    setup_sentry(settings.sentry)
 
     try:
         yield settings
