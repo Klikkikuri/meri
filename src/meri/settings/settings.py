@@ -21,6 +21,8 @@ import logging
 import os
 from importlib.util import find_spec
 from pathlib import Path
+from typing import Any
+
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
@@ -89,7 +91,11 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(NiittiSettings, LoggingSettings):  # pyright: ignore[reportIncompatibleVariableOverride]
+class Settings(NiittiSettings):
+    logging: LoggingSettings = Field(
+        default_factory=LoggingSettings,
+        description="Logging settings.",
+    )
     sentry: SentrySettings = Field(
         default_factory=SentrySettings,  # type: ignore
         description="Sentry settings.",
@@ -149,21 +155,20 @@ class Settings(NiittiSettings, LoggingSettings):  # pyright: ignore[reportIncomp
         _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
-        settings = []
+        settings_list = []
         for llm in llm_list:
             provider = llm['provider']
             settings_class = provider_to_class.get(provider, None)
             if not settings_class:
                 raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
-            settings.append(settings_class(**llm))
+            settings_list.append(settings_class(**llm))
 
-        if len(settings) == 0:
-            settings += detect_generators(values)
+        if len(settings_list) == 0:
+            settings_list += detect_generators(values)
 
-        _logger.debug("Validated LLM provider settings with %d provider", len(settings), extra={"settings": settings})
-        values['llm'] = settings
+        _logger.debug("Validated LLM provider settings with %d provider", len(settings_list), extra={"settings": settings_list})
+        values['llm'] = settings_list
         return values
-
 
     @model_validator(mode="before")
     @classmethod
@@ -196,13 +201,61 @@ class Settings(NiittiSettings, LoggingSettings):  # pyright: ignore[reportIncomp
     )
 
 
-settings: Settings = Settings()  # type: ignore
+_active_settings: Settings | None = None
 
-def init_settings(**kwargs) -> Settings:
+
+def get_settings() -> Settings | None:
     """
-    Initialize and return the settings.
+    Get the currently active application Settings instance, or None if outside app context.
     """
-    global settings
-    s = Settings(**kwargs)  # type: ignore
-    settings = s
-    return s
+    return _active_settings
+
+
+def set_active_settings(instance: Settings | None) -> None:
+    """
+    Set the active application Settings instance.
+    """
+    global _active_settings
+    _active_settings = instance
+
+
+def clear_settings() -> None:
+    """
+    Clear the currently active application Settings instance.
+    """
+    global _active_settings
+    _active_settings = None
+
+
+class _SettingsProxy:
+    def __getattr__(self, name: str) -> Any:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        return getattr(_active_settings, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        setattr(_active_settings, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        delattr(_active_settings, name)
+
+    def __repr__(self) -> str:
+        if _active_settings is None:
+            return "<Settings Proxy (uninitialized)>"
+        return repr(_active_settings)
+
+
+settings: Any = _SettingsProxy()

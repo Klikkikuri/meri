@@ -7,8 +7,9 @@ from opentelemetry import trace
 from sentry_sdk import monitor
 from structlog import get_logger
 
-from meri.settings import settings, init_settings
+from meri.settings import settings
 from meri.abc import ArticleLabels
+
 
 from .lautta import (
     ArticleTitleData,
@@ -24,9 +25,9 @@ from .lautta import (
     prune_rahti,
     should_skip_processing,
 )
+from .bootstrap import setup
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
-from .utils import setup_logging, setup_sentry, setup_tracing
 
 try:
     from rich.pretty import pprint
@@ -48,25 +49,27 @@ tracer = trace.get_tracer(__package__ or "__main__")
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
+
 @click.group()
+@click.pass_context
 @click.version_option()
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
 @click.option("--debug", help="Enable or disable debug mode.", default=bool(os.getenv("DEBUG", False)))
-def cli(cache: bool, debug: bool):
+def cli(ctx: click.Context, cache: bool, debug: bool):
 
     os.environ["DEBUG"] = "1" if debug else "0"
     os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
-    init_settings(debug=debug)
-    setup_logging(debug=debug)
-    setup_tracing()
-    setup_sentry()
+    ctx.obj = ctx.with_resource(setup(name="meri", debug=debug))
+
+
 
     if cache:
         if not _requests_cache_available:
             raise RuntimeError("requests_cache is not available, cannot enable caching.")
 
         try_setup_requests_cache()
+
 
 
 

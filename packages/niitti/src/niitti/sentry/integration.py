@@ -4,35 +4,29 @@ Sentry integration setup for niitti applications.
 
 import structlog
 
+from niitti.settings.sentry import SentrySettings
+
 logger = structlog.get_logger(__name__)
 
 
 def setup_sentry(
-    dsn: str | None = None,
-    environment: str | None = None,
-    send_logs: bool = True,
-    send_default_pii: bool = True,
-    traces_sample_rate: float = 0.1,
-    openai_integration: bool = False,
+    settings: SentrySettings | None = None,
 ) -> None:
     """
     Setup Sentry SDK integration.
 
-    :param dsn: Sentry DSN URL. If None or empty, initialization is skipped.
-    :param environment: Environment name (e.g. "production", "staging").
-    :param send_logs: Whether to forward Python standard logging events to Sentry.
-    :param send_default_pii: Whether to attach default PII (IP address, user context).
-    :param traces_sample_rate: Sample rate for performance tracing.
-    :param openai_integration: Whether to enable Sentry OpenAI integration.
+    :param settings: SentrySettings model instance. If None, constructed from keyword arguments.
     """
-    if not dsn:
+    if settings is None:
+        settings = SentrySettings()
+    if not settings.dsn:
         logger.debug("Sentry DSN not set, skipping Sentry initialization")
         return
 
     import sentry_sdk
 
     integrations = []
-    if not send_logs:
+    if not settings.send_logs:
         try:
             from sentry_sdk.integrations.logging import LoggingIntegration
 
@@ -40,7 +34,7 @@ def setup_sentry(
         except ImportError:
             pass
 
-    if openai_integration:
+    if settings.openai_integration:
         try:
             from sentry_sdk.integrations.openai import OpenAIIntegration
 
@@ -49,10 +43,10 @@ def setup_sentry(
             logger.debug("OpenAIIntegration not available")
 
     sentry_sdk.init(
-        dsn=dsn,
-        environment=environment,
-        send_default_pii=send_default_pii,
-        traces_sample_rate=traces_sample_rate,
+        dsn=settings.dsn,
+        environment=settings.environment,
+        send_default_pii=settings.send_default_pii,
+        traces_sample_rate=settings.traces_sample_rate,
         integrations=integrations,
-        instrumenter="otel",
+        instrumenter="otel" if settings.otel_integration else None,
     )

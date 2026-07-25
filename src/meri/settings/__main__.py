@@ -28,8 +28,11 @@ def cli(ctx: click.Context, debug: bool):
     """
     CLI for managing settings.
     """
-    from .settings import init_settings
-    current_settings = init_settings(debug=debug)
+    from meri.bootstrap import setup
+    current_settings = ctx.with_resource(setup(name="meri", debug=debug))
+    ctx.obj = current_settings
+
+
 
     if ctx.invoked_subcommand is None:
         # If no subcommand is provided, show the help message
@@ -39,8 +42,10 @@ def cli(ctx: click.Context, debug: bool):
     else:
         # Set the debug mode based on the command line argument
         if debug:
-            current_settings.DEBUG = True
-        logger.setLevel(logging.DEBUG if current_settings.DEBUG else current_settings.LOG_LEVEL)
+            current_settings.logging.DEBUG = True
+        logger.setLevel(logging.DEBUG if current_settings.logging.DEBUG else current_settings.logging.LOG_LEVEL)
+
+
 
 
 @cli.command()

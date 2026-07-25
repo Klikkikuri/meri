@@ -130,8 +130,9 @@ class RahtiFile(RahtiProtocol):
         with open(self.path, "w", encoding="utf-8") as f:
             f.write(data.model_dump_json(indent=2))
 
-        if settings.DEBUG:
+        if settings.logging.DEBUG:
             print(commit_message)
+
 
 class RahtiRepo(RahtiProtocol):
     """

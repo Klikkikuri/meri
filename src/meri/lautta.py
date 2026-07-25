@@ -20,7 +20,7 @@ from .rahti import RahtiData, RahtiEntry, RahtiUrl
 from .scraper import discover_articles, get_extractor
 from .settings import settings
 from .settings.newssources import NewsSource
-from .utils import setup_logging
+
 
 
 MAX_PARALLEL_FETCHES = 3
@@ -635,13 +635,12 @@ def convert_for_rahti(source: NewsSource, article: Article, title: Optional[Arti
     return entry
 
 if __name__ == "__main__":
+    from .bootstrap import setup
     from .settings import settings
 
-    setup_logging(True)
+    with setup(debug=True):
+        latest_articles = fetch_latest(settings.sources)
+        latest_articles = list(remove_unhandled(latest_articles))
+        from pprint import pprint
 
-    latest_articles = fetch_latest(settings.sources)
-    latest_articles = list(remove_unhandled(latest_articles))
-    from pprint import pprint
-    #pprint(settings.model_dump())
-
-    pprint(latest_articles)
+        pprint(latest_articles)

@@ -47,17 +47,14 @@ if __name__ == "__main__":
     import logging
     import sys
 
-    import rich
+    from meri.bootstrap import setup
 
-    from meri.utils import setup_logging
+    with setup():
+        from meri.extractor._extractors import trafilatura_extractor
+        from meri.scraper import try_setup_requests_cache
 
-    setup_logging()
-    #logging.basicConfig(level=logging.INFO)
+        try_setup_requests_cache()
 
-    from meri.extractor._extractors import trafilatura_extractor
-    from meri.scraper import try_setup_requests_cache
-
-    try_setup_requests_cache()
     url = sys.argv[1]
     if not url:
         raise ValueError("URL is required")
@@ -66,4 +63,4 @@ if __name__ == "__main__":
     print(article.text[0:200], "...", "\n", "...", article.text[-200:])
 
     title = TitlePredictor()
-    rich.print(title.run(article))
+    print(title.run(article))
