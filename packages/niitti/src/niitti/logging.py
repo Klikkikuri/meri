@@ -43,30 +43,62 @@ def get_active_logging_settings() -> LoggingSettings | None:
     return _active_logging_settings
 
 
-def setup_logging(settings: LoggingSettings | None = None) -> None:
+def _resolve_log_level(level_name: str, default: int = logging.INFO) -> int:
+    """
+    Resolve a log level name (e.g. "INFO") to its numeric logging level using
+    the standard library's own level registry, instead of a manually
+    maintained enumeration that can drift out of sync with `logging`'s actual
+    levels (e.g. if a custom level is registered via `logging.addLevelName`).
+
+    :param level_name: Level name, case-insensitive (e.g. "debug", "INFO").
+    :param default: Fallback level to use if level_name isn't a known level.
+    :return: Numeric logging level.
+    """
+    name = level_name.upper()
+
+    level_names_mapping = getattr(logging, "getLevelNamesMapping", None)
+    if level_names_mapping is not None:
+        # Python 3.11+: dedicated, unambiguous name -> level API.
+        return level_names_mapping().get(name, default)
+
+    # Older Python: logging.getLevelName() doubles as a name -> level lookup
+    # for registered level names. This is long-standing, still-supported
+    # stdlib behavior (just superseded by getLevelNamesMapping on 3.11+).
+    resolved = logging.getLevelName(name)
+    return resolved if isinstance(resolved, int) else default
+
+
+def setup_logging(settings: LoggingSettings | None = None, force: bool = False) -> None:
     """
     Setup logging for the application using structlog and standard logging.
 
+    By default (force=False), this only takes ownership of the root logger's
+    handlers and level if nothing has configured them yet (i.e.
+    `logging.getLogger()` has no handlers). If the application has already
+    set up its own root logging, niitti leaves those handlers and level
+    alone rather than tearing them down - a shared library forcibly
+    replacing the caller's root logging configuration is hostile behavior,
+    especially for something imported as a dependency rather than run as an
+    entrypoint. structlog's own processors are still configured either way,
+    so niitti's own structured log calls work regardless.
+
+    Pass force=True to make niitti take over root logging unconditionally
+    (clearing any existing handlers and installing its own), matching the
+    previous behavior. This is appropriate for standalone entrypoints
+    (scripts, workers, `niitti`-owned services) that want full control of the
+    process's logging setup, not for use inside a library embedded in
+    someone else's application.
+
     :param settings: LoggingSettings instance. If None, default LoggingSettings() will be initialized.
+    :param force: If True, unconditionally replace the root logger's handlers and level.
+        If False (default), only do so when the root logger has no handlers configured yet.
     """
     global _active_logging_settings
     if settings is None:
         settings = _active_logging_settings or LoggingSettings()
     _active_logging_settings = settings
 
-    match settings.LOG_LEVEL.upper():
-        case "DEBUG":
-            log_level = logging.DEBUG
-        case "INFO":
-            log_level = logging.INFO
-        case "WARNING":
-            log_level = logging.WARNING
-        case "ERROR":
-            log_level = logging.ERROR
-        case "CRITICAL":
-            log_level = logging.CRITICAL
-        case _:
-            log_level = logging.INFO
+    log_level = _resolve_log_level(settings.LOG_LEVEL)
 
     shared_processors = [
         structlog.contextvars.merge_contextvars,
@@ -115,16 +147,31 @@ def setup_logging(settings: LoggingSettings | None = None) -> None:
     handler.setFormatter(formatter)
 
     root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    root_logger.addHandler(handler)
-    root_logger.setLevel(log_level)
+    root_already_configured = bool(root_logger.handlers)
 
-    logging.getLogger("haystack").setLevel(log_level)
+    if force or not root_already_configured:
+        root_logger.handlers.clear()
+        root_logger.addHandler(handler)
+        root_logger.setLevel(log_level)
 
-    instrumentor = LoggingInstrumentor()
-    if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
-        instrumentor.instrument()
+        logging.getLogger("haystack").setLevel(log_level)
 
-    if settings.DEBUG:
-        logging.getLogger().setLevel(logging.DEBUG)
-        logging.getLogger("haystack").setLevel(logging.DEBUG)
+        if settings.DEBUG:
+            root_logger.setLevel(logging.DEBUG)
+            logging.getLogger("haystack").setLevel(logging.DEBUG)
+
+        # LoggingInstrumentor injects trace_id/span_id into stdlib log records by
+        # adding its own handler to the root logger - this is root logging
+        # configuration just like the handler above, so it's gated the same way:
+        # only applied when niitti owns root logging (force, or nothing else has
+        # configured it yet).
+        instrumentor = LoggingInstrumentor()
+        if not getattr(instrumentor, "is_instrumented_by_opentelemetry", False):
+            instrumentor.instrument()
+    else:
+        logger.debug(
+            "Root logger already has handlers configured by the application; "
+            "leaving its handlers and level untouched, and skipping "
+            "LoggingInstrumentor's root handler injection. Pass force=True to "
+            "niitti.setup_logging() to override this and take over root logging.",
+        )
