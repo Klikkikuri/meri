@@ -1,71 +1,27 @@
+"""
+Logging configuration setup for niitti applications.
+"""
+
 import logging
 import structlog
-from opentelemetry import baggage, trace
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
+from niitti.logging.formatters import _resolve_log_level
+from niitti.logging.processors import add_opentelemetry_context
 from niitti.settings.logging import LoggingSettings
 
 logger = structlog.get_logger(__name__)
-
-BAGGAGE_KEYS = {
-    "request_id",
-    "tenant_id",
-}
-
-def add_opentelemetry_context(logger, method_name, event_dict):
-    """
-    Inject OpenTelemetry trace_id, span_id, and Baggage into structlog event_dict.
-    """
-    span = trace.get_current_span()
-    if span.is_recording():
-        ctx = span.get_span_context()
-        if ctx.is_valid:
-            event_dict["trace_id"] = f"{ctx.trace_id:032x}"
-            event_dict["span_id"] = f"{ctx.span_id:016x}"
-
-    # Don't log all baggage unless in debug mode, as it can be verbose and sensitive.
-
-    logging_settings = get_active_logging_settings()
-    current_baggage = baggage.get_all()
-    if current_baggage and logging_settings and logging_settings.DEBUG:
-        event_dict["otel_baggage"] = dict(current_baggage)
-    else:
-        event_dict["otel_baggage"] = {
-            key: value for key, value in current_baggage.items() if key in BAGGAGE_KEYS
-        }
-    return event_dict
-
 
 _active_logging_settings: LoggingSettings | None = None
 
 
 def get_active_logging_settings() -> LoggingSettings | None:
+    """
+    Get the currently active LoggingSettings configuration instance.
+
+    :return: Currently active LoggingSettings or None if not configured.
+    """
     return _active_logging_settings
-
-
-def _resolve_log_level(level_name: str, default: int = logging.INFO) -> int:
-    """
-    Resolve a log level name (e.g. "INFO") to its numeric logging level using
-    the standard library's own level registry, instead of a manually
-    maintained enumeration that can drift out of sync with `logging`'s actual
-    levels (e.g. if a custom level is registered via `logging.addLevelName`).
-
-    :param level_name: Level name, case-insensitive (e.g. "debug", "INFO").
-    :param default: Fallback level to use if level_name isn't a known level.
-    :return: Numeric logging level.
-    """
-    name = level_name.upper()
-
-    level_names_mapping = getattr(logging, "getLevelNamesMapping", None)
-    if level_names_mapping is not None:
-        # Python 3.11+: dedicated, unambiguous name -> level API.
-        return level_names_mapping().get(name, default)
-
-    # Older Python: logging.getLevelName() doubles as a name -> level lookup
-    # for registered level names. This is long-standing, still-supported
-    # stdlib behavior (just superseded by getLevelNamesMapping on 3.11+).
-    resolved = logging.getLevelName(name)
-    return resolved if isinstance(resolved, int) else default
 
 
 def setup_logging(settings: LoggingSettings | None = None, force: bool = False) -> None:

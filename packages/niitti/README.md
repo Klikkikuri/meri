@@ -75,7 +75,7 @@ logger.info("Processing article", article_id=42)
 For long-running background services (e.g. `laituri`), clear the crash span buffer after each top-level iteration tick:
 
 ```python
-from niitti import clear_crash_span_buffer
+from niitti.tracing import clear_crash_span_buffer
 
 while True:
     run_scheduler_tick()

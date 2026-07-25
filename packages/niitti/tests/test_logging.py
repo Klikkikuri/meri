@@ -29,14 +29,14 @@ def test_add_opentelemetry_context_valid_span():
     event_dict = {"event": "test_log"}
 
     with (
-        patch("niitti.logging.trace.get_current_span", return_value=mock_span),
-        patch("niitti.logging.baggage.get_all", return_value={}),
+        patch("niitti.logging.processors.trace.get_current_span", return_value=mock_span),
+        patch("niitti.logging.processors.baggage.get_all", return_value={}),
     ):
         result = add_opentelemetry_context(None, "info", event_dict)
 
     assert result["trace_id"] == f"{0x1234567890ABCDEF1234567890ABCDEF:032x}"
     assert result["span_id"] == f"{0x1234567890ABCDEF:016x}"
-    #assert "otel_baggage" not in result
+    # assert "otel_baggage" not in result
 
 
 def test_add_opentelemetry_context_with_baggage():
@@ -51,9 +51,8 @@ def test_add_opentelemetry_context_with_baggage():
     event_dict = {"event": "test_log"}
 
     with (
-
-        patch("niitti.logging.trace.get_current_span", return_value=mock_span),
-        patch("niitti.logging.baggage.get_all", return_value={"request_id": "123"}),
+        patch("niitti.logging.processors.trace.get_current_span", return_value=mock_span),
+        patch("niitti.logging.processors.baggage.get_all", return_value={"request_id": "123"}),
     ):
         result = add_opentelemetry_context(None, "info", event_dict)
 
@@ -77,7 +76,7 @@ def test_setup_logging_levels():
 
     for level_str, expected_level in levels:
         settings = LoggingSettings(LOG_LEVEL=level_str, LOG_FORMAT="console")  # type: ignore
-        setup_logging(settings)
+        setup_logging(settings, force=True)
 
         active = get_active_logging_settings()
         assert active is not None
@@ -89,7 +88,7 @@ def test_setup_logging_levels():
     # Test unknown log level fallback in setup_logging match case
     fallback_settings = LoggingSettings(LOG_LEVEL="INFO", LOG_FORMAT="console")
     fallback_settings.LOG_LEVEL = "UNEXPECTED"  # type: ignore
-    setup_logging(fallback_settings)
+    setup_logging(fallback_settings, force=True)
     assert logging.getLogger().level == logging.INFO
 
 
@@ -100,7 +99,7 @@ def test_setup_logging_debug_override():
     :return: None
     """
     settings = LoggingSettings(LOG_LEVEL="INFO", DEBUG=True)
-    setup_logging(settings)
+    setup_logging(settings, force=True)
 
     root_logger = logging.getLogger()
     assert root_logger.level == logging.DEBUG

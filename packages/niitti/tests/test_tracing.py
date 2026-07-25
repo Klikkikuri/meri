@@ -10,7 +10,8 @@ from unittest.mock import MagicMock, patch
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-import niitti.tracing as tracing_module
+import niitti.tracing.crash_buffer as crash_buffer_module
+import niitti.tracing.provider as provider_module
 from niitti.settings.tracing import TracingSettings
 from niitti.tracing import (
     DEFAULT_SPAN_EMOJI,
@@ -59,13 +60,13 @@ def test_clear_crash_span_buffer():
     :return: None
     """
     mock_exporter = MagicMock(spec=InMemorySpanExporter)
-    tracing_module._crash_span_exporter = mock_exporter
+    crash_buffer_module._crash_span_exporter = mock_exporter
 
     clear_crash_span_buffer()
     mock_exporter.clear.assert_called_once()
 
     # Reset
-    tracing_module._crash_span_exporter = None
+    crash_buffer_module._crash_span_exporter = None
 
 
 def test_setup_crash_span_dumper_and_excepthook():
@@ -98,7 +99,7 @@ def test_setup_crash_span_dumper_and_excepthook():
             assert mock_stderr.called
     finally:
         sys.excepthook = original_excepthook
-        tracing_module._crash_span_exporter = None
+        crash_buffer_module._crash_span_exporter = None
 
 
 def test_setup_sentry_disabled():
@@ -148,8 +149,8 @@ def test_setup_tracing_enabled_and_idempotent():
 
     :return: None
     """
-    tracing_module._active_tracer = None
-    tracing_module._active_tracer_provider = None
+    provider_module._active_tracer = None
+    provider_module._active_tracer_provider = None
 
     settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_app")
     tracer1 = setup_tracing(settings)
@@ -178,22 +179,22 @@ def test_configure_and_activate_tracing_separately():
 
     :return: None
     """
-    tracing_module._active_tracer = None
-    tracing_module._active_tracer_provider = None
+    provider_module._active_tracer = None
+    provider_module._active_tracer_provider = None
 
     settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_sep_app")
     provider, tracer = configure_tracing(settings)
     assert provider is not None
     assert tracer is not None
     # Global active tracer state is not updated yet
-    assert tracing_module._active_tracer_provider is None
-    assert tracing_module._active_tracer is None
+    assert provider_module._active_tracer_provider is None
+    assert provider_module._active_tracer is None
 
     # Now activate
     activated_tracer = activate_tracing(provider, tracer)
     assert activated_tracer is tracer
-    assert tracing_module._active_tracer_provider is provider
-    assert tracing_module._active_tracer is tracer
+    assert provider_module._active_tracer_provider is provider
+    assert provider_module._active_tracer is tracer
 
 
 def test_flush_and_shutdown_tracing():
@@ -202,8 +203,8 @@ def test_flush_and_shutdown_tracing():
 
     :return: None
     """
-    tracing_module._active_tracer = None
-    tracing_module._active_tracer_provider = None
+    provider_module._active_tracer = None
+    provider_module._active_tracer_provider = None
 
     settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_flush_app")
     tracer = setup_tracing(settings)
@@ -215,5 +216,5 @@ def test_flush_and_shutdown_tracing():
 
     # Verify shutdown cleans up active tracer state
     shutdown_tracing(timeout_millis=1000)
-    assert tracing_module._active_tracer_provider is None
-    assert tracing_module._active_tracer is None
+    assert provider_module._active_tracer_provider is None
+    assert provider_module._active_tracer is None
