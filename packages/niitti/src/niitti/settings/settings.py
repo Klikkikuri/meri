@@ -70,7 +70,6 @@ def get_package_metadata(pkg_name: str) -> dict[str, str]:
     return dict(_get_package_metadata(pkg_name))
 
 
-
 def lint_yaml_settings_files(paths: list[Path]) -> list[Path]:
     """
     Return existing, valid YAML config files and warn for invalid ones.

@@ -1,9 +1,26 @@
 from importlib.util import find_spec
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
 
-_otel_available: bool = find_spec("opentelemetry.exporter") is not None and find_spec("sentry_sdk") is not None
-_openai_available: bool = find_spec("openai") is not None
+from pydantic import BaseModel, ConfigDict, Field
+import structlog
+
+logger = structlog.get_logger(__name__)
+
+
+def _is_module_available(name: str) -> bool:
+    """
+    Safely check if a module is available without raising errors on malformed parent/namespace packages.
+    """
+    try:
+        return find_spec(name) is not None
+    except (ModuleNotFoundError, ValueError, AttributeError, ImportError) as e:
+        # Log caught find_spec exceptions via structlog to prevent silent dropping of errors
+        logger.debug("Could not find spec for module", module_name=name, error=str(e), exc_info=True)
+        return False
+
+
+_otel_available: bool = _is_module_available("opentelemetry.exporter") and _is_module_available("sentry_sdk")
+_openai_available: bool = _is_module_available("openai")
 
 
 class SentrySettings(BaseModel):
