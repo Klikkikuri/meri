@@ -7,7 +7,7 @@ import structlog
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
 from niitti.logging.formatters import _resolve_log_level
-from niitti.logging.processors import add_opentelemetry_context
+from niitti.logging.processors import add_opentelemetry_context, filter_full_otel_ids_for_console
 from niitti.settings.logging import LoggingSettings
 
 logger = structlog.get_logger(__name__)
@@ -85,6 +85,7 @@ def setup_logging(settings: LoggingSettings | None = None, force: bool = False) 
     except ImportError:
         exception_formatter = structlog.dev.plain_traceback
 
+    console_processors = [] if settings.LOG_FORMAT == "json" else [filter_full_otel_ids_for_console]
     renderer = (
         structlog.processors.JSONRenderer()
         if settings.LOG_FORMAT == "json"
@@ -95,6 +96,7 @@ def setup_logging(settings: LoggingSettings | None = None, force: bool = False) 
         foreign_pre_chain=shared_processors,
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            *console_processors,
             renderer,
         ],
     )

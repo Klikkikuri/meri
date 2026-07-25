@@ -7,13 +7,18 @@ Tests for niitti logging subpackage.
 import logging
 from unittest.mock import MagicMock, patch
 
-from niitti.logging import add_opentelemetry_context, get_active_logging_settings, setup_logging
+from niitti.logging import (
+    add_opentelemetry_context,
+    filter_full_otel_ids_for_console,
+    get_active_logging_settings,
+    setup_logging,
+)
 from niitti.settings.logging import LoggingSettings
 
 
 def test_add_opentelemetry_context_valid_span():
     """
-    Verify add_opentelemetry_context injects trace_id and span_id when span is recording and valid.
+    Verify add_opentelemetry_context injects trace_id, span_id, trace_id_full, and span_id_full.
 
     :return: None
     """
@@ -34,9 +39,13 @@ def test_add_opentelemetry_context_valid_span():
     ):
         result = add_opentelemetry_context(None, "info", event_dict)
 
-    assert result["trace_id"] == f"{0x1234567890ABCDEF1234567890ABCDEF:032x}"
-    assert result["span_id"] == f"{0x1234567890ABCDEF:016x}"
-    # assert "otel_baggage" not in result
+    full_trace_hex = f"{0x1234567890ABCDEF1234567890ABCDEF:032x}"
+    full_span_hex = f"{0x1234567890ABCDEF:016x}"
+    assert result["trace_id"] == full_trace_hex[:8]
+    assert result["span_id"] == full_span_hex[:8]
+    assert result["trace_id_full"] == full_trace_hex
+    assert result["span_id_full"] == full_span_hex
+    assert "otel_baggage" not in result
 
 
 def test_add_opentelemetry_context_with_baggage():
@@ -58,6 +67,47 @@ def test_add_opentelemetry_context_with_baggage():
 
     assert "trace_id" not in result
     assert result["otel_baggage"] == {"request_id": "123"}
+
+
+def test_add_opentelemetry_context_empty_baggage_removed():
+    """
+    Verify add_opentelemetry_context removes otel_baggage key when baggage is empty.
+
+    :return: None
+    """
+    mock_span = MagicMock()
+    mock_span.is_recording.return_value = False
+
+    event_dict = {"event": "test_log", "otel_baggage": {}}
+
+    with (
+        patch("niitti.logging.processors.trace.get_current_span", return_value=mock_span),
+        patch("niitti.logging.processors.baggage.get_all", return_value={}),
+    ):
+        result = add_opentelemetry_context(None, "info", event_dict)
+
+    assert "otel_baggage" not in result
+
+
+def test_filter_full_otel_ids_for_console():
+    """
+    Verify filter_full_otel_ids_for_console removes full trace/span IDs for console logging.
+
+    :return: None
+    """
+    event_dict = {
+        "event": "test_log",
+        "trace_id": "12345678",
+        "span_id": "87654321",
+        "trace_id_full": "1234567890abcdef1234567890abcdef",
+        "span_id_full": "8765432109fedcba",
+    }
+    result = filter_full_otel_ids_for_console(None, "info", event_dict)
+
+    assert result["trace_id"] == "12345678"
+    assert result["span_id"] == "87654321"
+    assert "trace_id_full" not in result
+    assert "span_id_full" not in result
 
 
 def test_setup_logging_levels():
