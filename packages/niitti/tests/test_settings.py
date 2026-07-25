@@ -93,6 +93,32 @@ def test_sentry_settings_defaults():
     assert settings.send_logs is True
 
 
+def test_sentry_settings_validation_aliases():
+    """
+    Verify SentrySettings field validation aliases for environment variable matching.
+
+    :return: None
+    """
+    data = {
+        "SENTRY_DSN": "https://examplePublicKey@o0.ingest.sentry.io/0",
+        "SENTRY_ENVIRONMENT": "production",
+        "SENTRY_SEND_DEFAULT_PII": False,
+        "SENTRY_TRACES_SAMPLE_RATE": 0.5,
+        "SENTRY_SEND_LOGS": False,
+        "SENTRY_OPENAI_INTEGRATION": True,
+        "SENTRY_OTEL_INTEGRATION": False,
+    }
+    settings = SentrySettings(**data)
+    assert settings.dsn == "https://examplePublicKey@o0.ingest.sentry.io/0"
+    assert settings.environment == "production"
+    assert settings.send_default_pii is False
+    assert settings.traces_sample_rate == 0.5
+    assert settings.send_logs is False
+    assert settings.openai_integration is True
+    assert settings.otel_integration is False
+
+
+
 def test_get_package_metadata():
     """
     Verify get_package_metadata retrieval and caching for known and unknown packages.

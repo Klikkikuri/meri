@@ -24,22 +24,46 @@ _openai_available: bool = _is_module_available("openai")
 
 
 class SentrySettings(BaseModel):
+    """
+    Sentry configuration model for error tracking and performance monitoring.
+    """
+
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     dsn: Optional[str] = Field(
-        None,
+        default=None,
         description="Sentry DSN for error tracking.",
         validation_alias="SENTRY_DSN",
     )
     environment: Optional[str] = Field(
-        None,
+        default=None,
         description="Sentry environment (e.g. 'production', 'staging').",
         validation_alias="SENTRY_ENVIRONMENT",
     )
-    send_default_pii: bool = True
-    traces_sample_rate: float = 0.1
+    send_default_pii: bool = Field(
+        default=False,
+        description="Enable or disable sending personally identifiable information (PII) like IP addresses.",
+        validation_alias="SENTRY_SEND_DEFAULT_PII",
+    )
+    traces_sample_rate: float = Field(
+        default=0.1,
+        description="Sample rate for Sentry tracing (0.0 to 1.0).",
+        validation_alias="SENTRY_TRACES_SAMPLE_RATE",
+    )
 
-    send_logs: bool = True
+    send_logs: bool = Field(
+        default=True,
+        description="Whether to send application logs to Sentry as breadcrumbs or events.",
+        validation_alias="SENTRY_SEND_LOGS",
+    )
 
-    openai_integration: bool = _openai_available
-    otel_integration: bool = _otel_available
+    openai_integration: bool = Field(
+        default=_openai_available,
+        description="Enable Sentry OpenAI integration for tracking LLM calls.",
+        validation_alias="SENTRY_OPENAI_INTEGRATION",
+    )
+    otel_integration: bool = Field(
+        default=_otel_available,
+        description="Enable Sentry OpenTelemetry integration.",
+        validation_alias="SENTRY_OTEL_INTEGRATION",
+    )

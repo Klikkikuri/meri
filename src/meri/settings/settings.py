@@ -26,6 +26,7 @@ from typing import Type
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
 from niitti.settings.logging import LoggingSettings
+from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings as NiittiSettings
 from niitti.settings.tracing import TracingSettings
 from platformdirs import site_config_dir, user_config_dir
@@ -50,7 +51,6 @@ from .llms import (
 )
 from .newssources import NewsSource
 from .rahti import RahtiSettings
-from .sentry import SentrySettings
 
 load_dotenv()
 
