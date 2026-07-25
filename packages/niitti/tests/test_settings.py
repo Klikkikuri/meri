@@ -109,6 +109,11 @@ def test_get_package_metadata():
     assert meta_unknown["Version"] == "0.1.0"
     assert meta_unknown["Home-page"] == "https://github.com/Klikkikuri"
 
+    # Verify mutation of returned dictionary does not mutate cached state
+    meta_unknown["Version"] = "999.0.0"
+    meta_refetched = get_package_metadata("non_existent_package_xyz_123")
+    assert meta_refetched["Version"] == "0.1.0"
+
 
 def test_lint_yaml_settings_files(tmp_path: Path):
     """

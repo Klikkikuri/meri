@@ -21,9 +21,12 @@ logger = logging.getLogger(__name__)
 
 
 @functools.lru_cache(maxsize=16)
-def get_package_metadata(pkg_name: str) -> dict[str, str]:
+def _get_package_metadata(pkg_name: str) -> dict[str, str]:
     """
     Safely retrieve and cache package metadata dictionary for a given package name.
+
+    :param pkg_name: Name of the package to retrieve metadata for.
+    :return: Cached package metadata dictionary.
     """
     pkg_meta: dict[str, str] = {}
     base_name = pkg_name.split(".")[0]
@@ -52,6 +55,20 @@ def get_package_metadata(pkg_name: str) -> dict[str, str]:
     pkg_meta.setdefault("Home-page", "https://github.com/Klikkikuri")
 
     return pkg_meta
+
+
+def get_package_metadata(pkg_name: str) -> dict[str, str]:
+    """
+    Safely retrieve package metadata dictionary for a given package name.
+
+    Return a copy of the cached metadata dictionary to prevent caller mutation from altering cached state.
+
+    :param pkg_name: Name of the package to retrieve metadata for.
+    :return: Copy of the package metadata dictionary.
+    """
+    # Return a shallow copy of the cached dict to protect shared cached state from mutation by caller
+    return dict(_get_package_metadata(pkg_name))
+
 
 
 def lint_yaml_settings_files(paths: list[Path]) -> list[Path]:
