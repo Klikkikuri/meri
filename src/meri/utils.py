@@ -98,10 +98,8 @@ def setup_tracing(name: str | None = __package__):
     Setup OpenTelemetry tracing. Delegates to niitti.tracing.
     """
     from niitti.tracing import setup_tracing as _niitti_setup_tracing
-    from niitti.settings.tracing import TracingSettings
     from .settings import settings
 
-    name = name or "meri"
-    tracing_enabled = getattr(settings, "TRACING_ENABLED", True)
-    trace_settings = TracingSettings(SERVICE_NAME=name, TRACING_ENABLED=tracing_enabled)
-    return _niitti_setup_tracing(trace_settings)
+    if not settings.telemetry.service_name:
+        settings.telemetry.service_name = name or "meri"
+    return _niitti_setup_tracing(settings.telemetry)

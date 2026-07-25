@@ -33,23 +33,23 @@ def configure_tracing(
     """
     Configure and instantiate OpenTelemetry TracerProvider and Tracer without global activation.
 
-    :param settings: TracingSettings instance. If None, default TracingSettings() will be initialized.
+    :param settings: TracingSettings/TelemetrySettings instance. If None, default TracingSettings() will be initialized.
     :return: Tuple of (TracerProvider, Tracer) or (None, None) if tracing is disabled.
     """
     if settings is None:
         settings = TracingSettings()
 
-    if not settings.TRACING_ENABLED:
+    if not settings.enabled:
         logger.debug("Tracing is disabled in configuration")
         return None, None
 
-    if not settings.SERVICE_NAME:
+    if not settings.service_name:
         raise ValueError(
-            "SERVICE_NAME is required to configure tracing. "
-            "Please set SERVICE_NAME in TracingSettings or via environment variable OTEL_SERVICE_NAME."
+            "service_name is required to configure tracing. "
+            "Please set service_name in telemetry settings or via environment variable OTEL_SERVICE_NAME."
         )
 
-    name = settings.SERVICE_NAME
+    name = settings.service_name
     try:
         pkg_metadata = metadata(name)
         version = pkg_metadata.get("version", "0.1.0")
@@ -76,7 +76,7 @@ def configure_tracing(
     resource = get_aggregated_resources(resources, resource)
     trace_provider = TracerProvider(resource=resource)
 
-    otel_endpoint = settings.OTEL_EXPORTER_OTLP_ENDPOINT or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    otel_endpoint = settings.endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
     if otel_endpoint:
         try:
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import (  # type: ignore # pyright: ignore[reportMissingImports,reportMissingModuleSource]
@@ -169,7 +169,7 @@ def setup_tracing(settings: TracingSettings | None = None) -> trace.Tracer | Non
     if settings is None:
         settings = TracingSettings()
 
-    if not settings.TRACING_ENABLED:
+    if not settings.enabled:
         logger.debug("Tracing is disabled")
         return None
 

@@ -1,28 +1,32 @@
+import os
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 
-class TracingSettings(BaseModel):
+class TelemetrySettings(BaseModel):
     """
-    Tracing configuration model for niitti OpenTelemetry tracing system.
+    Telemetry and OpenTelemetry tracing configuration model for niitti.
     """
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    TRACING_ENABLED: bool = Field(
+    enabled: bool = Field(
         default=True,
         description="Enable OpenTelemetry tracing.",
-        validation_alias="KLIKKIKURI_TRACING_ENABLED",
+        validation_alias=AliasChoices("OTEL_TRACING_ENABLED", "TRACING_ENABLED", "enabled"),
     )
 
-    SERVICE_NAME: Optional[str] = Field(
-        default=None,
+    service_name: Optional[str] = Field(
+        default_factory=lambda: os.getenv("OTEL_SERVICE_NAME"),
         description="Service name for OpenTelemetry trace resources.",
-        validation_alias="OTEL_SERVICE_NAME",
+        validation_alias=AliasChoices("OTEL_SERVICE_NAME", "SERVICE_NAME", "service_name"),
     )
 
-    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(
-        default=None,
+    endpoint: Optional[str] = Field(
+        default_factory=lambda: os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
         description="OTLP collector endpoint URL.",
-        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
+        validation_alias=AliasChoices("OTEL_EXPORTER_OTLP_ENDPOINT", "OTEL_ENDPOINT", "endpoint"),
     )
+
+
+TracingSettings = TelemetrySettings
