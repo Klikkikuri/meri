@@ -20,6 +20,8 @@ from niitti.settings.tracing import TracingSettings
 from niitti.tracing.crash_buffer import setup_crash_span_dumper
 from niitti.tracing.instrumentation import EXTRA_INSTRUMENTOR, EXTRA_RESOURCE_DETECTOR
 
+from ..settings.settings import Settings
+
 logger = structlog.get_logger(__name__)
 
 _active_tracer_provider: TracerProvider | None = None
@@ -162,6 +164,11 @@ def setup_tracing(settings: TracingSettings | None = None) -> trace.Tracer | Non
 
     if settings is None:
         settings = TracingSettings()
+
+    if not settings.SERVICE_NAME:
+        pkg_name = Settings.get_package_name()
+        logger.debug("Service name not set in tracing settings, using package name", service_name=pkg_name)
+        settings.SERVICE_NAME = pkg_name
 
     if not settings.TRACING_ENABLED:
         logger.debug("Tracing is disabled")

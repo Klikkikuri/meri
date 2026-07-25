@@ -88,7 +88,7 @@ def test_sentry_settings_defaults():
     settings = SentrySettings(dsn="https://examplePublicKey@o0.ingest.sentry.io/0", environment="testing")
     assert settings.dsn == "https://examplePublicKey@o0.ingest.sentry.io/0"
     assert settings.environment == "testing"
-    assert settings.send_default_pii is True
+    assert settings.send_default_pii is False
     assert settings.traces_sample_rate == 0.1
     assert settings.send_logs is True
 

@@ -15,8 +15,8 @@ class TracingSettings(BaseModel):
         validation_alias="KLIKKIKURI_TRACING_ENABLED",
     )
 
-    SERVICE_NAME: str = Field(
-        default="meri",
+    SERVICE_NAME: Optional[str] = Field(
+        default=None,
         description="Service name for OpenTelemetry trace resources.",
         validation_alias="OTEL_SERVICE_NAME",
     )
