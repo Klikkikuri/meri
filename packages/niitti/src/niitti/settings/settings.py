@@ -1,9 +1,11 @@
+import functools
 import logging
 import os
+from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
 from typing import Type, cast
 
-from dotenv import load_dotenv
+from dotenv import find_dotenv, load_dotenv
 from platformdirs import site_config_dir, user_config_dir
 from pydantic_settings import (
     BaseSettings,
@@ -13,12 +15,7 @@ from pydantic_settings import (
 )
 from yaml import YAMLError, safe_load
 
-import functools
-from importlib.metadata import PackageNotFoundError, metadata
-
 from niitti.settings.const import DEFAULT_APP_AUTHOR, DEFAULT_APP_NAME
-
-load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +89,12 @@ class Settings(BaseSettings):
     Base Settings class for Niitti applications (ABC-like base).
     """
 
+    def __init__(self, *args, **kwargs):
+        # Discover and load .env on instantiation to populate os.environ without import side-effects.
+        if dotenv_path := find_dotenv(usecwd=True):
+            load_dotenv(dotenv_path)
+        super().__init__(*args, **kwargs)
+
     @classmethod
     def get_package_name(cls) -> str:
         """
@@ -135,7 +138,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         secrets_dir="/run/secrets" if Path("/run/secrets").exists() else None,
         yaml_file_encoding="utf-8",
-        env_file=".env",
+        env_file=find_dotenv(usecwd=True) or ".env",
         env_file_encoding="utf-8",
         extra="ignore",
         env_nested_delimiter="__",

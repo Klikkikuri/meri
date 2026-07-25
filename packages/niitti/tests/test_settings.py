@@ -170,3 +170,35 @@ def test_settings_custom_config_env_var(tmp_path: Path, monkeypatch: pytest.Monk
     locations = Settings.get_default_config_locations()
     assert custom_cfg in locations
     assert locations[0] == custom_cfg
+
+
+def test_import_niitti_settings_no_import_side_effects():
+    """
+    Verify importing niitti.settings does not expose module-level load_dotenv.
+
+    :return: None
+    """
+    import niitti.settings.settings as niitti_settings_module
+
+    assert "load_dotenv()" not in open(niitti_settings_module.__file__, encoding="utf-8").read()
+
+
+def test_settings_instantiation_loads_dotenv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """
+    Verify Settings instantiation invokes load_dotenv using find_dotenv discovery.
+
+    :param tmp_path: pytest fixture providing temporary directory.
+    :param monkeypatch: pytest monkeypatch fixture.
+    :return: None
+    """
+    env_file = tmp_path / ".env"
+    env_file.write_text("NIITTI_TEST_DOTENV_KEY=custom_value\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("NIITTI_TEST_DOTENV_KEY", raising=False)
+
+    class SubSettings(Settings):
+        NIITTI_TEST_DOTENV_KEY: str = "default"
+
+    instance = SubSettings()
+    assert instance.NIITTI_TEST_DOTENV_KEY == "custom_value"
