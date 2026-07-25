@@ -21,7 +21,7 @@ class LoggingSettings(BaseModel):
         validation_alias="LOG_LEVEL",
     )
 
-    LOG_FORMAT: Literal["json", "console", "text"] = Field(
+    LOG_FORMAT: Literal["json", "console"] = Field(
         default_factory=_default_log_format,
         description="Log format: console/text (interactive TTY) or json (non-interactive stream).",
         validation_alias="LOG_FORMAT",
