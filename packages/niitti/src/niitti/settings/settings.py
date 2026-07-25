@@ -152,6 +152,7 @@ class Settings(BaseSettings):
         return lint_yaml_settings_files(locations)
 
     model_config = SettingsConfigDict(
+        # notice: Evaluation for secrets_dir is done at class definition time, not at runtime, not in runtime.
         secrets_dir="/run/secrets" if Path("/run/secrets").exists() else None,
         yaml_file_encoding="utf-8",
         env_file=find_dotenv(usecwd=True) or ".env",
