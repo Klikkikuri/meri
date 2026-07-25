@@ -32,10 +32,3 @@ class LoggingSettings(BaseModel):
         description="Enable debug mode.",
         validation_alias="DEBUG",
     )
-
-    def get_logging_settings(self) -> "LoggingSettings":
-        return LoggingSettings(
-            LOG_LEVEL=self.LOG_LEVEL,
-            LOG_FORMAT=self.LOG_FORMAT,
-            DEBUG=self.DEBUG,
-        )

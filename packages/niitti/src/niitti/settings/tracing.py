@@ -26,10 +26,3 @@ class TracingSettings(BaseModel):
         description="OTLP collector endpoint URL.",
         validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
     )
-
-    def get_tracing_settings(self) -> "TracingSettings":
-        return TracingSettings(
-            TRACING_ENABLED=self.TRACING_ENABLED,
-            SERVICE_NAME=self.SERVICE_NAME,
-            OTEL_EXPORTER_OTLP_ENDPOINT=self.OTEL_EXPORTER_OTLP_ENDPOINT,
-        )

@@ -39,9 +39,9 @@ def test_default_log_format_detection():
         assert _default_log_format() == "json"
 
 
-def test_logging_settings_defaults_and_method():
+def test_logging_settings_defaults():
     """
-    Verify LoggingSettings defaults and get_logging_settings method.
+    Verify LoggingSettings defaults and fields.
 
     :return: None
     """
@@ -50,16 +50,10 @@ def test_logging_settings_defaults_and_method():
     assert settings.LOG_FORMAT == "json"
     assert settings.DEBUG is True
 
-    copy_settings = settings.get_logging_settings()
-    assert isinstance(copy_settings, LoggingSettings)
-    assert copy_settings.LOG_LEVEL == "DEBUG"
-    assert copy_settings.LOG_FORMAT == "json"
-    assert copy_settings.DEBUG is True
 
-
-def test_tracing_settings_defaults_and_method():
+def test_tracing_settings_defaults():
     """
-    Verify TracingSettings defaults and get_tracing_settings method.
+    Verify TracingSettings defaults and fields.
 
     :return: None
     """
@@ -71,12 +65,6 @@ def test_tracing_settings_defaults_and_method():
     assert settings.TRACING_ENABLED is False
     assert settings.SERVICE_NAME == "test_service"
     assert settings.OTEL_EXPORTER_OTLP_ENDPOINT == "http://localhost:4318"
-
-    copy_settings = settings.get_tracing_settings()
-    assert isinstance(copy_settings, TracingSettings)
-    assert copy_settings.TRACING_ENABLED is False
-    assert copy_settings.SERVICE_NAME == "test_service"
-    assert copy_settings.OTEL_EXPORTER_OTLP_ENDPOINT == "http://localhost:4318"
 
 
 def test_sentry_settings_defaults():
