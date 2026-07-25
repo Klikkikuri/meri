@@ -6,12 +6,11 @@ from niitti.settings.settings import (
     get_package_metadata,
     lint_yaml_settings_files,
 )
-from niitti.settings.tracing import TelemetrySettings, TracingSettings
+from niitti.settings.telemetry import TelemetrySettings
 
 __all__ = [
     "Settings",
     "LoggingSettings",
-    "TracingSettings",
     "TelemetrySettings",
     "SentrySettings",
     "DEFAULT_APP_NAME",

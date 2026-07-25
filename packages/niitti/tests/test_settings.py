@@ -13,7 +13,7 @@ from niitti.settings.const import DEFAULT_APP_AUTHOR, DEFAULT_APP_NAME
 from niitti.settings.logging import LoggingSettings, _default_log_format
 from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings, get_package_metadata, lint_yaml_settings_files
-from niitti.settings.tracing import TracingSettings
+from niitti.settings.telemetry import TelemetrySettings
 
 
 def test_constants():
@@ -51,20 +51,20 @@ def test_logging_settings_defaults():
     assert settings.DEBUG is True
 
 
-def test_tracing_settings_defaults():
+def test_telemetry_settings_defaults():
     """
-    Verify TracingSettings defaults and fields.
+    Verify TelemetrySettings defaults and reduced fields.
 
     :return: None
     """
-    settings = TracingSettings(
-        TRACING_ENABLED=False,
-        SERVICE_NAME="test_service",
-        OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:4318",
+    settings = TelemetrySettings(
+        enabled=False,
+        service_name="test_service",
+        endpoint="http://localhost:4318",
     )
-    assert settings.TRACING_ENABLED is False
-    assert settings.SERVICE_NAME == "test_service"
-    assert settings.OTEL_EXPORTER_OTLP_ENDPOINT == "http://localhost:4318"
+    assert settings.enabled is False
+    assert settings.service_name == "test_service"
+    assert settings.endpoint == "http://localhost:4318"
 
 
 def test_sentry_settings_defaults():
@@ -203,7 +203,7 @@ def test_meri_settings_mro_and_package_name_derivation():
 
     # Verify identity stamping on instantiation
     inst = MeriSettings()  # type: ignore
-    assert inst.SERVICE_NAME == "meri"
+    assert inst.telemetry.service_name == "meri"
 
 
 def test_import_niitti_settings_no_import_side_effects():

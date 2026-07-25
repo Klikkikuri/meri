@@ -13,7 +13,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanE
 
 import niitti.tracing.crash_buffer as crash_buffer_module
 import niitti.tracing.provider as provider_module
-from niitti.settings.tracing import TracingSettings
+from niitti.settings.telemetry import TelemetrySettings
 from niitti.tracing import (
     DEFAULT_SPAN_EMOJI,
     activate_tracing,
@@ -135,11 +135,11 @@ def test_setup_sentry_enabled():
 
 def test_setup_tracing_disabled():
     """
-    Verify setup_tracing returns None when TRACING_ENABLED is False.
+    Verify setup_tracing returns None when enabled is False.
 
     :return: None
     """
-    settings = TracingSettings(TRACING_ENABLED=False)
+    settings = TelemetrySettings(enabled=False)
     result = setup_tracing(settings)
     assert result is None
 
@@ -153,7 +153,7 @@ def test_setup_tracing_enabled_and_idempotent():
     provider_module._active_tracer = None
     provider_module._active_tracer_provider = None
 
-    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_app")
+    settings = TelemetrySettings(enabled=True, service_name="test_app")
     tracer1 = setup_tracing(settings)
     assert tracer1 is not None
 
@@ -164,11 +164,11 @@ def test_setup_tracing_enabled_and_idempotent():
 
 def test_configure_tracing_disabled():
     """
-    Verify configure_tracing returns (None, None) when TRACING_ENABLED is False.
+    Verify configure_tracing returns (None, None) when enabled is False.
 
     :return: None
     """
-    settings = TracingSettings(TRACING_ENABLED=False)
+    settings = TelemetrySettings(enabled=False)
     provider, tracer = configure_tracing(settings)
     assert provider is None
     assert tracer is None
@@ -183,7 +183,7 @@ def test_configure_and_activate_tracing_separately():
     provider_module._active_tracer = None
     provider_module._active_tracer_provider = None
 
-    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_sep_app")
+    settings = TelemetrySettings(enabled=True, service_name="test_sep_app")
     provider, tracer = configure_tracing(settings)
     assert provider is not None
     assert tracer is not None
@@ -207,7 +207,7 @@ def test_flush_and_shutdown_tracing():
     provider_module._active_tracer = None
     provider_module._active_tracer_provider = None
 
-    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME="test_flush_app")
+    settings = TelemetrySettings(enabled=True, service_name="test_flush_app")
     tracer = setup_tracing(settings)
     assert tracer is not None
 
@@ -223,13 +223,13 @@ def test_flush_and_shutdown_tracing():
 
 def test_tracing_missing_service_name_raises_value_error():
     """
-    Verify configure_tracing and setup_tracing raise ValueError when SERVICE_NAME is missing.
+    Verify configure_tracing and setup_tracing raise ValueError when service_name is missing.
 
     :return: None
     """
-    settings = TracingSettings(TRACING_ENABLED=True, SERVICE_NAME=None)
-    with pytest.raises(ValueError, match="SERVICE_NAME is required"):
+    settings = TelemetrySettings(enabled=True, service_name=None)
+    with pytest.raises(ValueError, match="service_name is required"):
         configure_tracing(settings)
 
-    with pytest.raises(ValueError, match="SERVICE_NAME is required"):
+    with pytest.raises(ValueError, match="service_name is required"):
         setup_tracing(settings)

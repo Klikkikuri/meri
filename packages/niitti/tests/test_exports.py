@@ -20,7 +20,7 @@ def test_top_level_exports():
     expected_exports = [
         "Settings",
         "LoggingSettings",
-        "TracingSettings",
+        "TelemetrySettings",
         "setup_logging",
         "setup_tracing",
         "flush_tracing",
@@ -110,7 +110,7 @@ def test_settings_exports():
     expected_exports = [
         "Settings",
         "LoggingSettings",
-        "TracingSettings",
+        "TelemetrySettings",
         "SentrySettings",
         "DEFAULT_APP_NAME",
         "DEFAULT_APP_AUTHOR",

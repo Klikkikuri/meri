@@ -16,7 +16,7 @@ from opentelemetry.sdk.resources import (
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from niitti.settings.tracing import TracingSettings
+from niitti.settings.telemetry import TelemetrySettings
 from niitti.tracing.crash_buffer import setup_crash_span_dumper
 from niitti.tracing.instrumentation import EXTRA_INSTRUMENTOR, EXTRA_RESOURCE_DETECTOR
 
@@ -28,16 +28,16 @@ _instrumented_packages: set[str] = set()
 
 
 def configure_tracing(
-    settings: TracingSettings | None = None,
+    settings: TelemetrySettings | None = None,
 ) -> tuple[TracerProvider, trace.Tracer] | tuple[None, None]:
     """
     Configure and instantiate OpenTelemetry TracerProvider and Tracer without global activation.
 
-    :param settings: TracingSettings/TelemetrySettings instance. If None, default TracingSettings() will be initialized.
+    :param settings: TelemetrySettings instance. If None, default TelemetrySettings() will be initialized.
     :return: Tuple of (TracerProvider, Tracer) or (None, None) if tracing is disabled.
     """
     if settings is None:
-        settings = TracingSettings()
+        settings = TelemetrySettings()
 
     if not settings.enabled:
         logger.debug("Tracing is disabled in configuration")
@@ -155,19 +155,19 @@ def activate_tracing(
     return tracer
 
 
-def setup_tracing(settings: TracingSettings | None = None) -> trace.Tracer | None:
+def setup_tracing(settings: TelemetrySettings | None = None) -> trace.Tracer | None:
     """
     Setup OpenTelemetry tracing idempotently.
 
     Convenience wrapper that configures and activates OpenTelemetry tracing.
 
-    :param settings: TracingSettings instance. If None, default TracingSettings() will be initialized.
+    :param settings: TelemetrySettings instance. If None, default TelemetrySettings() will be initialized.
     :return: OpenTelemetry Tracer instance or None if tracing is disabled.
     """
     global _active_tracer_provider, _active_tracer
 
     if settings is None:
-        settings = TracingSettings()
+        settings = TelemetrySettings()
 
     if not settings.enabled:
         logger.debug("Tracing is disabled")
