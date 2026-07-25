@@ -27,7 +27,7 @@ from dotenv import load_dotenv
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings as NiittiSettings
-from niitti.settings.tracing import TracingSettings
+from niitti.settings.telemetry import TelemetrySettings
 from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
@@ -89,10 +89,14 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(NiittiSettings, LoggingSettings, TracingSettings):  # pyright: ignore[reportIncompatibleVariableOverride]
+class Settings(NiittiSettings, LoggingSettings):  # pyright: ignore[reportIncompatibleVariableOverride]
     sentry: SentrySettings = Field(
         default_factory=SentrySettings,  # type: ignore
         description="Sentry settings.",
+    )
+    telemetry: TelemetrySettings = Field(
+        default_factory=TelemetrySettings,
+        description="Telemetry settings.",
     )
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
@@ -178,8 +182,8 @@ class Settings(NiittiSettings, LoggingSettings, TracingSettings):  # pyright: ig
         """
         Stamp service identity fields after model fields are populated.
         """
-        if not self.SERVICE_NAME:
-            self.SERVICE_NAME = self.get_package_name()
+        if not self.telemetry.service_name:
+            self.telemetry.service_name = self.get_package_name()
         return self
 
     model_config = SettingsConfigDict(
