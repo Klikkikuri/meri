@@ -9,7 +9,7 @@
 - 🔄 **Flush & Shutdown Support**: `flush_tracing()` to force flush queued batch spans, and `shutdown_tracing()` for clean application teardown.
 - 💥 **Crash Span Waterfall Dumper**: Visual tree waterfall of finished OpenTelemetry trace spans rendered to `stderr` on uncaught application crashes using `rich.tree.Tree` (with plain-text fallback).
 - 🎯 **Daemon Memory Safety**: `clear_crash_span_buffer()` helper to prevent memory growth in long-running services (e.g., `laituri`).
-- ⚙️ **Typed Settings Models**: Modular `LoggingSettings` and `TracingSettings` Pydantic models.
+- ⚙️ **Typed Settings Models**: Modular `LoggingSettings` and `TelemetrySettings` Pydantic models.
 
 ## Installation
 
@@ -35,7 +35,7 @@ niitti = { workspace = true, extras = ["all"] }
 ```python
 from niitti import (
     LoggingSettings,
-    TracingSettings,
+    TelemetrySettings,
     flush_tracing,
     setup_logging,
     setup_tracing,
@@ -47,8 +47,8 @@ log_settings = LoggingSettings(LOG_LEVEL="INFO")
 setup_logging(log_settings)
 
 # 2. Initialize tracing (idempotent)
-trace_settings = TracingSettings(SERVICE_NAME="meri", TRACING_ENABLED=True)
-tracer = setup_tracing(trace_settings)
+telemetry_settings = TelemetrySettings(service_name="my_service", enabled=True)
+tracer = setup_tracing(telemetry_settings)
 
 # 3. Force flush or shutdown tracing on application exit
 flush_tracing(timeout_millis=5000)
