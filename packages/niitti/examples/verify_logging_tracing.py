@@ -20,7 +20,7 @@ from opentelemetry import baggage, trace
 
 from niitti import (
     LoggingSettings,
-    TracingSettings,
+    TelemetrySettings,
     setup_logging,
     setup_tracing,
 )
@@ -95,15 +95,15 @@ def main() -> None:
     # 1. Setup Logging & Tracing
     log_format = "json" if args.json else None
     log_settings = LoggingSettings(LOG_LEVEL="INFO", LOG_FORMAT=log_format or "console")
-    trace_settings = TracingSettings(SERVICE_NAME="niitti-verification", TRACING_ENABLED=True)
+    telemetry_settings = TelemetrySettings(service_name="niitti-verification", enabled=True)
 
-    setup_logging(log_settings)
-    setup_tracing(trace_settings)
+    setup_logging(log_settings, force=True)
+    setup_tracing(telemetry_settings)
 
     logger.info(
         "Niitti Logging & Tracing Initialized",
         log_format=log_settings.LOG_FORMAT,
-        tracing_enabled=trace_settings.TRACING_ENABLED,
+        tracing_enabled=telemetry_settings.enabled,
     )
 
     # Run several independent pipelines. Each run_pipeline() call starts a fresh
