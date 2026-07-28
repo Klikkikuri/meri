@@ -77,8 +77,7 @@ dev-dependencies = [
 ]
 [tool.uv.sources]
 suola = [
-    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" },
-    #{ git = "https://github.com/Klikkikuri/suola.git", rev = "v0.3.1" },
+    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.4.1/suola-0.4.1-py3-none-any.whl" },
     #{ path = "packages/suola/python" },
     #{ workspace = true }
 ]

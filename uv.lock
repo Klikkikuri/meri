@@ -1204,7 +1204,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "structlog", specifier = ">=25.1.0" },
-    { name = "suola", url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" },
+    { name = "suola", url = "https://github.com/Klikkikuri/suola/releases/download/v0.4.1/suola-0.4.1-py3-none-any.whl" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "ultimate-sitemap-parser", specifier = ">=1.6.0" },
     { name = "url-normalize", specifier = ">=1.4.3" },
@@ -2516,14 +2516,14 @@ wheels = [
 
 [[package]]
 name = "suola"
-version = "0.3.1"
-source = { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" }
+version = "0.4.1"
+source = { url = "https://github.com/Klikkikuri/suola/releases/download/v0.4.1/suola-0.4.1-py3-none-any.whl" }
 dependencies = [
     { name = "platformdirs" },
     { name = "wasmtime" },
 ]
 wheels = [
-    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl", hash = "sha256:4511473e07b71217c2dd6b1fe0e7dde79a91edda55ab8305bcefdec54e752c13" },
+    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.4.1/suola-0.4.1-py3-none-any.whl", hash = "sha256:3fb5cf6ad1e633786672a7ecd3e37b946cf77331b927219ccdd635a8c8164009" },
 ]
 
 [package.metadata]
