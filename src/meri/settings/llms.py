@@ -5,7 +5,7 @@ from typing_extensions import Annotated
 
 from niitti import get_logger
 from pydantic import AliasChoices, AnyHttpUrl, BeforeValidator, Field, SecretStr, TypeAdapter, model_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = get_logger(__name__)
 
@@ -36,6 +36,8 @@ _openai_url_alias = AliasChoices('api_base_url', 'base_url', 'url')
 
 
 class GeneratorSettings(BaseSettings, ABC):
+    model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
+
     name: str = Field(..., description="Name of the generator.")
 
     _generator: str
