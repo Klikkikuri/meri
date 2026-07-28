@@ -265,12 +265,18 @@ def test_span_decorator_concurrent_invocations():
     with patch.object(trace, "_TRACER_PROVIDER", provider):
         captured_span_paths = []
 
-        @span("concurrent_test_task", attributes={"test_key": "test_val"})
         def worker_task(item_id: int):
-            ctx = structlog.contextvars.get_contextvars()
-            captured_span_paths.append(ctx.get("span_path"))
-            time.sleep(0.01)
-            return item_id * 2
+            @span(
+                f"concurrent_test_task_{item_id}",
+                attributes={"test_key": "test_val", "item_id": item_id},
+            )
+            def run_task():
+                ctx = structlog.contextvars.get_contextvars()
+                captured_span_paths.append((item_id, ctx.get("span_path")))
+                time.sleep(0.01)
+                return item_id * 2
+
+            return run_task()
 
         num_tasks = 10
         with ThreadPoolExecutor(max_workers=5) as executor:
@@ -279,19 +285,27 @@ def test_span_decorator_concurrent_invocations():
 
         assert results == [i * 2 for i in range(num_tasks)]
 
-        # Verify structlog span_path was accurately captured in all thread invocations
+        # Verify structlog span_path was accurately captured in all thread invocations without cross-task leakage
         assert len(captured_span_paths) == num_tasks
-        assert all(path == "concurrent_test_task" for path in captured_span_paths)
+        for item_id, path in captured_span_paths:
+            assert path == f"concurrent_test_task_{item_id}"
 
         # Verify OTel finished spans
         finished_spans = exporter.get_finished_spans()
         assert len(finished_spans) == num_tasks
 
-        # Verify every span has a distinct span_id and correct attributes
-        unique_span_ids = {s.get_span_context().span_id for s in finished_spans}
+        # Verify every span has a distinct span_id and correct per-task attributes
+        unique_span_ids = {
+            sc.span_id
+            for s in finished_spans
+            if (sc := s.get_span_context()) is not None
+        }
         assert len(unique_span_ids) == num_tasks
 
         for s in finished_spans:
-            assert s.name == "concurrent_test_task"
+            assert s.attributes is not None
+            item_id = s.attributes["item_id"]
+            expected_name = f"concurrent_test_task_{item_id}"
+            assert s.name == expected_name
             assert s.attributes["test_key"] == "test_val"
-            assert s.attributes["span_path"] == "concurrent_test_task"
+            assert s.attributes["span_path"] == expected_name
