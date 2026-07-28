@@ -1,10 +1,10 @@
 import base64
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Literal, Optional, Protocol
 
 import requests
+from niitti import get_logger
 from pydantic import BaseModel, Field, field_validator
 
 from meri.settings import settings
@@ -38,7 +38,7 @@ Removed entries:
 {% endif %}
 """.strip()
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class RahtiUrl(BaseModel):
     sign: str

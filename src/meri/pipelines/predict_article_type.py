@@ -1,4 +1,4 @@
-import logging
+from niitti import get_logger
 
 from meri.abc import TypeResponse
 from meri.llm import (
@@ -10,8 +10,8 @@ from meri.settings import settings
 
 from .common import StructuredPipeline
 
-logger = logging.getLogger(__name__)
- 
+logger = get_logger(__name__)
+
 
 class TypePredictor(StructuredPipeline):
 

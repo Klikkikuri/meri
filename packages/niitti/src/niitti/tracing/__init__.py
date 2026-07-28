@@ -29,8 +29,10 @@ from niitti.tracing.provider import (
     setup_tracing,
     shutdown_tracing,
 )
+from niitti.tracing.span import span
 
 __all__ = [
+    "span",
     "setup_tracing",
     "configure_tracing",
     "activate_tracing",

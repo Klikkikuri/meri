@@ -1,5 +1,6 @@
-import logging
 from pathlib import Path
+
+from niitti import get_logger
 
 # Try rich_click for better CLI experience
 # but fallback to click if not available
@@ -14,7 +15,7 @@ from pydantic_yaml import to_yaml_str
 from .const import PKG_NAME
 
 DEFAULT_CONFIG_PATH = Path(user_config_dir(PKG_NAME), "config.yaml")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @click.group()
@@ -43,7 +44,6 @@ def cli(ctx: click.Context, debug: bool):
         # Set the debug mode based on the command line argument
         if debug:
             current_settings.logging.DEBUG = True
-        logger.setLevel(logging.DEBUG if current_settings.logging.DEBUG else current_settings.logging.LOG_LEVEL)
 
 
 

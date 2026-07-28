@@ -5,7 +5,8 @@ from importlib.util import find_spec
 from jinja2 import Template
 from opentelemetry import trace
 from sentry_sdk import monitor
-from structlog import get_logger
+from niitti import get_logger
+from niitti.tracing import span
 
 from meri.settings import Settings
 from meri.abc import ArticleLabels
@@ -43,7 +44,7 @@ except ImportError:
 MERI_RUN_MONITOR_SLUG = "meri_run"
 
 
-logger = get_logger(__package__)
+logger = get_logger(__package__ or "__main__")
 tracer = trace.get_tracer(__package__ or "__main__")
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
@@ -55,6 +56,7 @@ _requests_cache_available: bool = find_spec("requests_cache") is not None
 @click.version_option()
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
 @click.option("--debug", help="Enable or disable debug mode.", default=bool(os.getenv("DEBUG", False)))
+@tracer.start_as_current_span("cli")
 def cli(ctx: click.Context, cache: bool, debug: bool):
 
     os.environ["DEBUG"] = "1" if debug else "0"
@@ -76,7 +78,7 @@ def cli(ctx: click.Context, cache: bool, debug: bool):
 @click.pass_context
 @tracer.start_as_current_span("cli.run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(ctx: click.Context, sample: bool, max_workers: int):
+def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None):
 
     if max_workers is not None:
         ctx.obj['settings'].MAX_WORKERS = max_workers
@@ -136,7 +138,7 @@ def run(ctx: click.Context, sample: bool, max_workers: int):
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
     for a in full_articles:
-        with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
+        with logger.span("prune_article", url=str(a.article.get_url())) as span:
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
@@ -229,7 +231,7 @@ def list_sources(ctx: click.Context):
 @cli.command()
 @click.argument("url")
 @click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
-@tracer.start_as_current_span("cli.test")
+@tracer.start_as_current_span("test")
 def test(url, with_paywalled: bool, ctx: click.Context):
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)

@@ -2,10 +2,10 @@
 Pipeline to predict the title of an article.
 """
 
-import logging
 from typing import List
 
 from haystack import Document
+from niitti import get_logger
 
 from meri.abc import ArticleTitleResponse
 from meri.llm import (
@@ -18,7 +18,7 @@ from meri.settings import settings
 
 from .common import StructuredPipeline
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class TitlePredictor(StructuredPipeline):
 
@@ -44,7 +44,6 @@ class TitlePredictor(StructuredPipeline):
         return super().run(prompt_vars)
 
 if __name__ == "__main__":
-    import logging
     import sys
 
     from meri.bootstrap import setup

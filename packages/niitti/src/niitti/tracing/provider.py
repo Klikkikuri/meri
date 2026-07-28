@@ -5,6 +5,7 @@ Tracing provider configuration and management for OpenTelemetry.
 import os
 from importlib import import_module
 from importlib.metadata import metadata
+
 import structlog
 from opentelemetry import trace
 from opentelemetry.sdk.resources import (

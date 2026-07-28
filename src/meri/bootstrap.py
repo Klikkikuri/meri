@@ -4,16 +4,15 @@ Application bootstrap logic for meri.
 
 from contextlib import contextmanager
 from typing import Generator
-import structlog
 
+from niitti import get_logger
 from niitti.logging import setup_logging
 from niitti.sentry import setup_sentry
 from niitti.tracing import flush_tracing, setup_tracing
 
 from meri.settings.settings import Settings, clear_settings, get_settings, set_active_settings
 
-
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
 # Plain module global flag tracking process-wide setup activation.
 # Process-wide scope (rather than ContextVar) is intentional: OpenTelemetry TracerProvider
@@ -26,7 +25,7 @@ def setup(
     settings: Settings | None = None,
     name: str | None = None,
     debug: bool | None = None,
-) -> Generator[Settings]:
+) -> Generator[Settings, None, None]:
     """
     Bootstrap application logging, OpenTelemetry tracing, and Sentry for meri.
 

@@ -4,9 +4,10 @@ from random import randint
 from typing import cast
 from zoneinfo import ZoneInfo
 
-from opentelemetry import trace
+from opentelemetry.trace import SpanKind
 from pydantic import AnyHttpUrl
-from structlog import get_logger
+from niitti import get_logger
+from niitti.tracing import span
 
 from meri.abc import ArticleMeta, LinkLabel, article_url
 from meri.scraper import get_user_agent
@@ -14,8 +15,6 @@ from meri.utils import clean_url, detect_language
 
 from ._common import HtmlArticle
 from ._cfchallenge import CloudflareStatus, cloudflare_status
-
-tracer = trace.get_tracer(__name__)
 
 logger = get_logger(__name__)
 
@@ -32,7 +31,7 @@ class TrafilaturaArticle(HtmlArticle):
     pass
 
 
-@tracer.start_as_current_span(name="trafilatura_extractor", kind=trace.SpanKind.CLIENT)
+@span("trafilatura_extractor", kind=SpanKind.CLIENT)
 def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     """
     Extract the article using the trafilatura library.
@@ -51,9 +50,11 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     config["DEFAULT"].setdefault("DOWNLOAD_TIMEOUT", str(randint(5, 12)))  # nosec
     config["DEFAULT"].setdefault("SLEEP_TIME", str(randint(1, 5)))  # nosec
 
+    from opentelemetry.trace import get_current_span
+
     url = clean_url(str(url))
 
-    span = trace.get_current_span()
+    span = get_current_span()
     span.set_attribute("url", url)
 
     downloaded = fetch_url(url, config=config)

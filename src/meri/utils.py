@@ -1,28 +1,11 @@
-import structlog
 from langdetect import detect
 from langdetect.detector import Detector
+from niitti import get_logger
 from url_normalize import url_normalize
 
 from .exceptions import UnknownLanguageException
 
-logger = structlog.get_logger(__name__)
-
-EXTRA_RESOURCE_DETECTOR = [("opentelemetry.resource.detector.container", "ContainerResourceDetector")]
-""" List of extra resource detectors to use, if available. """
-
-EXTRA_INSTRUMENTOR = [
-    ("opentelemetry.instrumentation.system_metrics", "SystemMetricsInstrumentor"),
-    # ("opentelemetry.instrumentation.logging", "LoggingInstrumentor"),
-    # ("opentelemetry.instrumentation.asyncio", "AsyncioInstrumentor"),
-    ("opentelemetry.instrumentation.urllib3", "URLLib3Instrumentor"),
-    ("opentelemetry.instrumentation.requests", "RequestsInstrumentor"),
-    ("opentelemetry.instrumentation.jinja2", "Jinja2Instrumentor"),
-    ("opentelemetry.instrumentation.openai_v2", "OpenAIInstrumentor"),
-    ("opentelemetry.instrumentation.click", "ClickInstrumentor"),
-    ("opentelemetry.instrumentation.threading", "ThreadingInstrumentor"),
-    # SQLAlchemyInstrumentor is not included here, it's included in the `get_db` function
-]
-""" List of extra instrumentors to use, if available. """
+logger = get_logger(__name__)
 
 
 def detect_language(body: str) -> str:

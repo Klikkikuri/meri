@@ -1,4 +1,3 @@
-import logging
 import time
 from typing import Any, ClassVar, Optional
 
@@ -6,13 +5,14 @@ from haystack import Pipeline
 from haystack.components.builders import ChatPromptBuilder
 from haystack.core.errors import PipelineRuntimeError
 from haystack.dataclasses import ChatMessage
+from niitti import get_logger
 from pydantic import BaseModel, ValidationError
 
 from meri.settings import settings
 
 from ..llm import PipelineType, get_generator
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class StructuredPipeline:

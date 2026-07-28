@@ -1,13 +1,13 @@
-import logging
 from typing import List, Optional
 
 from haystack import Document, Pipeline
 from haystack.components.builders import PromptBuilder
+from niitti import get_logger
 
 from ..llm import get_generator, get_prompt_template
 from ..wp import MarkdownChunker, SectionNode
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class LmmSummationPipeline:
@@ -21,7 +21,7 @@ class LmmSummationPipeline:
 
     SKIP_TAG: str = "<skip>"
     """
-    Tag used to skip sections in the summarization process. Can be used to mark sections that should not be summarized.   
+    Tag used to skip sections in the summarization process. Can be used to mark sections that should not be summarized.
     """
 
     instructions: str
@@ -173,5 +173,4 @@ class LmmSummationPipeline:
 
 
     def tree_to_docs(self, base_doc, branches_path):
-        docs = []
         ...

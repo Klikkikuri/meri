@@ -1,11 +1,11 @@
-import logging
 from socket import gethostname
 from typing import Annotated, Optional, Union
 
+from niitti import get_logger
 from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag
 from pydantic_settings import BaseSettings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 def _default_committer_email():
     hostname = gethostname()
@@ -41,13 +41,13 @@ class RahtiBaseSettings(BaseSettings):
 
 
 class RahtiFileSettings(RahtiBaseSettings):
-    url: str 
+    url: str
 
 class RahtiGithubSettings(RahtiBaseSettings):
     url: HttpUrl = Field(  # type: ignore
         HttpUrl("https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"),
         description="Target URL for Rahti data.",
-    )  
+    )
     auth_token: SecretStr = Field(
         description="GitHub token for GitHub API access.",
         alias="GITHUB_TOKEN"

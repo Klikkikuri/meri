@@ -17,12 +17,11 @@ Order of precedence:
         - User defined settings ($XDG_CONFIG_HOME / user_config_dir)
 
 """
-import logging
-import os
 from importlib.util import find_spec
 from pathlib import Path
 from typing import Any
 
+from niitti import get_logger
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
@@ -49,9 +48,7 @@ from .rahti import RahtiSettings
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-if os.getenv("DEBUG", "0") == "1":
-    logger.setLevel(logging.DEBUG)
+logger = get_logger(__name__)
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
@@ -142,7 +139,7 @@ class Settings(NiittiSettings):
     @model_validator(mode="before")
     @classmethod
     def parse_llm_settings(cls, values):
-        _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
+        _logger = get_logger(__name__)
         llm_list = values.get('llm', [])
 
         # Find all subclasses of GeneratorSettings and map them by provider

@@ -91,7 +91,7 @@ class Outlet(ABC):
         url = article.get_url()
         if not url:
             raise ValueError("Article does not have a URL")
-    
+
         # Fetch the full article, and merge it with the old one.
         # Old article might have some metadata that the fetcher does not extract.
 
@@ -176,11 +176,11 @@ def merge_article_lists(*article_lists: Iterable[Article]) -> list[Article]:
 
 
 if __name__ == "__main__":
-    import logging
+    from niitti import setup_logging
 
     from ._extractors import RssParser
-    
-    logging.basicConfig(level=logging.DEBUG)
+
+    setup_logging()
 
     urls = [
         "https://yle.fi/rss/uutiset/paauutiset",

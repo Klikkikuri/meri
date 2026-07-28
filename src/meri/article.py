@@ -1,18 +1,16 @@
 from datetime import datetime
-import logging
 from typing import Optional
 from typing_extensions import Annotated
 
 import unicodedata
-from opentelemetry import trace
+from niitti import get_logger
 
 from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, PrivateAttr, ValidationError
 from .abc import ArticleLabels, ArticleMeta, ArticleTypeLabels, ArticleUrl, LinkLabel
 
 from pydantic import computed_field
 
-logger = logging.getLogger(__name__)
-tracer = trace.get_tracer(__name__)
+logger = get_logger(__name__)
 
 def title_validator(v: str) -> str:
     """
@@ -24,7 +22,7 @@ def title_validator(v: str) -> str:
     # Unicode normalization, for suspicious characters
     normalized = unicodedata.normalize("NFKC", v)
     if v != normalized:
-        logger.warning("Suspicious: Title normalization doesn't match: %r -> %r", v, normalized, extra={"original": v, "normalized": normalized})
+        logger.warning("Suspicious: Title normalization doesn't match", original=v, normalized=normalized)
 
     return normalized
 
@@ -70,7 +68,7 @@ class Article(BaseModel):
         if not title:
             return ""
         return title_validator(title)
-    
+
     @computed_field
     @property
     def href(self) -> Optional[ArticleUrl]:
@@ -117,7 +115,7 @@ class Article(BaseModel):
             self.created_at = other.created_at
         if not self.updated_at:
             self.updated_at = other.updated_at
-    
+
         if other.created_at:
             self.created_at = min(self.created_at, other.created_at)  # type: ignore
         if other.updated_at:
@@ -162,7 +160,7 @@ class Article(BaseModel):
 
         if self.__hash__() == other.__hash__():
             return True
- 
+
         left = set((url.signature for url in self.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in self.urls))
         right = set((url.signature for url in other.urls if LinkLabel.LINK_CANONICAL in url.labels)) or set((url.signature for url in other.urls))
 

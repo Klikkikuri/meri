@@ -1,7 +1,7 @@
 
-import logging
 from pprint import pprint
 from typing import List
+from niitti import get_logger
 from pydantic import HttpUrl
 
 from ..abc import article_url
@@ -14,7 +14,7 @@ from ._registry import registry
 from trafilatura import fetch_url
 from courlan import extract_links, fix_relative_urls, is_navigation_page
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 @registry.register("links")
 class LinksDiscoverer(SourceDiscoverer):
@@ -43,7 +43,9 @@ class LinksDiscoverer(SourceDiscoverer):
 
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.DEBUG)
+    from niitti import setup_logging
+
+    setup_logging()
     discoverer = LinksDiscoverer()
     articles = discoverer.discover("https://www.mtvuutiset.fi/")
     pprint([a.get_url() for a in articles])

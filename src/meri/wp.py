@@ -6,7 +6,6 @@ Wikipedia page, and formats them into sections.
 
 """
 
-import logging
 import re
 from copy import deepcopy
 from typing import Dict, List, Optional, Set, TypedDict
@@ -15,6 +14,7 @@ import mwclient
 import mwclient.page
 from haystack import Document
 from lxml.etree import XPath  # nosec
+from niitti import get_logger
 from pydantic import AnyHttpUrl
 from trafilatura import load_html
 from trafilatura.core import Extractor
@@ -31,7 +31,7 @@ class WikiDocumentMeta(TypedDict, total=False):
     summary: str
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 SECTIONS_TO_IGNORE: Dict[str, Set] = {
     "en": {
@@ -76,7 +76,7 @@ def _generate_page_query(page: mwclient.page.Page) -> Dict:
             args['titles'] = title
         case _:
             raise ValueError("Unsupported page type, expected Page with revision, pageid, or title")
-        
+
     return args
 
 

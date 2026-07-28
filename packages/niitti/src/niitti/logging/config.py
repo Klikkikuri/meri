@@ -6,9 +6,37 @@ import logging
 import structlog
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
+from typing import Any
+
 from niitti.logging.formatters import _resolve_log_level
 from niitti.logging.processors import add_opentelemetry_context, filter_full_otel_ids_for_console
 from niitti.settings.logging import LoggingSettings
+
+
+class NiittiBoundLogger(structlog.stdlib.BoundLogger):
+    """
+    Bound logger for Niitti providing structured logging and integrated OpenTelemetry span creation.
+    """
+
+    def span(self, name: str, **attrs: Any):
+        """
+        Create an OpenTelemetry span context manager associated with this logger's module name.
+        """
+        from niitti.tracing.span import span as _span
+
+        return _span(name, log=self, **attrs)
+
+
+def get_logger(*args: Any, **initial_values: Any) -> NiittiBoundLogger:
+    """
+    Get a structlog NiittiBoundLogger instance.
+
+    :param args: Logger name or module arguments passed to structlog.get_logger.
+    :param initial_values: Key-value initial context bound to logger instance.
+    :return: NiittiBoundLogger instance.
+    """
+    return structlog.get_logger(*args, **initial_values)  # type: ignore
+
 
 logger = structlog.get_logger(__name__)
 
@@ -74,7 +102,7 @@ def setup_logging(settings: LoggingSettings | None = None, force: bool = False) 
             structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
-        wrapper_class=structlog.stdlib.BoundLogger,
+        wrapper_class=NiittiBoundLogger,
         cache_logger_on_first_use=False,
     )
 
