@@ -4,11 +4,16 @@ Tests for niitti tracing subpackage.
 :purpose: Verify OpenTelemetry tracing setup, crash span dumper, emoji mapping, Sentry integration, and flush/shutdown support.
 """
 
+from concurrent.futures import ThreadPoolExecutor
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+import structlog.contextvars
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
 import niitti.tracing.crash_buffer as crash_buffer_module
@@ -25,6 +30,7 @@ from niitti.tracing import (
     setup_sentry,
     setup_tracing,
     shutdown_tracing,
+    span,
     span_id_to_emoji,
 )
 
@@ -35,7 +41,9 @@ def test_get_span_emoji_mapping():
 
     :return: None
     """
-    assert get_span_emoji("meri.cli.run") == "🏁"  # right-to-left segment check: run -> cli -> meri
+    assert (
+        get_span_emoji("meri.cli.run") == "🏁"
+    )  # right-to-left segment check: run -> cli -> meri
     assert get_span_emoji("pipeline.run") == "🏁"
     assert get_span_emoji("fetch.article") == "📰"
     assert get_span_emoji("fetch_source") == "📡"
@@ -49,10 +57,6 @@ def test_get_span_emoji_mapping():
     assert get_span_emoji("domain_name") == DEFAULT_SPAN_EMOJI
     assert get_span_emoji("dashboard") == DEFAULT_SPAN_EMOJI
     assert get_span_emoji("failsafe") == DEFAULT_SPAN_EMOJI
-
-
-
-
 
 
 def test_span_id_to_emoji_backwards_compatibility():
@@ -245,3 +249,49 @@ def test_tracing_missing_service_name_raises_value_error():
 
     with pytest.raises(ValueError, match="service_name is required"):
         setup_tracing(settings)
+
+
+def test_span_decorator_concurrent_invocations():
+    """
+    Verify @span decorator creates a fresh _SpanContextManager instance per invocation without context corruption.
+    Check span IDs, count, attributes, and structlog contextvars span_path thread safety.
+
+    :return: None
+    """
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    with patch.object(trace, "_TRACER_PROVIDER", provider):
+        captured_span_paths = []
+
+        @span("concurrent_test_task", attributes={"test_key": "test_val"})
+        def worker_task(item_id: int):
+            ctx = structlog.contextvars.get_contextvars()
+            captured_span_paths.append(ctx.get("span_path"))
+            time.sleep(0.01)
+            return item_id * 2
+
+        num_tasks = 10
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = [executor.submit(worker_task, i) for i in range(num_tasks)]
+            results = [f.result() for f in futures]
+
+        assert results == [i * 2 for i in range(num_tasks)]
+
+        # Verify structlog span_path was accurately captured in all thread invocations
+        assert len(captured_span_paths) == num_tasks
+        assert all(path == "concurrent_test_task" for path in captured_span_paths)
+
+        # Verify OTel finished spans
+        finished_spans = exporter.get_finished_spans()
+        assert len(finished_spans) == num_tasks
+
+        # Verify every span has a distinct span_id and correct attributes
+        unique_span_ids = {s.get_span_context().span_id for s in finished_spans}
+        assert len(unique_span_ids) == num_tasks
+
+        for s in finished_spans:
+            assert s.name == "concurrent_test_task"
+            assert s.attributes["test_key"] == "test_val"
+            assert s.attributes["span_path"] == "concurrent_test_task"

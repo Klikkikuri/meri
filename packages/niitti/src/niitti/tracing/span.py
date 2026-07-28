@@ -37,25 +37,34 @@ class _SpanContextManager(AbstractContextManager):
         self._otel_span = None
 
     def __enter__(self) -> trace.Span:
+        # Copy attributes dict to avoid mutating shared dictionary across calls/threads
         merged_attributes = dict(self.attributes) if self.attributes else {}
         if self.kwargs:
             merged_attributes.update(self.kwargs)
 
         current_ctx = structlog.contextvars.get_contextvars()
         parent_path_str = current_ctx.get("span_path", "")
-        full_path_str = f"{parent_path_str}.{self.name}" if parent_path_str else self.name
+        full_path_str = (
+            f"{parent_path_str}.{self.name}" if parent_path_str else self.name
+        )
         merged_attributes.setdefault("span_path", full_path_str)
 
         tracer_name = self.tracer_name
         if tracer_name is None:
-            if self.log is not None and hasattr(self.log, "_logger") and hasattr(self.log._logger, "name"):
+            if (
+                self.log is not None
+                and hasattr(self.log, "_logger")
+                and hasattr(self.log._logger, "name")
+            ):
                 tracer_name = self.log._logger.name
             else:
                 tracer_name = "niitti"
 
         tracer = trace.get_tracer(tracer_name)
 
-        self._bound_cm = structlog.contextvars.bound_contextvars(span_path=full_path_str)
+        self._bound_cm = structlog.contextvars.bound_contextvars(
+            span_path=full_path_str
+        )
         self._bound_cm.__enter__()
 
         self._cm = tracer.start_as_current_span(
@@ -81,7 +90,19 @@ class _SpanContextManager(AbstractContextManager):
     def __call__(self, func):
         @functools.wraps(func)
         def wrapper(*args, **kwargs):
-            with self:
+            cm = _SpanContextManager(
+                name=self.name,
+                log=self.log,
+                kind=self.kind,
+                attributes=self.attributes,
+                links=self.links,
+                start_time=self.start_time,
+                record_exception=self.record_exception,
+                set_status_on_exception=self.set_status_on_exception,
+                tracer_name=self.tracer_name,
+                **self.kwargs,
+            )
+            with cm:
                 return func(*args, **kwargs)
 
         return wrapper
