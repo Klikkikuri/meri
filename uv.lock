@@ -1204,7 +1204,7 @@ requires-dist = [
     { name = "requests", specifier = ">=2.32.3" },
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "structlog", specifier = ">=25.1.0" },
-    { name = "suola", url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" },
+    { name = "suola", directory = "packages/suola/python" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "ultimate-sitemap-parser", specifier = ">=1.6.0" },
     { name = "url-normalize", specifier = ">=1.4.3" },
@@ -2516,20 +2516,30 @@ wheels = [
 
 [[package]]
 name = "suola"
-version = "0.3.1"
-source = { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl" }
+source = { directory = "packages/suola/python" }
 dependencies = [
     { name = "platformdirs" },
     { name = "wasmtime" },
-]
-wheels = [
-    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.3.1/suola-0.3.1-py3-none-any.whl", hash = "sha256:4511473e07b71217c2dd6b1fe0e7dde79a91edda55ab8305bcefdec54e752c13" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "platformdirs", specifier = ">=4.3.8" },
     { name = "wasmtime", specifier = ">=39.0.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "black", specifier = ">=25.1.0" },
+    { name = "hatch-vcs", specifier = ">=0.5.0" },
+    { name = "isort", specifier = ">=6.0.1" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "ruff", specifier = ">=0.11.12" },
+]
+test = [
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
 ]
 
 [[package]]
