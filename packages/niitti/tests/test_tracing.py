@@ -343,3 +343,55 @@ def test_span_records_and_reraises_exception():
         assert len(finished_dec) == 1
         assert finished_dec[0].status.status_code == trace.StatusCode.ERROR
         assert len(finished_dec[0].events) > 0
+
+
+def test_span_context_manager_as_binding_returns_usable_span():
+    """
+    Verify `with span(...) as s:` yields a usable trace.Span instance permitting set_attribute calls.
+
+    :return: None
+    """
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+
+    with patch.object(trace, "_TRACER_PROVIDER", provider):
+        with span("test_span_binding") as s:
+            assert isinstance(s, trace.Span)
+            s.set_attribute("prune_reason", "test_reason")
+
+        finished = exporter.get_finished_spans()
+        assert len(finished) == 1
+        assert finished[0].name == "test_span_binding"
+        assert finished[0].attributes is not None
+        assert finished[0].attributes.get("prune_reason") == "test_reason"
+
+
+def test_crash_span_dumper_uses_span_path_for_emoji(capsys: pytest.CaptureFixture[str]):
+    """
+    Verify crash span dumper derives emoji from attributes['span_path'] rather than span.name.
+
+    :return: None
+    """
+    original_excepthook = sys.excepthook
+    crash_buffer_module._crash_span_exporter = None
+    provider = TracerProvider()
+    exporter = setup_crash_span_dumper(provider)
+    assert exporter is not None
+
+    try:
+        with patch.object(trace, "_TRACER_PROVIDER", provider):
+            with span("unmapped_leaf", attributes={"span_path": "meri.cli.run"}):
+                pass
+
+            assert len(exporter.get_finished_spans()) == 1
+            sys.excepthook(RuntimeError, RuntimeError("test crash for span_path emoji"), None)
+
+        captured = capsys.readouterr()
+        err_output = captured.err
+
+        assert "🏁" in err_output
+        assert "unmapped_leaf" in err_output
+    finally:
+        sys.excepthook = original_excepthook
+        crash_buffer_module._crash_span_exporter = None
