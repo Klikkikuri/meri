@@ -6,19 +6,23 @@ import structlog
 
 from niitti.settings.sentry import SentrySettings
 
+from typing import Any
+
 logger = structlog.get_logger(__name__)
 
 
 def setup_sentry(
     settings: SentrySettings | None = None,
+    **kwargs: Any,
 ) -> None:
     """
     Setup Sentry SDK integration.
 
     :param settings: SentrySettings model instance. If None, constructed from keyword arguments.
+    :param kwargs: Keyword arguments to construct SentrySettings if settings is None.
     """
     if settings is None:
-        settings = SentrySettings()
+        settings = SentrySettings(**kwargs)
     if not settings.dsn:
         logger.debug("Sentry DSN not set, skipping Sentry initialization")
         return
