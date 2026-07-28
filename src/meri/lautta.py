@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import logging
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
@@ -10,7 +9,8 @@ from typing import Iterable, List, NamedTuple, Optional, cast
 
 import pytz
 import wrapt
-from opentelemetry import trace
+from niitti import get_logger
+from niitti.logging import NiittiBoundLogger
 
 from .abc import ArticleTitleResponse
 from .article import Article
@@ -20,7 +20,7 @@ from .rahti import RahtiData, RahtiEntry, RahtiUrl
 from .scraper import discover_articles, get_extractor
 from .settings import settings
 from .settings.newssources import NewsSource
-from .utils import setup_logging
+
 
 
 MAX_PARALLEL_FETCHES = 3
@@ -30,8 +30,7 @@ MINIMUM_TEXT_WORDS = 50
 This is a simple heuristic to remove articles that failed to extract properly or are not actual news articles
 (e.g. videos, galleries, etc.). """
 
-tracer = trace.get_tracer(__name__)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def matching_selector(obj: Article | RahtiEntry | Iterable, selector_strings: Optional[list[str]] = None) -> Optional[LabelSelector]:
@@ -177,21 +176,18 @@ def fetch_latest[T: NewsSource](sources: Iterable[T]) -> List[DiscoveredArticle[
         futures = [executor.submit(fetch_source, source) for source in enabled_sources]
 
         for idx, (source, future) in enumerate(zip(enabled_sources, futures)):
-            with tracer.start_as_current_span("fetch_latest.source", attributes={"source": source.name or "Unnamed"}) as span:
+            with logger.span("fetch_source", source=source.name or "Unnamed"):
                 try:
                     result = future.result()
                     ret.extend(DiscoveredArticle(source=source, article=article) for article in result)
                 except Exception as e:
                     failed_count += 1
-                    span.record_exception(e)
-                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-                    # Log the error and continue with other sources
-                    logger.error("Error fetching articles for source %r: %s", source.name or "Unnamed", e, exc_info=True)
+                    logger.error("Error fetching articles for source", source=source.name or "Unnamed", error=str(e), exc_info=True)
 
     if enabled_sources and failed_count == len(enabled_sources):
         raise RuntimeError("All enabled news sources failed to fetch articles.")
 
-    logger.info("Fetched %d articles", len(ret))
+    logger.info("Fetched articles", count=len(ret))
 
     return ret
 
@@ -235,19 +231,17 @@ def fetch_full_articles(discovered_stubs: list[DiscoveredArticle]) -> list[Disco
         for stub in discovered_stubs:
             url_str = str(stub.article.get_url())
             future = executor.submit(fetch_article, stub.source, stub.article)
-            with tracer.start_as_current_span("fetch_full_articles.item", attributes={"url": url_str}) as span:
+            with logger.span("fetch_full_article", url=url_str):
                 try:
                     article = future.result()
                     if not article:
                         failed_count += 1
-                        logger.warning("Fetched article is None", extra={"url": url_str})
+                        logger.warning("Fetched article is None", url=url_str)
                         continue
                     articles.append(article)
                 except Exception as e:
                     failed_count += 1
-                    span.record_exception(e)
-                    span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-                    logger.error("Failed to fetch article %r: %s", url_str, e, exc_info=True, extra={"url": url_str})
+                    logger.error("Failed to fetch article", url=url_str, error=str(e), exc_info=True)
                     continue
 
     if discovered_stubs and failed_count == len(discovered_stubs):
@@ -358,6 +352,7 @@ def has_text(article: Article) -> bool:
     return True
 
 
+
 class RahtiCleaner:
     """
     Helper class to match Rahti entries to Articles based on URL signatures.
@@ -367,7 +362,7 @@ class RahtiCleaner:
     map: dict[str, int]
     rahti: RahtiData
 
-    _logger: logging.Logger
+    _logger: NiittiBoundLogger
 
     _lock: threading.RLock
 
@@ -376,7 +371,7 @@ class RahtiCleaner:
         self.map: dict[str, int] = {}
         self.rahti = rahti
         self._lock = threading.RLock()
-        self._logger = logger.getChild(self.__class__.__name__)
+        self._logger = logger.bind(component=self.__class__.__name__)
 
         for idx, entry in enumerate(rahti.entries):
             for url in entry.urls:
@@ -579,14 +574,12 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
                 title_result = None
             else:
                 url_str = str(article.get_url())
-                with tracer.start_as_current_span("generate_titles.item", attributes={"url": url_str}) as span:
+                with logger.span("generate_title", url=url_str):
                     try:
                         title_result = future.result()
                     except Exception as e:
                         failed_count += 1
-                        span.record_exception(e)
-                        span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
-                        logger.error("Failed to generate title for article %r: %s", url_str, e, exc_info=True)
+                        logger.error("Failed to generate title for article", url=url_str, error=str(e), exc_info=True)
                         title_result = None
             results.append(ArticleTitleData(article, title_result, source, skip_reason))  # type: ignore
 
@@ -635,13 +628,12 @@ def convert_for_rahti(source: NewsSource, article: Article, title: Optional[Arti
     return entry
 
 if __name__ == "__main__":
+    from .bootstrap import setup
     from .settings import settings
 
-    setup_logging(True)
+    with setup(debug=True):
+        latest_articles = fetch_latest(settings.sources)
+        latest_articles = list(remove_unhandled(latest_articles))
+        from pprint import pprint
 
-    latest_articles = fetch_latest(settings.sources)
-    latest_articles = list(remove_unhandled(latest_articles))
-    from pprint import pprint
-    #pprint(settings.model_dump())
-
-    pprint(latest_articles)
+        pprint(latest_articles)

@@ -6,15 +6,13 @@ from typing import Annotated, List, Optional
 from typing_extensions import TypedDict
 from urllib.parse import ParseResult
 
-from opentelemetry import trace
 from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, computed_field
-from structlog import get_logger
+from niitti import get_logger
 
 from .utils import clean_url
 from .suola import hash_url
 
 logger = get_logger(__name__)
-tracer = trace.get_tracer(__name__)
 
 type UrlPattern = Pattern | AnyHttpUrl | ParseResult
 type PyObjectId = Annotated[str, BeforeValidator(str)]
@@ -26,7 +24,7 @@ ContemplatorType = Annotated[
         "",
         description=dedent("""
         Describes the thought process and internal monologue of the model when generating a
-        response requiring contemplation. 
+        response requiring contemplation.
 
         The contemplator should provide insight into internal reasoning and decision-making process.
 
@@ -127,37 +125,37 @@ class ArticleTypeLabels(str, Enum):
 
         An article that goes beyond reporting news to provide deeper insights and understanding of recent events.
         Includes background information, context, and analysis.
-    
+
     - `com.github.klikkikuri/article-type=feature`:
 
         A creative, narrative-driven article that explores a topic, person, or event in depth.
         Includes human-interest stories, profiles, and exploratory pieces aimed at engaging the reader.
-    
+
     - `com.github.klikkikuri/article-type=opinion`:
 
         A subjective piece offering the author's perspective, judgment, or argument on a specific topic.
         Often includes persuasive language and is intended to provoke thought or debate.
 
     - `com.github.klikkikuri/article-type=review`:
-    
+
         A critical evaluation of a cultural or consumer product, such as a book, film, performance, or technology.
         Highlights strengths, weaknesses, and overall value to help readers form their own opinions.
 
     - `com.github.klikkikuri/article-type=correction`:
-    
+
         A notice issued by a news organization to correct an error or inaccuracy in a previously published article.
-    
+
     - `com.github.klikkikuri/article-type=press-release`:
-        
+
         A formal announcement from an organization or business, crafted to inform the media and public about an event, product launch, or other newsworthy update.
         Typically promotional in nature.
 
     - `com.github.klikkikuri/article-type=advertisement`:
-        
+
         Paid content designed to promote a product, service, or brand.
 
     - `com.github.klikkikuri/article-type=announcement`:
-            
+
         A public notice issued by a government, organization, or authority to share important information, updates, or warnings.
 
     Sources:
@@ -177,7 +175,7 @@ class ArticleTypeLabels(str, Enum):
     # NOT USED YET
     # TYPE_MULTIMEDIA     = "com.github.klikkikuri/content-type=multimedia"
     # """
-    # A video article or news segment. 
+    # A video article or news segment.
     # May include news reports, interviews, documentaries, and other video content.
     # """
 
@@ -188,7 +186,7 @@ class ArticleTypeLabels(str, Enum):
 
     # AI_SLOP             = "com.github.klikkikuri/ai-slop=true"
     # """
-    # Content created or significantly influenced by artificial intelligence tools, such as automated text generation or data-driven article writing. 
+    # Content created or significantly influenced by artificial intelligence tools, such as automated text generation or data-driven article writing.
     # """
 
 
@@ -199,11 +197,11 @@ class ArticleLabels(str, Enum):
     Labels:
 
     - `com.github.klikkikuri/paywalled=true`:
-    
+
         The article is behind a paywall and requires a subscription or payment to access the full content.
 
     - `com.github.klikkikuri/sponsored=true`:
-        
+
         The article is sponsored content, meaning it is paid for by an advertiser or sponsor and may have promotional intent.
 
     """
@@ -219,10 +217,10 @@ class TitleQuorumLabel(str, Enum):
     - `com.github.klikkikuri/title-quorum=unanimous`:
 
         All LLMs generated the same – or very similar – title.
-    
+
     - `com.github.klikkikuri/title-quorum=supermajority`:
         A significant majority of LLMs generated the same – or very similar – title.
-    
+
     - `com.github.klikkikuri/title-quorum=consensus`:
         A general agreement among LLMs, but with some variation in phrasing in the generated titles.
 
@@ -386,7 +384,7 @@ class Link(BaseModel):
 class Dataset(BaseModel):
     ok: bool
     message: str
-    
+
     data: list[Link]
 
 

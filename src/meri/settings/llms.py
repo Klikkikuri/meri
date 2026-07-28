@@ -1,13 +1,13 @@
-import logging
 import os
 from abc import ABC
 from typing import Literal, Optional, Self, TypedDict
 from typing_extensions import Annotated
 
+from niitti import get_logger
 from pydantic import AliasChoices, AnyHttpUrl, BeforeValidator, Field, SecretStr, TypeAdapter, model_validator
 from pydantic_settings import BaseSettings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class GeneratorProviderError(ValueError):

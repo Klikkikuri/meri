@@ -8,33 +8,30 @@ Order of precedence:
     1. Environment variables
     2. `.env` file
     3. Secrets directory (e.g. `/run/secrets`).
-    4. YAML configuration file, with the following locations:
-        - User defined settings file ($KLIKKIKURI_CONFIG_FILE)
-        - User defined settings ($XDG_CONFIG_HOME)
-        - System wide settings ($XDG_CONFIG_DIRS)
-        - Local settings: `./config.yaml`
-        - Docker settings: `/config/config.yaml`
+    4. YAML configuration file, with standard locations:
         - Devcontainer user settings: `/app/config.yaml`
+        - Instance folder settings: `/app/instance/config.yaml`
+        - Docker settings: `/config/config.yaml`
+        - Local settings: `./config.yaml`
+        - System wide settings ($XDG_CONFIG_DIRS / site_config_dir)
+        - User defined settings ($XDG_CONFIG_HOME / user_config_dir)
 
 """
-import logging
-import os
-from importlib.metadata import PackageNotFoundError, metadata
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Literal, Type
+from typing import Any
+
+from niitti import get_logger
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
-from platformdirs import site_config_dir, user_config_dir
+from niitti.settings.logging import LoggingSettings
+from niitti.settings.sentry import SentrySettings
+from niitti.settings.settings import Settings as NiittiSettings
+from niitti.settings.telemetry import TelemetrySettings
+from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
-from pydantic_settings import (
-    BaseSettings,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-    YamlConfigSettingsSource,
-)
-from yaml import YAMLError, safe_load
+from pydantic_settings import SettingsConfigDict
 
 from .const import (
     DEFAULT_BOT_ID,
@@ -48,79 +45,10 @@ from .llms import (
 )
 from .newssources import NewsSource
 from .rahti import RahtiSettings
-from .sentry import SentrySettings
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-if os.getenv("DEBUG", "0") == "1":
-    logger.setLevel(logging.DEBUG)
-
-_pkg_metadata: dict = {}
-
-try:
-    _pkg_name, *_ = PKG_NAME.split(".")
-    _pkg_metadata = dict(metadata(_pkg_name))
-except (IndexError, PackageNotFoundError):
-    _pkg_name = PKG_NAME
-    _pkg_metadata = dict(metadata(_pkg_name))
-finally:
-    # Set the homepage from the metadata
-    _pkg_metadata.setdefault("Home-page", _pkg_metadata.get("Project-URL", "").split(", ")[1])
-
-# User defined settings
-_user_config_path = Path(user_config_dir(PKG_NAME), "config.yaml")
-DEFAULT_CONFIG_PATH = _user_config_path
-
-# Locations to look for the settings file
-# notice: order is reversed to give precedence to the user defined settings
-_settings_file_location: list[Path] = [
-    Path("/app/config.yaml"),  # Devcontainer user settings
-    Path("/app/instance/config.yaml"),  # Instance folder settings
-    Path("/config/config.yaml"),  # Docker settings
-    Path.cwd() / "config.yaml",  # Local settings
-    Path(site_config_dir(PKG_NAME)) / "config.yaml",  # System wide settings
-    _user_config_path
-]
-if _conf_file := os.getenv("KLIKKIKURI_CONFIG_FILE"):
-    _conf_file = Path(_conf_file)
-    _settings_file_location.insert(0, _conf_file)
-    DEFAULT_CONFIG_PATH = _conf_file
-
-
-def _lint_yaml_settings_files(paths: list[Path]) -> list[Path]:
-    """
-    Return existing, valid YAML config files and warn for invalid ones.
-
-    A valid settings file must parse as YAML and have a mapping at the root.
-    """
-    valid_paths: list[Path] = []
-
-    for path in paths:
-        if not path.exists() or not path.is_file():
-            continue
-
-        try:
-            with path.open("r", encoding="utf-8") as f:
-                parsed = safe_load(f)
-        except (OSError, YAMLError) as e:
-            logger.warning("Ignoring invalid YAML settings file '%s': %s", path, e)
-            continue
-
-        if parsed is not None and not isinstance(parsed, dict):
-            logger.warning(
-                "Ignoring YAML settings file '%s': expected a mapping at root, got %s",
-                path,
-                type(parsed).__name__,
-            )
-            continue
-
-        valid_paths.append(path)
-
-    return valid_paths
-
-
-_settings_file_location = _lint_yaml_settings_files(_settings_file_location)
+logger = get_logger(__name__)
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
@@ -160,35 +88,25 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(BaseSettings):
-    DEBUG: bool = Field(
-        False,
-        description="Enable debug mode.",
+class Settings(NiittiSettings):
+    logging: LoggingSettings = Field(
+        default_factory=LoggingSettings,
+        description="Logging settings.",
     )
-
-    TRACING_ENABLED: bool = Field(
-        _otel_available,
-        description="Enable OpenTelemetry tracing.",
-    )
-
     sentry: SentrySettings = Field(
         default_factory=SentrySettings,  # type: ignore
         description="Sentry settings.",
     )
-
+    telemetry: TelemetrySettings = Field(
+        default_factory=TelemetrySettings,
+        description="Telemetry settings.",
+    )
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
         "Mozilla/5.0 (compatible;)",
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
-
-    # Logging settings
-    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
-        "INFO",
-        description="Logging level.",
-    )
-
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
     MAX_WORKERS: int = Field(3, description="Maximum number of worker threads for processing articles.")
 
@@ -221,8 +139,7 @@ class Settings(BaseSettings):
     @model_validator(mode="before")
     @classmethod
     def parse_llm_settings(cls, values):
-        _logger = logging.getLogger(__name__).getChild("parse_llm_settings")
-        _logger.debug(f"Values: {values}")
+        _logger = get_logger(__name__)
         llm_list = values.get('llm', [])
 
         # Find all subclasses of GeneratorSettings and map them by provider
@@ -235,21 +152,20 @@ class Settings(BaseSettings):
         _logger.debug(f"Provider to class: {provider_to_class}")
 
         # Load the settings using the provider class
-        settings = []
+        settings_list = []
         for llm in llm_list:
             provider = llm['provider']
             settings_class = provider_to_class.get(provider, None)
             if not settings_class:
                 raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
-            settings.append(settings_class(**llm))
+            settings_list.append(settings_class(**llm))
 
-        if len(settings) == 0:
-            settings += detect_generators(values)
+        if len(settings_list) == 0:
+            settings_list += detect_generators(values)
 
-        _logger.debug("Validated LLM provider settings with %d provider", len(settings), extra={"settings": settings})
-        values['llm'] = settings
+        _logger.debug("Validated LLM provider settings with %d provider", len(settings_list), extra={"settings": settings_list})
+        values['llm'] = settings_list
         return values
-
 
     @model_validator(mode="before")
     @classmethod
@@ -257,15 +173,23 @@ class Settings(BaseSettings):
         """
         Compute the user-agent string.
         """
-        bot_info = _pkg_metadata.copy()
+        bot_info = cls.get_package_metadata().copy()
         bot_info.setdefault("BOT_ID", values.get("BOT_ID", DEFAULT_BOT_ID))
         user_agent = "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})".format(**bot_info)
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
+    @model_validator(mode="after")
+    def _stamp_identity(self) -> "Settings":
+        """
+        Stamp service identity fields after model fields are populated.
+        """
+        if not self.telemetry.service_name:
+            self.telemetry.service_name = self.get_package_name()
+        return self
+
     model_config = SettingsConfigDict(
         secrets_dir='/run/secrets' if Path('/run/secrets').exists() else None,
-        yaml_file=_settings_file_location,
         yaml_file_encoding="utf-8",
         env_file='.env',
         env_file_encoding='utf-8',
@@ -273,30 +197,62 @@ class Settings(BaseSettings):
         env_nested_delimiter='__',
     )
 
-    @classmethod
-    def settings_customise_sources(cls,
-        settings_cls: Type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ):
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
-            YamlConfigSettingsSource(settings_cls),
-        )
+
+_active_settings: Settings | None = None
 
 
-settings: Settings = Settings()  # type: ignore
-
-def init_settings(**kwargs) -> Settings:
+def get_settings() -> Settings | None:
     """
-    Initialize and return the settings.
+    Get the currently active application Settings instance, or None if outside app context.
     """
-    global settings
-    s = Settings(**kwargs)  # type: ignore
-    settings = s
-    return s
+    return _active_settings
+
+
+def set_active_settings(instance: Settings | None) -> None:
+    """
+    Set the active application Settings instance.
+    """
+    global _active_settings
+    _active_settings = instance
+
+
+def clear_settings() -> None:
+    """
+    Clear the currently active application Settings instance.
+    """
+    global _active_settings
+    _active_settings = None
+
+
+class _SettingsProxy:
+    def __getattr__(self, name: str) -> Any:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        return getattr(_active_settings, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        setattr(_active_settings, name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if _active_settings is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        delattr(_active_settings, name)
+
+    def __repr__(self) -> str:
+        if _active_settings is None:
+            return "<Settings Proxy (uninitialized)>"
+        return repr(_active_settings)
+
+
+settings: Any = _SettingsProxy()

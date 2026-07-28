@@ -2,10 +2,10 @@
 Pipeline to predict the title of an article.
 """
 
-import logging
 from typing import List
 
 from haystack import Document
+from niitti import get_logger
 
 from meri.abc import ArticleTitleResponse
 from meri.llm import (
@@ -18,7 +18,7 @@ from meri.settings import settings
 
 from .common import StructuredPipeline
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 class TitlePredictor(StructuredPipeline):
 
@@ -44,20 +44,16 @@ class TitlePredictor(StructuredPipeline):
         return super().run(prompt_vars)
 
 if __name__ == "__main__":
-    import logging
     import sys
 
-    import rich
+    from meri.bootstrap import setup
 
-    from meri.utils import setup_logging
+    with setup():
+        from meri.extractor._extractors import trafilatura_extractor
+        from meri.scraper import try_setup_requests_cache
 
-    setup_logging()
-    #logging.basicConfig(level=logging.INFO)
+        try_setup_requests_cache()
 
-    from meri.extractor._extractors import trafilatura_extractor
-    from meri.scraper import try_setup_requests_cache
-
-    try_setup_requests_cache()
     url = sys.argv[1]
     if not url:
         raise ValueError("URL is required")
@@ -66,4 +62,4 @@ if __name__ == "__main__":
     print(article.text[0:200], "...", "\n", "...", article.text[-200:])
 
     title = TitlePredictor()
-    rich.print(title.run(article))
+    print(title.run(article))

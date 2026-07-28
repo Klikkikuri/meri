@@ -1,11 +1,11 @@
 import inspect
-import logging
 import re
 from enum import Enum
 from importlib.resources import files
 from pathlib import Path
 
 from haystack.utils.auth import Secret as HaystackSecret
+from niitti import get_logger
 from platformdirs import user_data_dir
 from pydantic import SecretStr
 
@@ -26,7 +26,7 @@ RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 """ Regular expression to extract JSON block from the response. """
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UnknownPipelineType(ValueError):

@@ -1,7 +1,9 @@
 from .settings import (
-    settings,
     Settings,
-    init_settings,
+    clear_settings,
+    get_settings,
+    set_active_settings,
+    settings,
 )
 
-__ALL__ = [settings, Settings, init_settings]
+__all__ = ["Settings", "set_active_settings", "clear_settings", "get_settings", "settings"]

@@ -1,21 +1,19 @@
 """
 Suola URL hashing utility.
 """
-import logging
 from pathlib import Path
 from pydantic import AnyHttpUrl, HttpUrl
 from suola import Suola
 from contextvars import ContextVar
 from typing import Optional
-from opentelemetry import trace
-from opentelemetry.trace import Status, StatusCode
+from niitti import get_logger
 
 # replace eager default with lazy-initialized per-context singleton
 _suola_var: ContextVar[Optional[Suola]] = ContextVar(f"{__name__}.suola", default=None)
 
 type Url = str | HttpUrl | AnyHttpUrl
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def hash_url(url: Url) -> str | None:
@@ -25,11 +23,7 @@ def hash_url(url: Url) -> str | None:
     url = str(url)
     url = url.strip()
 
-    tracer = trace.get_tracer(__name__)
-
-    with tracer.start_as_current_span("suola.hash_url") as span:
-        span.set_attribute("url", url)
-
+    with logger.span("hash_url", url=url):
         # Initialize singleton lazily per-context
         inst = _suola_var.get()
         if inst is None:
@@ -40,15 +34,11 @@ def hash_url(url: Url) -> str | None:
             sign = inst(url)
 
             if not sign:
-                logger.debug("Suola returned no signature for URL: %s", url)
-                span.add_event("suola_no_signature")
+                logger.debug("Suola returned no signature for URL", url=url)
 
-            span.set_attribute("signature", sign or "")
             return sign
         except Exception as e:
-            span.record_exception(e)
-            span.set_status(Status(status_code=StatusCode.ERROR, description=str(e)))
-            logger.exception("Error hashing URL %s: %s", url, e)
+            logger.exception("Error hashing URL", url=url, error=str(e))
             raise
 
 
@@ -63,7 +53,7 @@ def init_suola(rules_path: Optional[str | Path] = None) -> Suola:
         if not rules_path.is_file():
             raise FileNotFoundError(f"Suola rules file not found: {rules_path}")
 
-    logger.info("Initializing Suola with rules: %s", rules_path or "default rules")
+    logger.info("Initializing Suola with rules", rules=str(rules_path) if rules_path else "default rules")
     inst = Suola(custom_rules=rules_path) if rules_path else Suola()
     _suola_var.set(inst)
     return inst

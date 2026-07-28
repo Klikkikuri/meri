@@ -1,5 +1,6 @@
-import logging
 from pathlib import Path
+
+from niitti import get_logger
 
 # Try rich_click for better CLI experience
 # but fallback to click if not available
@@ -8,11 +9,14 @@ try:
 except ImportError:
     import click
 
+from platformdirs import user_config_dir
 from pydantic_yaml import to_yaml_str
 
-from .settings import DEFAULT_CONFIG_PATH, Settings
+from .const import PKG_NAME
 
-logger = logging.getLogger(__name__)
+DEFAULT_CONFIG_PATH = Path(user_config_dir(PKG_NAME), "config.yaml")
+logger = get_logger(__name__)
+
 
 @click.group()
 @click.pass_context
@@ -25,8 +29,11 @@ def cli(ctx: click.Context, debug: bool):
     """
     CLI for managing settings.
     """
-    from .settings import init_settings, settings
-    settings = init_settings(debug=debug)
+    from meri.bootstrap import setup
+    current_settings = ctx.with_resource(setup(name="meri", debug=debug))
+    ctx.obj = current_settings
+
+
 
     if ctx.invoked_subcommand is None:
         # If no subcommand is provided, show the help message
@@ -36,8 +43,9 @@ def cli(ctx: click.Context, debug: bool):
     else:
         # Set the debug mode based on the command line argument
         if debug:
-            settings.DEBUG = True
-        logger.setLevel(logging.DEBUG if settings.DEBUG else settings.LOG_LEVEL)
+            current_settings.logging.DEBUG = True
+
+
 
 
 @cli.command()
@@ -55,8 +63,7 @@ def generate(filename: Path):
     """
     Generate the settings file <FILENAME>.
 
-    By default, it will be created either in the user config directory or in the directory defined by the
-    $KLIKKIKURI_CONFIG_FILE environment variable.
+    By default, it will be created in the user config directory.
     """
     from .settings import settings
 

@@ -1,3 +1,4 @@
+import click
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -92,12 +93,12 @@ def test_run_splits_skipped_articles_before_generation(monkeypatch):
     monkeypatch.setattr("meri.__main__.convert_for_rahti", fake_convert_for_rahti)
     monkeypatch.setattr("meri.__main__.prune_rahti", lambda entries, _sources: entries)
     monkeypatch.setattr("meri.__main__.Template", FakeTemplate)
-    monkeypatch.setattr("meri.__main__.settings.sources", [source], raising=False)
-    monkeypatch.setattr("meri.__main__.settings.url_blacklist", [], raising=False)
-    monkeypatch.setattr("meri.__main__.settings.rahti", object(), raising=False)
     monkeypatch.setattr("meri.__main__.RahtiData.model_validate_json", staticmethod(lambda _payload: True))
 
-    run.callback(sample=False, max_workers=1)
+    ctx = click.Context(run)
+    ctx.obj = {"settings": SimpleNamespace(sources=[source], url_blacklist=[], rahti=object(), MAX_WORKERS=1)}
+    with ctx:
+        run.callback(sample=False, max_workers=1)
 
     assert generate_calls["articles"] == [processed_discovered]
     assert generate_calls["old_titles"] == [f"old:{processed_article.get_url()}"]

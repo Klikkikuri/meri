@@ -16,13 +16,15 @@ class AksaFi(TrafilaturaExtractorMixin, Outlet):
 
 
 if __name__ == "__main__":
-    from meri.utils import setup_logging
-    setup_logging(debug=True)
-    from pprint import pprint
+    from meri.bootstrap import setup
 
-    outlet = AksaFi()
-    discover = RSSDiscoverer(["https://aksa.fi/feed/"])
-    articles = outlet.latest()
+    with setup(debug=True):
+        from pprint import pprint
+
+        outlet = AksaFi()
+        discover = RSSDiscoverer(["https://aksa.fi/feed/"])
+        articles = outlet.latest()
+
     logger.info("Found articles", count=len(articles))
 
     a = outlet.fetch(articles[0])

@@ -4,7 +4,6 @@ from functools import lru_cache
 from pathlib import Path
 from re import Pattern
 import re
-from typing import List, cast
 
 
 from pydantic import AnyHttpUrl
@@ -114,14 +113,14 @@ def get_discoverer(source: NewsSource) -> SourceDiscoverer:
         raise ValueError(f"No discoverer found for source type {source.type!r}")
 
     discoverer.set_source(source)
-    
+
     if discoverer is None:
         available = registry.list_names()
         raise ValueError(
             f"No discoverer found for source {source.name!r} with type {source.type!r}. "
             f"Available discoverers: {', '.join(available)}"
         )
-    
+
     return discoverer
 
 
@@ -155,12 +154,12 @@ def discover_articles(source: NewsSource) -> list[Article]:
             if source.language:
                 kwargs['language'] = source.language
             articles = discoverer.discover(http_url, **kwargs)
-            
+
             # Set outlet name to source name if not already set by discoverer
             for article in articles:
                 if not article.meta.get('outlet'):
                     article.meta['outlet'] = source.name
-            
+
             article_lists.append(articles)
             logger.debug("Discovered %d articles from %s", len(articles), url)
         except Exception as e:

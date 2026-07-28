@@ -5,10 +5,12 @@ from importlib.util import find_spec
 from jinja2 import Template
 from opentelemetry import trace
 from sentry_sdk import monitor
-from structlog import get_logger
+from niitti import get_logger
+from niitti.tracing import span
 
-from meri.settings import settings, init_settings
+from meri.settings import Settings
 from meri.abc import ArticleLabels
+
 
 from .lautta import (
     ArticleTitleData,
@@ -24,9 +26,9 @@ from .lautta import (
     prune_rahti,
     should_skip_processing,
 )
+from .bootstrap import setup
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
-from .utils import setup_logging, setup_sentry, setup_tracing
 
 try:
     from rich.pretty import pprint
@@ -42,43 +44,46 @@ except ImportError:
 MERI_RUN_MONITOR_SLUG = "meri_run"
 
 
-logger = get_logger(__package__)
+logger = get_logger(__package__ or "__main__")
 tracer = trace.get_tracer(__package__ or "__main__")
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
 
+
 @click.group()
+@click.pass_context
 @click.version_option()
 @click.option("--cache/--no-cache", help="Enable or disable requests cache.", default=bool(os.getenv("REQUESTS_CACHE", _requests_cache_available)))
 @click.option("--debug", help="Enable or disable debug mode.", default=bool(os.getenv("DEBUG", False)))
-def cli(cache: bool, debug: bool):
+@tracer.start_as_current_span("cli")
+def cli(ctx: click.Context, cache: bool, debug: bool):
 
     os.environ["DEBUG"] = "1" if debug else "0"
     os.environ["REQUESTS_CACHE"] = "1" if cache else "0"
 
-    init_settings(debug=debug)
-    setup_logging(debug=debug)
-    setup_tracing()
-    setup_sentry()
+    ctx.ensure_object(dict)
+    ctx.obj['settings']: Settings = ctx.with_resource(setup(name="meri", debug=debug)) # type: ignore
 
-    if cache:
+    if ctx.obj['settings'].REQUESTS_CACHE and not _requests_cache_available:
         if not _requests_cache_available:
             raise RuntimeError("requests_cache is not available, cannot enable caching.")
 
         try_setup_requests_cache()
 
 
-
 @cli.command()
-@click.option("--sample", is_flag=True, help="Use limited data.")
+@click.option("--sample", is_flag=True, help="Use limited dataset.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
-@tracer.start_as_current_span("cli.run")
+@click.pass_context
+@tracer.start_as_current_span("run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(sample: bool, max_workers: int):
+def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None):
 
     if max_workers is not None:
-        settings.MAX_WORKERS = max_workers
+        ctx.obj['settings'].MAX_WORKERS = max_workers
+
+    settings: Settings = ctx.obj['settings']
 
     # Load url blacklist for filtering out unwanted articles early
     url_filter = UrlMatcher.from_config(settings.url_blacklist or [])
@@ -133,7 +138,7 @@ def run(sample: bool, max_workers: int):
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
     for a in full_articles:
-        with tracer.start_as_current_span("cli.run.prune_article", attributes={"url": str(a.article.get_url())}) as span:
+        with logger.span("prune_article", url=str(a.article.get_url())) as span:
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
@@ -213,30 +218,32 @@ def run(sample: bool, max_workers: int):
 
 
 @cli.command()
-def list_sources():
+@click.pass_context
+def list_sources(ctx: click.Context):
     """
     List available extractors.
     """
-    import meri.settings
-
-    for source in meri.settings.settings.sources:
-        print(f"Extractor: {source.name} (weight={source})")
+    settings: Settings = ctx.obj['settings']
+    for source in settings.sources:
+        click.echo(f"{source!r}")
 
 
 @cli.command()
 @click.argument("url")
 @click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
-@tracer.start_as_current_span("cli.test")
-def test(url, with_paywalled: bool):
+@tracer.start_as_current_span("test")
+def test(url, with_paywalled: bool, ctx: click.Context):
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)
 
     if ArticleLabels.PAYWALLED in article.labels and not with_paywalled:
-        print("Article is behind a paywall and --with-paywalled was not specified. Dropping.")
+        click.echo("Article is behind a paywall and --with-paywalled was not specified. Dropping.")
         return
 
     if article.text:
-        print(article.text[0:200], "...", "\n", "...", article.text[-200:])
+        click.echo(article.text[0:200])
+        click.echo("...")
+        click.echo(article.text[-200:])
 
     from .pipelines.title import TitlePredictor
     predictor = TitlePredictor()
