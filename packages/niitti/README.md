@@ -5,11 +5,11 @@
 ## Features
 
 - 🪵 **Structured Logging**: `structlog` setup with automatic TTY detection (colored console formatting on interactive terminals, JSON logs in non-interactive environments/containers).
-- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, and OpenTelemetry Baggage injection into all log messages. Conceptual separation of configuration (`configure_tracing()`) and activation (`activate_tracing()`), with idempotent tracing initialization via `setup_tracing()`.
+- 🔍 **OpenTelemetry Integration**: Automatic trace ID, span ID, baggage injection, and `logger.span()` context managers.
 - 🔄 **Flush & Shutdown Support**: `flush_tracing()` to force flush queued batch spans, and `shutdown_tracing()` for clean application teardown.
-- 💥 **Crash Span Waterfall Dumper**: Visual tree waterfall of finished OpenTelemetry trace spans rendered to `stderr` on uncaught application crashes using `rich.tree.Tree` (with plain-text fallback).
+- 💥 **Crash Span Waterfall Dumper**: Visual tree waterfall of finished OpenTelemetry trace spans rendered to `stderr` on uncaught application crashes using `rich.tree.Tree`.
 - 🎯 **Daemon Memory Safety**: `clear_crash_span_buffer()` helper to prevent memory growth in long-running services (e.g., `laituri`).
-- ⚙️ **Typed Settings Models**: Modular `LoggingSettings` and `TelemetrySettings` Pydantic models.
+- ⚙️ **Typed Settings Models**: Modular `LoggingSettings`, `TelemetrySettings`, and `SentrySettings` Pydantic models.
 
 ## Installation
 
@@ -30,44 +30,53 @@ niitti = { workspace = true, extras = ["all"] }
 
 ## Quick Start
 
-### Logging & Tracing Setup
+### Setup Methods
+
+- **`setup_logging(settings)`**: Configures `structlog` with colored TTY console formatting or JSON container output, and sets `NiittiBoundLogger` as the wrapper class.
+- **`setup_tracing(settings)`**: Idempotently initializes the global OpenTelemetry `TracerProvider`, baggage processors, and trace exporter.
+- **`setup_sentry(settings)`**: Configures Sentry SDK error reporting.
 
 ```python
 from niitti import (
     LoggingSettings,
     TelemetrySettings,
-    flush_tracing,
+    get_logger,
     setup_logging,
     setup_tracing,
+    flush_tracing,
     shutdown_tracing,
 )
+from niitti.sentry import setup_sentry
 
-# 1. Initialize logging
-log_settings = LoggingSettings(LOG_LEVEL="INFO")
-setup_logging(log_settings)
+# 1. Initialize logging, tracing, and Sentry
+setup_logging(LoggingSettings(LOG_LEVEL="INFO"))
+setup_tracing(TelemetrySettings(service_name="my_service", enabled=True))
 
-# 2. Initialize tracing (idempotent)
-telemetry_settings = TelemetrySettings(service_name="my_service", enabled=True)
-tracer = setup_tracing(telemetry_settings)
+logger = get_logger(__name__)
 
-# 3. Force flush or shutdown tracing on application exit
+# 2. Force flush or shutdown tracing on application exit
 flush_tracing(timeout_millis=5000)
 shutdown_tracing()
 ```
 
-### Structlog with OTel Context
+### Logger Spans & Tracing Context
+
+Use `logger.span(...)` with bound loggers, or `from niitti.tracing import span` for decorators:
 
 ```python
-import structlog
-from opentelemetry import baggage
+from niitti import get_logger
+from niitti.tracing import span
 
-logger = structlog.get_logger(__name__)
+logger = get_logger(__name__)
 
-# Set OpenTelemetry baggage for context propagation
-baggage.set_baggage("tenant_id", "acme-corp")
+# Context manager span yielding OTel span instance
+with logger.span("prune_article", url=url) as otel_span:
+    otel_span.set_attribute("prune_reason", "unhandled_url")
 
-# Log event automatically includes trace_id, span_id, and otel_baggage
-logger.info("Processing article", article_id=42)
+# Standalone decorator for call sites without a bound logger
+@span("extract_article")
+def extract_article(url: str):
+    ...
 ```
 
 ### Long-Running Daemons (Memory Management)
