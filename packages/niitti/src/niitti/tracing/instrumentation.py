@@ -20,11 +20,11 @@ SPAN_EMOJI_MAP: dict[str, str] = {
     "pipeline": "🚀",
     "run_pipeline": "🚀",
     "run": "🏁",
-    "cli.run": "🏁",
     "cli": "💻",
     "main": "🎬",
     "subtask": "⚡",
     "task": "⚙️",
+    "test": "🧪",
     # Data & Content Retrieval
     "article": "📰",
     "fetch_articles": "📰",
