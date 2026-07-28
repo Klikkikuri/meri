@@ -309,3 +309,37 @@ def test_span_decorator_concurrent_invocations():
             assert s.name == expected_name
             assert s.attributes["test_key"] == "test_val"
             assert s.attributes["span_path"] == expected_name
+
+
+def test_span_records_and_reraises_exception():
+    """
+    Verify span context manager and decorator record exception, set ERROR status, and reraise exception.
+
+    :return: None
+    """
+    provider = TracerProvider()
+    exporter = InMemorySpanExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    with patch.object(trace, "_TRACER_PROVIDER", provider):
+        with pytest.raises(ValueError, match="boom"):
+            with span("fails"):
+                raise ValueError("boom")
+
+        finished = exporter.get_finished_spans()
+        assert len(finished) == 1
+        assert finished[0].status.status_code == trace.StatusCode.ERROR
+        assert len(finished[0].events) > 0  # exception recorded
+
+        exporter.clear()
+
+        @span("decorator_fails")
+        def failing_func():
+            raise RuntimeError("decorator boom")
+
+        with pytest.raises(RuntimeError, match="decorator boom"):
+            failing_func()
+
+        finished_dec = exporter.get_finished_spans()
+        assert len(finished_dec) == 1
+        assert finished_dec[0].status.status_code == trace.StatusCode.ERROR
+        assert len(finished_dec[0].events) > 0
