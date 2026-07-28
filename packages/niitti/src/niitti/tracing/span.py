@@ -44,6 +44,7 @@ class _SpanContextManager(AbstractContextManager):
         current_ctx = structlog.contextvars.get_contextvars()
         parent_path_str = current_ctx.get("span_path", "")
         full_path_str = f"{parent_path_str}.{self.name}" if parent_path_str else self.name
+        merged_attributes.setdefault("span_path", full_path_str)
 
         tracer_name = self.tracer_name
         if tracer_name is None:

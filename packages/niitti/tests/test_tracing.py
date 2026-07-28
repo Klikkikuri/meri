@@ -31,21 +31,25 @@ from niitti.tracing import (
 
 def test_get_span_emoji_mapping():
     """
-    Verify get_span_emoji matches exact '.' segments right-to-left against SPAN_EMOJI_MAP.
+    Verify get_span_emoji matches exact '.' segments and leaf tokens right-to-left against SPAN_EMOJI_MAP.
 
     :return: None
     """
     assert get_span_emoji("meri.cli.run") == "🏁"  # right-to-left segment check: run -> cli -> meri
-    assert get_span_emoji("pipeline.run") == "🏁"  # right-to-left segment check: run -> pipeline
-    assert get_span_emoji("fetch.article") == "📰"  # right-to-left segment check: article -> fetch
+    assert get_span_emoji("pipeline.run") == "🏁"
+    assert get_span_emoji("fetch.article") == "📰"
+    assert get_span_emoji("fetch_source") == "📡"
+    assert get_span_emoji("prune_article") == "📰"
+    assert get_span_emoji("generate_title") == "✨"
+    assert get_span_emoji("meri.cli.run.fetch_source") == "📡"
     assert get_span_emoji("meri") == "🌊"
     assert get_span_emoji("db") == "🗄️"
     assert get_span_emoji("unknown_action_xyz") == DEFAULT_SPAN_EMOJI
     # Substring / unmapped segment boundary tests
-    assert get_span_emoji("task_runner") == DEFAULT_SPAN_EMOJI  # "task_runner" != "task"
     assert get_span_emoji("domain_name") == DEFAULT_SPAN_EMOJI
     assert get_span_emoji("dashboard") == DEFAULT_SPAN_EMOJI
     assert get_span_emoji("failsafe") == DEFAULT_SPAN_EMOJI
+
 
 
 

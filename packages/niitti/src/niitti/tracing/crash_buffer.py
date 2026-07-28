@@ -169,7 +169,12 @@ def setup_crash_span_dumper(
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
-                    emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
+                    span_path = (
+                        str(span.attributes.get("span_path"))
+                        if (span.attributes and "span_path" in span.attributes)
+                        else span.name
+                    )
+                    emoji = get_span_emoji(span_path, span_ctx.span_id if span_ctx else None)
                     node = parent_node.add(
                         f"{emoji} [bold white]{span.name}[/bold white] (status: [bold]{status}[/bold], duration: {duration_ms:.2f}ms)"
                     )
@@ -224,7 +229,12 @@ def setup_crash_span_dumper(
                     duration_ms = (span.end_time - span.start_time) / 1e6 if (span.end_time and span.start_time) else 0
                     status = span.status.status_code.name if span.status else "UNSET"
                     span_ctx = span.get_span_context() if hasattr(span, "get_span_context") else None
-                    emoji = get_span_emoji(span.name, span_ctx.span_id if span_ctx else None)
+                    span_path = (
+                        str(span.attributes.get("span_path"))
+                        if (span.attributes and "span_path" in span.attributes)
+                        else span.name
+                    )
+                    emoji = get_span_emoji(span_path, span_ctx.span_id if span_ctx else None)
                     sys.stderr.write(
                         f"{indent}{branch}{emoji} {span.name} (status: {status}, duration: {duration_ms:.2f}ms)\n"
                     )
