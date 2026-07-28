@@ -54,11 +54,11 @@ class KontioApiClient(requests.Session):
 
 
 # Singleton factory using contextvars
-_client_ctx: contextvars.ContextVar["KontioApiClient"] = contextvars.ContextVar(f"{__name__}.kontio_client", default=KontioApiClient())
+_client_ctx: contextvars.ContextVar["KontioApiClient | None"] = contextvars.ContextVar(f"{__name__}.kontio_client", default=None)
 
 def client() -> KontioApiClient:
-    client = _client_ctx.get()
-    if client is None:
-        client = KontioApiClient()
-        _client_ctx.set(client)
-    return client
+    c = _client_ctx.get()
+    if c is None:
+        c = KontioApiClient()
+        _client_ctx.set(c)
+    return c

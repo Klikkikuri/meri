@@ -9,8 +9,8 @@ TODO: Convert the HTML into markdown for consistency with other extractors.
 from abc import ABC, abstractmethod
 from datetime import datetime
 from urllib.parse import urlparse
-import uuid
 from typing import Final
+
 
 from .client import KontioApiClient, client
 from .types import KontioApiParams
@@ -213,7 +213,7 @@ class KSMLExtractor(KontioExtractor):
     name = "KSML"
     valid_url = r"https://www\.ksml\.fi/"
     weight = 60
-    
+
     # KSML API publication identifier
     PUBLICATION_ID = "ksml"
 
@@ -245,7 +245,7 @@ class KSMLExtractor(KontioExtractor):
             raise ValueError(f"Cannot parse KSML article URL: {url}")
 
         section = path_parts[-2]
-        
+
         # KSML always uses "ksml" as publication identifier
         return KontioApiParams(
             publication=self.PUBLICATION_ID,
