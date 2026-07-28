@@ -88,7 +88,7 @@ niitti = { workspace = true }
 #meri = { path = "./src/meri" }
 
 [tool.uv.workspace]
-members = ["packages/kompassi", "packages/niitti"]
+members = ["packages/niitti"]
 #members = ["packages/suola/python"]
 #members = ["src/*"]
 # Exclude self from workspace
