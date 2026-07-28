@@ -60,15 +60,16 @@ DEFAULT_SPAN_EMOJI: str = "📌"
 def get_span_emoji(span_name: str, span_id: int | str | None = None) -> str:
     """
     Deterministically map a span name to a stable emoji using SPAN_EMOJI_MAP.
+    Splits span_name by '.' into hierarchical segments and searches right-to-left
+    (most specific segment to root) for exact segment matches in SPAN_EMOJI_MAP.
     Returns DEFAULT_SPAN_EMOJI ("📌") for spans without a mapping.
 
     :param span_name: Name of OpenTelemetry span.
     :param span_id: Optional span ID.
     :return: Emoji icon string.
     """
-    name_lower = span_name.lower()
-    for key, emoji in SPAN_EMOJI_MAP.items():
-        if key in name_lower:
+    for segment in reversed(span_name.lower().split(".")):
+        if emoji := SPAN_EMOJI_MAP.get(segment):
             return emoji
 
     return DEFAULT_SPAN_EMOJI

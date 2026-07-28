@@ -31,16 +31,24 @@ from niitti.tracing import (
 
 def test_get_span_emoji_mapping():
     """
-    Verify get_span_emoji matches span names against SPAN_EMOJI_MAP or returns DEFAULT_SPAN_EMOJI.
+    Verify get_span_emoji matches exact '.' segments right-to-left against SPAN_EMOJI_MAP.
 
     :return: None
     """
-    assert get_span_emoji("pipeline.run") == "🚀"
-    assert get_span_emoji("fetch_article_data") == "📰"
-    assert get_span_emoji("OPENAI_PROMPT_GENERATION") == "🧠"
-    assert get_span_emoji("meri_service") == "🌊"
-    assert get_span_emoji("db_query") == "🗄️"
+    assert get_span_emoji("meri.cli.run") == "🏁"  # right-to-left segment check: run -> cli -> meri
+    assert get_span_emoji("pipeline.run") == "🏁"  # right-to-left segment check: run -> pipeline
+    assert get_span_emoji("fetch.article") == "📰"  # right-to-left segment check: article -> fetch
+    assert get_span_emoji("meri") == "🌊"
+    assert get_span_emoji("db") == "🗄️"
     assert get_span_emoji("unknown_action_xyz") == DEFAULT_SPAN_EMOJI
+    # Substring / unmapped segment boundary tests
+    assert get_span_emoji("task_runner") == DEFAULT_SPAN_EMOJI  # "task_runner" != "task"
+    assert get_span_emoji("domain_name") == DEFAULT_SPAN_EMOJI
+    assert get_span_emoji("dashboard") == DEFAULT_SPAN_EMOJI
+    assert get_span_emoji("failsafe") == DEFAULT_SPAN_EMOJI
+
+
+
 
 
 def test_span_id_to_emoji_backwards_compatibility():
