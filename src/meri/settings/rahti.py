@@ -1,5 +1,5 @@
 from socket import gethostname
-from typing import Annotated, Optional, Union
+from typing import Annotated, Any, Optional, Union
 
 from niitti import get_logger
 from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag
@@ -32,6 +32,7 @@ class GitHubCommitter(BaseSettings):
 
 class RahtiBaseSettings(BaseSettings):
     url: str = Field(
+        "file:///app/instance/rahti/data.json",
         description="Target URL for Rahti data.",
     )
 
@@ -41,16 +42,21 @@ class RahtiBaseSettings(BaseSettings):
 
 
 class RahtiFileSettings(RahtiBaseSettings):
-    url: str
+    url: str = Field(
+        "file:///app/instance/rahti/data.json",
+        description="Target URL for Rahti data.",
+    )
+
 
 class RahtiGithubSettings(RahtiBaseSettings):
     url: HttpUrl = Field(  # type: ignore
         HttpUrl("https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"),
         description="Target URL for Rahti data.",
     )
-    auth_token: SecretStr = Field(
+    auth_token: Optional[SecretStr] = Field(
+        default=None,
         description="GitHub token for GitHub API access.",
-        alias="GITHUB_TOKEN"
+        alias="GITHUB_TOKEN",
     )
 
     timeout: Optional[int] = Field(
@@ -58,17 +64,21 @@ class RahtiGithubSettings(RahtiBaseSettings):
         description="Timeout (in seconds) for GitHub API requests.",
     )
 
-    committer: GitHubCommitter
+    committer: GitHubCommitter = Field(
+        default_factory=lambda: GitHubCommitter(),  # type: ignore
+        description="Committer info for bot.",
+    )
 
-def match_by_url(v: object | dict) -> str:
+
+def match_by_url(v: Any) -> str:
     """
     Discriminator function to determine the Rahti settings type based on the URL.
     """
     url = ""
-    if hasattr(v, "url"):
-        url = v.url.strip()
-    elif isinstance(v, dict) and "url" in v:
-        url = v["url"].strip()
+    if isinstance(v, dict) and "url" in v:
+        url = str(v["url"]).strip()
+    elif hasattr(v, "url"):
+        url = str(getattr(v, "url")).strip()
     else:
         raise ValueError("Rahti settings missing 'url' field")
 

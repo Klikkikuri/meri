@@ -44,7 +44,7 @@ from .llms import (
     detect_generators,
 )
 from .newssources import NewsSource
-from .rahti import RahtiSettings
+from .rahti import RahtiFileSettings, RahtiSettings
 
 load_dotenv()
 
@@ -134,7 +134,10 @@ class Settings(NiittiSettings):
         description="Settings for skipping article title processing.",
     )
 
-    rahti: RahtiSettings
+    rahti: RahtiSettings = Field(
+        default_factory=lambda: RahtiFileSettings(),  # type: ignore
+        description="Rahti storage settings.",
+    )
 
     @model_validator(mode="before")
     @classmethod

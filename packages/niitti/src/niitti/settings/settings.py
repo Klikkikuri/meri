@@ -137,9 +137,11 @@ class Settings(BaseSettings):
         pkg_name = cls.get_package_name()
         user_cfg = Path(user_config_dir(pkg_name, DEFAULT_APP_AUTHOR), "config.yaml")
         site_cfg = Path(site_config_dir(pkg_name, DEFAULT_APP_AUTHOR), "config.yaml")
+
         locations: list[Path] = [
             Path("/app/config.yaml"),
             Path("/app/instance/config.yaml"),
+            Path("/app/packages/rahti/config.yaml"),
             Path("/config/config.yaml"),
             Path.cwd() / "config.yaml",
             site_cfg,
