@@ -171,19 +171,16 @@ class Settings(NiittiSettings):
         values['llm'] = settings_list
         return values
 
-    @model_validator(mode="before")
-    @classmethod
-    def _compute_user_agent(cls, values):
+    @model_validator(mode="after")
+    def _compute_user_agent(self) -> "Settings":
         """
-        Compute the user-agent string.
+        format the BOT_USER_AGENT string with package metadata and BOT_ID after model fields are populated.
         """
-        bot_info = cls.get_package_metadata().copy()
-        bot_info.setdefault("BOT_ID", values.get("BOT_ID", DEFAULT_BOT_ID))
-        bot_info.setdefault("BOT_USER_AGENT", values.get("BOT_USER_AGENT", DEFAULT_BOT_USER_AGENT))
+        bot_info = self.get_package_metadata().copy()
+        bot_info.setdefault("BOT_ID", self.BOT_ID)
 
-        user_agent = str(bot_info["BOT_USER_AGENT"]).format(**bot_info)
-        values.setdefault('BOT_USER_AGENT', user_agent)
-        return values
+        self.BOT_USER_AGENT = str(self.BOT_USER_AGENT).format(**bot_info)
+        return self
 
     @model_validator(mode="after")
     def _stamp_identity(self) -> "Settings":
