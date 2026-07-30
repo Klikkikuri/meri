@@ -44,7 +44,7 @@ class NewsSource(BaseModel):
         description="Minimum content length (in characters) for fetched articles. Articles with less content will be ignored.",
     )
     max_num_articles: Optional[int] = Field(
-        100,
+        200,
         description="Maximum number of articles to fetch from this source during each fetch operation.",
     )
     max_age_days: Optional[int] = Field(
