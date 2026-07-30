@@ -73,3 +73,27 @@ def test_nested_setup_reentrancy():
         assert get_settings() is outer_settings
 
     assert get_settings() is None
+
+
+def test_settings_loading_with_rahti_config_yaml():
+    """Verify loading Settings using rahti/config.yaml succeeds even without GITHUB_TOKEN."""
+    from pathlib import Path
+    import yaml
+    from meri.settings.rahti import RahtiGithubSettings
+
+    config_path = Path("packages/rahti/config.yaml")
+    assert config_path.exists(), "packages/rahti/config.yaml should exist"
+
+    with open(config_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    s = Settings(**data)
+    assert isinstance(s.rahti, RahtiGithubSettings)
+    assert s.rahti.auth_token is None
+
+
+def test_settings_instantiation_with_empty_config_locations(monkeypatch):
+    """Verify Settings instantiates with defaults when no configuration files are present."""
+    monkeypatch.setattr(Settings, "get_default_config_locations", lambda: [])
+    s = Settings()
+    assert s.rahti is not None
