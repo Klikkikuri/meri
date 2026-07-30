@@ -36,6 +36,7 @@ from pydantic_settings import SettingsConfigDict
 from .const import (
     DEFAULT_BOT_ID,
     PKG_NAME,
+    DEFAULT_BOT_USER_AGENT,
 )
 from .llms import (
     GeneratorProviderError,
@@ -103,7 +104,7 @@ class Settings(NiittiSettings):
     )
     BOT_ID: str = Field(DEFAULT_BOT_ID, description="Bot ID.")
     BOT_USER_AGENT: str = Field(
-        "Mozilla/5.0 (compatible;)",
+        DEFAULT_BOT_USER_AGENT,
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
@@ -178,7 +179,9 @@ class Settings(NiittiSettings):
         """
         bot_info = cls.get_package_metadata().copy()
         bot_info.setdefault("BOT_ID", values.get("BOT_ID", DEFAULT_BOT_ID))
-        user_agent = "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})".format(**bot_info)
+        bot_info.setdefault("BOT_USER_AGENT", values.get("BOT_USER_AGENT", DEFAULT_BOT_USER_AGENT))
+
+        user_agent = str(bot_info["BOT_USER_AGENT"]).format(**bot_info)
         values.setdefault('BOT_USER_AGENT', user_agent)
         return values
 
