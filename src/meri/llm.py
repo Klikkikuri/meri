@@ -7,7 +7,7 @@ from pathlib import Path
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
 from platformdirs import user_data_dir
-from pydantic import SecretStr
+from pydantic import AnyUrl, SecretStr
 
 from .settings import (
     Settings,
@@ -78,6 +78,9 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
     for key, value in generator_args.items():
         if isinstance(value, SecretStr):
             generator_args[key] = value.get_secret_value()
+        # Pydantic URL types (e.g. AnyHttpUrl) aren't accepted by httpx/openai clients, which expect a plain str.
+        elif isinstance(value, AnyUrl):
+            generator_args[key] = str(value)
 
     # Haystack has some stupid design choices that are forced upon others.
     # Check the types of the arguments, and convert to Haystack secrets if necessary.
