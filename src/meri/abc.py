@@ -204,9 +204,16 @@ class ArticleLabels(str, Enum):
 
         The article is sponsored content, meaning it is paid for by an advertiser or sponsor and may have promotional intent.
 
+    - `com.github.klikkikuri/ai-slop=true`:
+
+        Content created or significantly influenced by artificial intelligence tools,
+        such as automated text generation or data-driven article writing. Detected via
+        Sulku AI-classification service.
+
     """
     PAYWALLED = "com.github.klikkikuri/paywalled=true"
-    SPONSORED = "com.github.klikkikuri/sponsored=true"
+    SPONSORED  = "com.github.klikkikuri/sponsored=true"
+    AI_SLOP    = "com.github.klikkikuri/ai-slop=true"
 
 
 class TitleQuorumLabel(str, Enum):
