@@ -4,3 +4,9 @@
 [submodule "packages/rahti"]
 	path = packages/rahti
 	url = ../rahti.git
+[submodule "packages/niitti"]
+        path = packages/niitti
+        url = ../Niitti.git
+[submodule "packages/sulku"]
+	path = packages/sulku
+	url = ../sulku.git
