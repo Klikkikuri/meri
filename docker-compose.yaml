@@ -17,6 +17,29 @@ services:
       - meri
     env_file:
       - .env
+    depends_on:
+      sulku:
+        condition: service_healthy
+
+  sulku:
+    build:
+      context: ./packages/sulku
+      dockerfile: Dockerfile
+      target: production
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./packages/sulku:/app:rw,cached
+      - ./instance/sulku:/app/data:rw,cached
+      - /app/.venv
+    networks:
+      - meri
+    healthcheck:
+      test: ["CMD-SHELL", "sulku health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   development:
     extends:
