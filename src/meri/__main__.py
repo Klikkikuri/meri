@@ -10,6 +10,7 @@ from niitti.tracing import span
 
 from meri.settings import Settings
 from meri.abc import ArticleLabels
+from meri.sulku import SulkuService
 
 
 from .lautta import (
@@ -162,7 +163,22 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     logger.info("After pruning unhandled articles, %d (of %d) articles remain", len(full_articles), nr, extra={"removed": nr - len(full_articles)})
 
-    ## Generate titles for articles
+    # Sulku AI-detection: classify processable articles and label AI-generated ones
+    if settings.sulku.enabled:
+        with SulkuService(settings.sulku) as sulku:
+            for discovered in full_articles:
+                result = sulku.classify(discovered.article)
+                if result is None:
+                    continue
+                if result.is_ai and result.final_confidence >= settings.sulku.confidence_threshold:
+                    discovered.article.labels.append(ArticleLabels.AI_SLOP)
+                    logger.info(
+                        "Labelled article as AI_SLOP: %r (confidence=%.3f, z=%.3f)",
+                        str(discovered.article.get_url()),
+                        result.final_confidence,
+                        result.final_z_score,
+                    )
+
     generated_titles = generate_titles(full_articles, old_titles=old_titles)
     titles = [generated_titles[slot] if isinstance(slot, int) else slot for slot in title_slots]
 
@@ -232,7 +248,10 @@ def list_sources(ctx: click.Context):
 @click.argument("url")
 @click.option("--with-paywalled", is_flag=True, help="Include paywalled articles.")
 @tracer.start_as_current_span("test")
-def test(url, with_paywalled: bool, ctx: click.Context):
+@click.pass_context
+def test(ctx: click.Context, url: str, with_paywalled: bool):
+    #settings: Settings = ctx.obj['settings']
+
     extractor = get_extractor(url)
     article = extractor.fetch_by_url(url)
 
