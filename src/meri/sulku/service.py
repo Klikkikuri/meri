@@ -35,6 +35,8 @@ CLASSIFY_PATH = "/api/v1/aidetect/"
 MODELS_PATH = "/api/v1/aidetect/models"
 HEALTH_PATH = "/health"
 
+_UNSET = object()  # sentinel: model list not yet fetched
+
 __all__ = ["SulkuClassificationResult", "SulkuService"]
 
 
@@ -61,8 +63,7 @@ class SulkuService:
     def __init__(self, settings: SulkuSettings) -> None:
         self._settings = settings
         self._client: httpx.Client | None = None
-        # Cache the model list for the lifetime of this service instance
-        self._models_cache: list[dict] | None = None
+        self._models: list[dict] | None = _UNSET  # type: ignore[assignment]
 
     # ── Context manager ───────────────────────────────────────────────────────
 
@@ -71,6 +72,8 @@ class SulkuService:
             base_url=self._settings.base_url,
             timeout=self._settings.timeout,
         )
+        if self._settings.enabled:
+            self._fetch_models()
         return self
 
     def __exit__(self, *_) -> None:
@@ -105,7 +108,7 @@ class SulkuService:
             model_names = self._models_for_language(language)
             if model_names is not None:
                 if not model_names:
-                    logger.debug(
+                    logger.warning(
                         "No Sulku models available for language %r — skipping classification",
                         language,
                         extra={"url": str(article.get_url())},
@@ -121,21 +124,23 @@ class SulkuService:
                 params=params,
             )
             response.raise_for_status()
-        except httpx.HTTPError as exc:
+            data = response.json()
+            return SulkuClassificationResult(
+                is_ai=data["is_ai"],
+                final_confidence=data["final_confidence"],
+                final_z_score=data["final_z_score"],
+                model_names=list(data.get("predictions", {}).keys()),
+            )
+        except (httpx.HTTPError, KeyError, ValueError) as exc:
+            # Includes JSON decode errors (ValueError) and malformed/missing response
+            # fields (KeyError), on top of network/HTTP errors — none of these should
+            # ever abort the wider Meri pipeline run.
             logger.warning(
                 "Sulku classification failed for %r: %s",
                 str(article.get_url()),
                 exc,
             )
             return None
-
-        data = response.json()
-        return SulkuClassificationResult(
-            is_ai=data["is_ai"],
-            final_confidence=data["final_confidence"],
-            final_z_score=data["final_z_score"],
-            model_names=list(data.get("predictions", {}).keys()),
-        )
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -148,26 +153,42 @@ class SulkuService:
             )
         return self._client
 
+    def _fetch_models(self) -> None:
+        """
+        Fetch and cache the Sulku model list for the lifetime of this service instance.
+
+        Called eagerly on ``__enter__`` (and lazily as a fallback if the service
+        wasn't used as a context manager) so a missing/empty model list is surfaced
+        as a warning up-front rather than silently on the first classification call.
+        """
+        try:
+            resp = self._get_client().get(MODELS_PATH)
+            resp.raise_for_status()
+            models = resp.json().get("models", [])
+        except httpx.HTTPError as exc:
+            logger.warning("Could not fetch Sulku model list: %s", exc)
+            self._models = None  # skip filtering, let Sulku decide
+            return
+
+        if not models:
+            logger.warning("Sulku reports no available AI-detection models")
+        self._models = models
+
     def _models_for_language(self, language: str) -> list[str] | None:
         """
         Return model names that support *language* (BCP-47 tag, e.g. ``"fi-FI"``).
 
         Uses prefix matching against ISO 639-1 codes stored by Sulku (e.g. ``"fi"``).
-        Returns ``None`` if the model list cannot be fetched — in that case the caller
-        should skip language filtering and let Sulku use all loaded models.
         """
-        if self._models_cache is None:
-            try:
-                resp = self._get_client().get(MODELS_PATH)
-                resp.raise_for_status()
-                self._models_cache = resp.json().get("models", [])
-            except httpx.HTTPError as exc:
-                logger.warning("Could not fetch Sulku model list: %s", exc)
-                return None  # skip filtering, let Sulku decide
+        if self._models is _UNSET:
+            self._fetch_models()
+        models = self._models
+        if models is None:
+            return None
 
         return [
             m["name"]
-            for m in (self._models_cache or [])
+            for m in models
             for lang in m.get("languages", [])
             if language.startswith(lang)
         ]
