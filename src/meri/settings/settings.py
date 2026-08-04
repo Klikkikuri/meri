@@ -46,6 +46,7 @@ from .llms import (
 )
 from .newssources import NewsSource
 from .rahti import RahtiFileSettings, RahtiSettings
+from .sulku import SulkuSettings
 
 load_dotenv()
 
@@ -138,6 +139,11 @@ class Settings(NiittiSettings):
     rahti: RahtiSettings = Field(
         default_factory=lambda: RahtiFileSettings(),  # type: ignore
         description="Rahti storage settings.",
+    )
+
+    sulku: SulkuSettings = Field(
+        default_factory=lambda: SulkuSettings(),  # type: ignore
+        description="Sulku AI-detection service settings.",
     )
 
     @model_validator(mode="before")

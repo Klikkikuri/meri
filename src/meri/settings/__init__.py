@@ -5,5 +5,6 @@ from .settings import (
     set_active_settings,
     settings,
 )
+from .sulku import SulkuSettings
 
-__all__ = ["Settings", "set_active_settings", "clear_settings", "get_settings", "settings"]
+__all__ = ["Settings", "set_active_settings", "clear_settings", "get_settings", "settings", "SulkuSettings"]
