@@ -24,6 +24,7 @@ from typing import Self
 
 import httpx
 from niitti import get_logger
+from opentelemetry.propagate import inject
 from pydantic import BaseModel, Field
 
 from meri.article import Article
@@ -40,10 +41,17 @@ _UNSET = object()  # sentinel: model list not yet fetched
 __all__ = ["SulkuClassificationResult", "SulkuService"]
 
 
+def _inject_trace_headers(request: httpx.Request) -> None:
+    """httpx request event hook to inject OpenTelemetry trace context headers into outgoing requests."""
+    inject(request.headers)
+
+
 class SulkuClassificationResult(BaseModel):
     """Parsed result from a Sulku classify call."""
 
     is_ai: bool
+    """Whether the text is classified as AI-generated (True) or human-written (False)."""
+
     final_confidence: float
     final_z_score: float
     model_names: list[str] = Field(default_factory=list)
@@ -71,6 +79,7 @@ class SulkuService:
         self._client = httpx.Client(
             base_url=self._settings.base_url,
             timeout=self._settings.timeout,
+            event_hooks={"request": [_inject_trace_headers]},
         )
         if self._settings.enabled:
             self._fetch_models()
@@ -150,6 +159,7 @@ class SulkuService:
             self._client = httpx.Client(
                 base_url=self._settings.base_url,
                 timeout=self._settings.timeout,
+                event_hooks={"request": [_inject_trace_headers]},
             )
         return self._client
 
