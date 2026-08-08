@@ -96,7 +96,7 @@ def test_run_splits_skipped_articles_before_generation(monkeypatch):
     monkeypatch.setattr("meri.__main__.RahtiData.model_validate_json", staticmethod(lambda _payload: True))
 
     ctx = click.Context(run)
-    ctx.obj = {"settings": SimpleNamespace(sources=[source], url_blacklist=[], rahti=object(), MAX_WORKERS=1)}
+    ctx.obj = {"settings": SimpleNamespace(sources=[source], url_blacklist=[], rahti=object(), sulku=SimpleNamespace(enabled=False), MAX_WORKERS=1)}
     with ctx:
         run.callback(sample=False, max_workers=1)
 

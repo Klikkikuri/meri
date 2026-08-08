@@ -19,12 +19,10 @@ Order of precedence:
 """
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Any
-
-from niitti import get_logger
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
+from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings as NiittiSettings
@@ -35,8 +33,8 @@ from pydantic_settings import SettingsConfigDict
 
 from .const import (
     DEFAULT_BOT_ID,
-    PKG_NAME,
     DEFAULT_BOT_USER_AGENT,
+    PKG_NAME,
 )
 from .llms import (
     GeneratorProviderError,
@@ -233,35 +231,5 @@ def clear_settings() -> None:
     _active_settings = None
 
 
-class _SettingsProxy:
-    def __getattr__(self, name: str) -> Any:
-        if _active_settings is None:
-            raise RuntimeError(
-                "Working outside of application context. "
-                "Accessing 'settings' requires an active 'with setup():' block."
-            )
-        return getattr(_active_settings, name)
+settings: SettingsProxy = SettingsProxy(get_settings)
 
-    def __setattr__(self, name: str, value: Any) -> None:
-        if _active_settings is None:
-            raise RuntimeError(
-                "Working outside of application context. "
-                "Accessing 'settings' requires an active 'with setup():' block."
-            )
-        setattr(_active_settings, name, value)
-
-    def __delattr__(self, name: str) -> None:
-        if _active_settings is None:
-            raise RuntimeError(
-                "Working outside of application context. "
-                "Accessing 'settings' requires an active 'with setup():' block."
-            )
-        delattr(_active_settings, name)
-
-    def __repr__(self) -> str:
-        if _active_settings is None:
-            return "<Settings Proxy (uninitialized)>"
-        return repr(_active_settings)
-
-
-settings: Any = _SettingsProxy()
