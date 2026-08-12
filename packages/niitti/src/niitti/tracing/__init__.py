@@ -32,23 +32,23 @@ from niitti.tracing.provider import (
 from niitti.tracing.span import span
 
 __all__ = [
-    "span",
-    "setup_tracing",
-    "configure_tracing",
-    "activate_tracing",
-    "flush_tracing",
-    "shutdown_tracing",
-    "setup_sentry",
-    "setup_crash_span_dumper",
-    "clear_crash_span_buffer",
-    "build_span_forest",
-    "RingBufferSpanExporter",
-    "get_span_emoji",
-    "span_id_to_emoji",
-    "SPAN_EMOJI_MAP",
     "DEFAULT_SPAN_EMOJI",
-    "provider",
+    "SPAN_EMOJI_MAP",
+    "RingBufferSpanExporter",
+    "activate_tracing",
+    "build_span_forest",
+    "clear_crash_span_buffer",
+    "configure_tracing",
     "crash_buffer",
+    "flush_tracing",
+    "get_span_emoji",
+    "provider",
+    "setup_crash_span_dumper",
+    "setup_sentry",
+    "setup_tracing",
+    "shutdown_tracing",
+    "span",
+    "span_id_to_emoji",
 ]
 
 

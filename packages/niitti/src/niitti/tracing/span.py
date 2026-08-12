@@ -3,8 +3,10 @@ OpenTelemetry span helper function for niitti.
 """
 
 import functools
+from collections.abc import Sequence
 from contextlib import AbstractContextManager
-from typing import Any, Sequence
+from typing import Any
+
 import structlog
 from opentelemetry import trace
 

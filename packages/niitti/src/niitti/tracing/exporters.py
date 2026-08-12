@@ -4,6 +4,7 @@ Span exporters for OpenTelemetry tracing.
 
 import threading
 from collections import deque
+
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 

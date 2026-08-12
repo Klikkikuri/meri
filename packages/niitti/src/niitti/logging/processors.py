@@ -3,6 +3,7 @@ Structlog processors for injecting OpenTelemetry tracing context and baggage.
 """
 
 from typing import Any
+
 from opentelemetry import baggage, trace
 from structlog.types import EventDict
 

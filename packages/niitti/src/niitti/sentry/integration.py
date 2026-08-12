@@ -2,11 +2,11 @@
 Sentry integration setup for niitti applications.
 """
 
+from typing import Any
+
 import structlog
 
 from niitti.settings.sentry import SentrySettings
-
-from typing import Any
 
 logger = structlog.get_logger(__name__)
 

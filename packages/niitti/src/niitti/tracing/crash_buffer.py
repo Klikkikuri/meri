@@ -4,11 +4,15 @@ Crash span ring buffer and waterfall error dumper.
 
 import sys
 from collections import defaultdict
+
 from opentelemetry import trace
 from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-from niitti.tracing.exporters import DEFAULT_CRASH_SPAN_BUFFER_SIZE, RingBufferSpanExporter
+from niitti.tracing.exporters import (
+    DEFAULT_CRASH_SPAN_BUFFER_SIZE,
+    RingBufferSpanExporter,
+)
 from niitti.tracing.instrumentation import get_span_emoji
 
 
@@ -118,7 +122,7 @@ def setup_crash_span_dumper(
         if isinstance(provider, TracerProvider):
             trace_provider = provider
         elif isinstance(getattr(provider, "_tracer_provider", None), TracerProvider):
-            trace_provider = getattr(provider, "_tracer_provider")
+            trace_provider = provider._tracer_provider
 
     if _crash_span_exporter is None:
         _crash_span_exporter = RingBufferSpanExporter(maxlen=max_spans)
@@ -126,7 +130,7 @@ def setup_crash_span_dumper(
     if trace_provider is not None and _crash_span_exporter is not None:
         already_registered = False
         if hasattr(trace_provider, "_active_span_processor"):
-            active_processor = getattr(trace_provider, "_active_span_processor")
+            active_processor = trace_provider._active_span_processor
             if hasattr(active_processor, "_span_processors"):
                 for proc in active_processor._span_processors:
                     if (

@@ -1,8 +1,9 @@
 import functools
 import logging
+from collections.abc import Callable
 from importlib.metadata import PackageNotFoundError, metadata
 from pathlib import Path
-from typing import Type, cast
+from typing import Any, cast
 
 from dotenv import find_dotenv, load_dotenv
 from platformdirs import site_config_dir, user_config_dir
@@ -163,7 +164,7 @@ class Settings(BaseSettings):
     @classmethod
     def settings_customise_sources(
         cls,
-        settings_cls: Type[BaseSettings],
+        settings_cls: type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
         env_settings: PydanticBaseSettingsSource,
         dotenv_settings: PydanticBaseSettingsSource,
@@ -177,3 +178,48 @@ class Settings(BaseSettings):
             file_secret_settings,
             YamlConfigSettingsSource(settings_cls, yaml_file=yaml_locations),
         )
+
+
+class SettingsProxy:
+    """
+    Proxy object providing dynamic attribute access to the currently active ``Settings`` instance.
+
+    Delegates attribute access to the active ``Settings`` instance returned by a getter callable.
+    If no active settings instance is available, raises a ``RuntimeError``.
+
+    :param getter: Callable returning the currently active ``Settings`` instance (or ``None``).
+    """
+
+    def __init__(self, getter: Callable[[], Any]) -> None:
+        super().__setattr__("_getter", getter)
+
+    def _get_active(self) -> Any:
+        getter = self._getter
+        active = getter()
+        if active is None:
+            raise RuntimeError(
+                "Working outside of application context. "
+                "Accessing 'settings' requires an active 'with setup():' block."
+            )
+        return active
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._get_active(), name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_getter":
+            super().__setattr__(name, value)
+        else:
+            setattr(self._get_active(), name, value)
+
+    def __delattr__(self, name: str) -> None:
+        if name == "_getter":
+            super().__delattr__(name)
+        else:
+            delattr(self._get_active(), name)
+
+    def __repr__(self) -> str:
+        try:
+            return repr(self._get_active())
+        except RuntimeError:
+            return "<Settings Proxy (uninitialized)>"

@@ -19,6 +19,7 @@ def test_top_level_exports():
     """
     expected_exports = [
         "Settings",
+        "SettingsProxy",
         "LoggingSettings",
         "TelemetrySettings",
         "setup_logging",
@@ -109,6 +110,7 @@ def test_settings_exports():
     """
     expected_exports = [
         "Settings",
+        "SettingsProxy",
         "LoggingSettings",
         "TelemetrySettings",
         "SentrySettings",

@@ -3,13 +3,16 @@ Logging configuration setup for niitti applications.
 """
 
 import logging
+from typing import Any
+
 import structlog
 from opentelemetry.instrumentation.logging import LoggingInstrumentor
 
-from typing import Any
-
 from niitti.logging.formatters import _resolve_log_level
-from niitti.logging.processors import add_opentelemetry_context, filter_full_otel_ids_for_console
+from niitti.logging.processors import (
+    add_opentelemetry_context,
+    filter_full_otel_ids_for_console,
+)
 from niitti.settings.logging import LoggingSettings
 
 

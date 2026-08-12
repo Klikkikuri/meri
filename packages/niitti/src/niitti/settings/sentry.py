@@ -1,8 +1,7 @@
 from importlib.util import find_spec
-from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
 import structlog
+from pydantic import BaseModel, ConfigDict, Field
 
 logger = structlog.get_logger(__name__)
 
@@ -30,12 +29,12 @@ class SentrySettings(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
-    dsn: Optional[str] = Field(
+    dsn: str | None = Field(
         default=None,
         description="Sentry DSN for error tracking.",
         validation_alias="SENTRY_DSN",
     )
-    environment: Optional[str] = Field(
+    environment: str | None = Field(
         default=None,
         description="Sentry environment (e.g. 'production', 'staging').",
         validation_alias="SENTRY_ENVIRONMENT",
