@@ -42,29 +42,40 @@ pushd "$REPO_DIR"
 
 echo "Starting deployment check..."
 
-# Get current commit hash before pull
+# Get current commit and submodule state before pull
 BEFORE_HASH=$(git rev-parse HEAD)
+BEFORE_SUBMODULES=$(git submodule status --recursive 2>/dev/null || echo "")
 
-# Fetch latest changes
+# Fetch latest changes including submodules
 echo "Fetching latest changes from Git..."
-git fetch origin
+git fetch origin --recurse-submodules
 
 # Get the hash of the remote main branch
 REMOTE_HASH=$(git rev-parse origin/main)
-BUILD_FLAG=""
 
-# Check if we're already up to date
-if [ "$BEFORE_HASH" = "$REMOTE_HASH" ]; then
-    echo "Already up to date (commit: ${BEFORE_HASH:0:8})"
-else
-    echo "Updates available: ${BEFORE_HASH:0:8} -> ${REMOTE_HASH:0:8}"
-    BUILD_FLAG="--build"
+# Pull main repo if updates are available
+if [ "$BEFORE_HASH" != "$REMOTE_HASH" ]; then
+    echo "Main repo updates available: ${BEFORE_HASH:0:8} -> ${REMOTE_HASH:0:8}"
     git pull origin main
-    # Fetch updated submodules if any
-    git submodule update --init --recursive
+fi
+
+# Ensure submodules are initialized and updated
+echo "Updating submodules..."
+git submodule update --init --recursive
+
+# Get submodule state after update
+AFTER_SUBMODULES=$(git submodule status --recursive 2>/dev/null || echo "")
+
+BUILD_FLAG=""
+if [ "$BEFORE_HASH" != "$REMOTE_HASH" ] || [ "$BEFORE_SUBMODULES" != "$AFTER_SUBMODULES" ]; then
+    echo "Updates detected in main repo or submodules. Rebuilding containers..."
+    BUILD_FLAG="--build"
+else
+    echo "Already up to date (commit: ${BEFORE_HASH:0:8})"
 fi
 
 docker compose up $BUILD_FLAG "$COMPOSE_SERVICE"
+
 
 echo "Deployment completed successfully (commit: ${REMOTE_HASH:0:8})"
 
