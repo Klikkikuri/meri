@@ -13,11 +13,12 @@ from .abc import ArticleLabels, ArticleTypeLabels, ClickbaitScale, LinkLabel
 from .settings.rahti import RahtiFileSettings, RahtiGithubSettings, RahtiSettings
 
 COMMIT_MESSAGE = r"""
+{# HACK: Old legacy entries in data.json or aggressively filtered articles may occasionally have an empty urls list, even though this should theoretically never happen. We safeguard all url index accesses to prevent pipeline crashes. #}
 [🤖 bot]: Updated list with {{articles | length}} additions or updates, and removed {{removed | length}} old entries.
 {% if processed %}
 New or updated entries:
 {% for item in processed %}
-- {{item.article.urls[0].signature[0:7]}}: {{item.title.title | truncate(68)}}
+- {{ item.article.href.signature[0:7] if item.article.href else '???????' }}: {{item.title.title | truncate(68)}}
 
   {{item.title.contemplator | wordwrap(77) | indent(2)}}
 {% endfor %}
@@ -26,14 +27,14 @@ New or updated entries:
 {% if unprocessed %}
 Identified but unprocessed entries:
 {% for item in unprocessed %}
-- {{item.article.urls[0].signature[0:7]}} [reason: {{item.skip_reason}}]
+- {{ item.article.href.signature[0:7] if item.article.href else '???????' }} [reason: {{item.skip_reason}}]
 {% endfor %}
 {% endif %}
 
 {% if removed %}
 Removed entries:
 {% for entry in removed %}
-- {{entry.urls[0].sign}}
+- {{ (entry.urls|first).sign if entry.urls else '???????' }}
 {% endfor %}
 {% endif %}
 """.strip()

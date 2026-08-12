@@ -196,6 +196,16 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
         rahti.upsert(rahti_entry)
 
     # Final pass - remove old entries that are no longer needed
+    for e in rahti.rahti.entries:
+        if not e.urls:
+            logger.warning(
+                "Detected legacy RahtiEntry with empty urls list",
+                entry_title=e.title,
+                entry_outlet=e.outlet,
+                entry_updated=str(e.updated),
+                entry_labels=e.labels,
+            )
+
     cleaned_entries = prune_rahti(rahti.rahti.entries, settings.sources)
 
     # collect removed entries for logging
