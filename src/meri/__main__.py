@@ -197,13 +197,13 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     # Final pass - remove old entries that are no longer needed
     for e in rahti.rahti.entries:
-        if not e.urls:
+        if not getattr(e, "urls", None):
             logger.warning(
                 "Detected legacy RahtiEntry with empty urls list",
-                entry_title=e.title,
-                entry_outlet=e.outlet,
-                entry_updated=str(e.updated),
-                entry_labels=e.labels,
+                entry_title=getattr(e, "title", None),
+                entry_outlet=getattr(e, "outlet", None),
+                entry_updated=str(getattr(e, "updated", None)),
+                entry_labels=getattr(e, "labels", None),
             )
 
     cleaned_entries = prune_rahti(rahti.rahti.entries, settings.sources)
