@@ -155,9 +155,13 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                 title_slots.append(ArticleTitleData(a.article, None, a.source, matched_selector.raw_expression if matched_selector else None))
             elif not has_text(a.article):
                 span.set_attribute("prune_reason", "no_text")
-                logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
-                    "text": a.article.text
-                })
+                word_count = len(a.article.text.strip().split()) if a.article.text else 0
+                logger.warning(
+                    "Article has insufficient text content, filtering out",
+                    word_count=word_count,
+                    url=str(a.article.get_url()),
+                    text=a.article.text,
+                )
             else:
                 span.set_attribute("prune_reason", "keep")
                 processable_articles.append(a)
