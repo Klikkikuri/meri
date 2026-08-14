@@ -210,10 +210,20 @@ class ArticleLabels(str, Enum):
         such as automated text generation or data-driven article writing. Detected via
         Sulku AI-classification service.
 
+    - `com.github.klikkikuri/has-video=true`:
+
+        Provisional label indicating a VideoObject was found anywhere in the page metadata.
+
+    - `com.github.klikkikuri/type=video`:
+
+        The page is primarily video content and lacks meaningful article text
+
     """
     PAYWALLED = "com.github.klikkikuri/paywalled=true"
     SPONSORED  = "com.github.klikkikuri/sponsored=true"
     AI_SLOP    = "com.github.klikkikuri/ai-slop=true"
+    HAS_VIDEO  = "com.github.klikkikuri/has-video=true"
+    VIDEO      = "com.github.klikkikuri/type=video"
 
 
 class TitleQuorumLabel(str, Enum):
