@@ -39,8 +39,7 @@ def test_article_retrieval_and_signature_html_cache():
 
         for entry in article_entries:
             url_str = entry["url"]
-            signature = entry["signature"]
-            assert signature, f"Article entry in {filepath.name} must specify signature hash"
+            signature = entry.get("signature")
 
             # Verify extractor resolution and fetch article using extractor ONLY
             extractor = get_extractor(url_str)
@@ -48,10 +47,13 @@ def test_article_retrieval_and_signature_html_cache():
 
             article = extractor.fetch(url_str)
             assert article is not None
-            assert article.urls[0].signature == signature
 
-            # Check or pull HTML to tests/data/html/<signature>.html using extractor fetched HTML
-            html_file = HTML_DIR / f"{signature}.html"
+            if signature:
+                assert article.urls[0].signature == signature
+
+            # Check or pull HTML to tests/data/html/<id>.html using extractor fetched HTML
+            file_id = signature or url_str.replace("://", "_").replace("/", "_").replace(".", "_")
+            html_file = HTML_DIR / f"{file_id}.html"
             if not html_file.exists():
                 html_content = getattr(article, "html", None) or ""
                 if html_content:

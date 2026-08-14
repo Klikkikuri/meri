@@ -43,7 +43,7 @@ def load_all_source_data() -> list[tuple[str, NewsSource, list[Article], list[di
                 "urls": [
                     {
                         "href": entry["url"],
-                        "signature": entry["signature"],
+                        "signature": entry.get("signature") or "",
                         "labels": ["com.github.klikkikuri/link-rel=canonical"],
                     }
                 ],
