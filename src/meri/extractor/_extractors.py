@@ -1,20 +1,20 @@
 from copy import deepcopy
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from random import randint
 from typing import cast
 from zoneinfo import ZoneInfo
 
-from opentelemetry.trace import SpanKind
-from pydantic import AnyHttpUrl
 from niitti import get_logger
 from niitti.tracing import span
+from opentelemetry.trace import SpanKind
+from pydantic import AnyHttpUrl
 
 from meri.abc import ArticleMeta, LinkLabel, article_url
 from meri.scraper import get_user_agent
 from meri.utils import clean_url, detect_language
 
-from ._common import HtmlArticle
 from ._cfchallenge import CloudflareStatus, cloudflare_status
+from ._common import HtmlArticle
 
 logger = get_logger(__name__)
 
@@ -28,7 +28,6 @@ class TrafilaturaArticle(HtmlArticle):
     An article extracted using the trafilatura library.
     """
 
-    pass
 
 
 @span("trafilatura_extractor", kind=SpanKind.CLIENT)
@@ -37,8 +36,7 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     Extract the article using the trafilatura library.
     """
     from trafilatura import bare_extraction, fetch_url
-    from trafilatura.settings import DEFAULT_CONFIG
-    from trafilatura.settings import Document
+    from trafilatura.settings import DEFAULT_CONFIG, Document
 
     # Find date in ISO 8601 format
     date_iso_format = r"%Y-%m-%dT%H:%M:%S%z"
@@ -101,20 +99,23 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
     # date_published = find_date(downloaded, url=url, outputformat=iso_format, original_date=True, deferred_url_extractor=True)
     # date_modified = find_date(downloaded, url=url, outputformat=iso_format, original_date=False, deferred_url_extractor=True)
 
-    if not document.text:
-        logger.warning("Trafilatura extracted article has no text URL: %r", url, extra={"document": document})
-        raise ValueError(f"Extracted article has no text (url: {url!r})")
+    language = document.language
+    if not language and document.text:
+        try:
+            language = detect_language(document.text)
+        except Exception:  # noqa: BLE001
+            language = None
 
     article = TrafilaturaArticle(
         meta=ArticleMeta(
             title=document.title,
-            language=document.language or detect_language(document.text),
+            language=language,
             authors=[] if not document.author else [document.author],
         ),
-        text=document.text,
+        text=document.text or "",
         urls=[
             article_url(
-                document.url,  # type: ignore[arg-type]
+                document.url or url,  # type: ignore[arg-type]
                 labels=[LinkLabel.LINK_CANONICAL]
             ),
         ],
@@ -135,12 +136,12 @@ def trafilatura_extractor(url: AnyHttpUrl | str) -> TrafilaturaArticle:
             )
             parsed_date = parsed_date.replace(tzinfo=DEFAULT_TIMEZONE)
 
-        parsed_date = parsed_date.astimezone(timezone.utc)
+        parsed_date = parsed_date.astimezone(UTC)
 
         article.updated_at = parsed_date
 
     else:
-        article.created_at = datetime.now(timezone.utc)
+        article.created_at = datetime.now(UTC)
 
     if document.url != url:
         article.urls.append(article_url(url, type=LinkLabel.LINK_MOVED))
@@ -160,7 +161,7 @@ class TrafilaturaExtractorMixin:
         url = clean_url(str(url))
 
         article = trafilatura_extractor(url)
-        if not article or not article.text:
+        if not article:
             raise ValueError(f"Failed to extract article from URL {url}")
 
         from ._processors import label_paywalled_content, label_video_content
