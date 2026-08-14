@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 
@@ -43,7 +43,6 @@ def load_all_source_data() -> list[tuple[str, NewsSource, list[Article], list[di
                 "urls": [
                     {
                         "href": entry["url"],
-                        "signature": entry.get("signature") or "",
                         "labels": ["com.github.klikkikuri/link-rel=canonical"],
                     }
                 ],
@@ -107,7 +106,7 @@ def test_ground_truth_pipeline_execution(mock_title_response: ArticleTitleRespon
             rahti_dataset = RahtiData(
                 status="ok",
                 schema_version="0.1.0",
-                updated=datetime.now(timezone.utc),
+                updated=datetime.now(UTC),
                 entries=[],
             )
             cleaner = RahtiCleaner(rahti_dataset)
