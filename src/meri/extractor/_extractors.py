@@ -163,7 +163,8 @@ class TrafilaturaExtractorMixin:
         if not article or not article.text:
             raise ValueError(f"Failed to extract article from URL {url}")
 
-        from ._processors import label_paywalled_content
+        from ._processors import label_paywalled_content, label_video_content
         article = label_paywalled_content(article)
+        article = label_video_content(article)
 
         return article

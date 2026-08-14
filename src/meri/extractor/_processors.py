@@ -10,6 +10,7 @@ import requests
 from meri.abc import ArticleLabels
 
 from ._paywalled import is_paywalled_content
+from ._video import is_video_content
 
 from ._common import HtmlArticle
 from meri.settings import settings
@@ -35,6 +36,16 @@ def label_paywalled_content(article: A) -> A:
     paywalled = is_paywalled_content(article.html)
     if paywalled and ArticleLabels.PAYWALLED not in article.labels:
         article.labels.append(ArticleLabels.PAYWALLED)
+
+    return article
+
+
+def label_video_content(article: A) -> A:
+    """
+    Add a provisional video label to the article if any video metadata is present.
+    """
+    if is_video_content(article.html) and ArticleLabels.HAS_VIDEO not in article.labels:
+        article.labels.append(ArticleLabels.HAS_VIDEO)
 
     return article
 
