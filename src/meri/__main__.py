@@ -139,6 +139,11 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
     for a in full_articles:
+        # Classify as primary video content if video metadata is present without meaningful article text
+        if ArticleLabels.HAS_VIDEO in a.article.labels and not has_text(a.article):
+            if ArticleLabels.VIDEO not in a.article.labels:
+                a.article.labels.append(ArticleLabels.VIDEO)
+
         with logger.span("prune_article", url=str(a.article.get_url())) as span:
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
