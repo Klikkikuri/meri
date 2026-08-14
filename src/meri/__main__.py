@@ -139,6 +139,11 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
     for a in full_articles:
+        # Classify as primary video content if video metadata is present without meaningful article text
+        if ArticleLabels.HAS_VIDEO in a.article.labels and not has_text(a.article):
+            if ArticleLabels.VIDEO not in a.article.labels:
+                a.article.labels.append(ArticleLabels.VIDEO)
+
         with logger.span("prune_article", url=str(a.article.get_url())) as span:
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
@@ -150,9 +155,13 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                 title_slots.append(ArticleTitleData(a.article, None, a.source, matched_selector.raw_expression if matched_selector else None))
             elif not has_text(a.article):
                 span.set_attribute("prune_reason", "no_text")
-                logger.debug("Pruning article with insufficient text: %r", a.article.get_url(), extra={
-                    "text": a.article.text
-                })
+                word_count = len(a.article.text.strip().split()) if a.article.text else 0
+                logger.warning(
+                    "Article has insufficient text content, filtering out",
+                    word_count=word_count,
+                    url=str(a.article.get_url()),
+                    text=a.article.text,
+                )
             else:
                 span.set_attribute("prune_reason", "keep")
                 processable_articles.append(a)
@@ -197,13 +206,13 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     # Final pass - remove old entries that are no longer needed
     for e in rahti.rahti.entries:
-        if not e.urls:
+        if not getattr(e, "urls", None):
             logger.warning(
                 "Detected legacy RahtiEntry with empty urls list",
-                entry_title=e.title,
-                entry_outlet=e.outlet,
-                entry_updated=str(e.updated),
-                entry_labels=e.labels,
+                entry_title=getattr(e, "title", None),
+                entry_outlet=getattr(e, "outlet", None),
+                entry_updated=str(getattr(e, "updated", None)),
+                entry_labels=getattr(e, "labels", None),
             )
 
     cleaned_entries = prune_rahti(rahti.rahti.entries, settings.sources)

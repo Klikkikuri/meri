@@ -74,8 +74,8 @@ class SkipProcessingSettings(BaseModel):
     """
 
     labels: list[str] = Field(
-        default_factory=lambda: ["paywalled=true"],
-        description="List of Kubernetes-style label selectors (e.g. 'paywalled=true', 'article-type = opinion') that skip title generation and are stored in Rahti without processing.",
+        default_factory=lambda: ["paywalled=true", "type=video"],
+        description="List of label selectors (e.g. 'paywalled=true', 'type=video', 'article-type = opinion') that skip title generation and are stored in Rahti without processing.",
     )
 
     @field_validator("labels")
@@ -232,4 +232,3 @@ def clear_settings() -> None:
 
 
 settings: SettingsProxy = SettingsProxy(get_settings)
-

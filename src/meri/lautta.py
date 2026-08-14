@@ -39,7 +39,7 @@ def matching_selector(obj: Article | RahtiEntry | Iterable, selector_strings: Op
     """
     if selector_strings is None:
         sk_settings = getattr(settings, "skip_processing", None)
-        selector_strings = sk_settings.labels if sk_settings else ["paywalled=true"]
+        selector_strings = sk_settings.labels if sk_settings else None
 
     if not selector_strings:
         return None
@@ -346,10 +346,7 @@ def has_text(article: Article) -> bool:
     """
     text = article.text.strip() if article.text else ""
     word_count = len(text.split())
-    if word_count < MINIMUM_TEXT_WORDS:
-        logger.warning("Article has insufficient text content (word count: %d), filtering out: %r", word_count, article.get_url(), extra={"word_count": word_count, "url": str(article.get_url())})
-        return False
-    return True
+    return word_count >= MINIMUM_TEXT_WORDS
 
 
 
