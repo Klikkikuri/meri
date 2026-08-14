@@ -39,7 +39,7 @@ def matching_selector(obj: Article | RahtiEntry | Iterable, selector_strings: Op
     """
     if selector_strings is None:
         sk_settings = getattr(settings, "skip_processing", None)
-        selector_strings = sk_settings.labels if sk_settings else ["paywalled=true"]
+        selector_strings = sk_settings.labels if sk_settings else None
 
     if not selector_strings:
         return None
