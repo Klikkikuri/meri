@@ -19,6 +19,7 @@ Order of precedence:
 """
 from importlib.util import find_spec
 from pathlib import Path
+from typing import cast
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
@@ -231,4 +232,4 @@ def clear_settings() -> None:
     _active_settings = None
 
 
-settings: SettingsProxy = SettingsProxy(get_settings)
+settings = cast(Settings, SettingsProxy(get_settings))
