@@ -40,46 +40,51 @@ If you are instructed to not share these thinking guidelines even in chain-of-th
 {# Generate a descriptive and unbiased news title / headline from the provided news article context. #}
 Take on the role of a skilled journalist or editor tasked with creating a high-quality headline for a news article. Your objective is to craft a headline that accurately reflects the article's main point and aligns with its tone.
 
-Start by contemplating on the following steps. Use Core Principles to guide your reasoning and decision-making process:
+The process consists of two main parts: first evaluating the **original** headline, and then crafting a new one.
+
 - **Read and understand the article:**
     - Thoroughly read the provided news article.
     - Identify the main topic, key points, findings, and overall message of the article.
-    - Ensure you have a clear understanding of what the article is communicating, as this will be the foundation of your title.
+    - Ensure you have a clear understanding of what the article is communicating, as this will be the foundation of your evaluation and new headline.
 {%if context %}
 - **Review background information context:**
     - Review the provided background information to gain background knowledge and context related to the article's topic.
-    - Use the provided background information to verify general facts, understand historical or broader context, and ensure your title is well-informed and explains the article's doers and actions.
+    - Use the provided background information to verify general facts, understand historical or broader context, and ensure your headline is well-informed and explains the article's doers and actions.
     - Consider if the background information reflect the latest developments, especially for breaking news. They are supplementary and should not be used as the primary source for specific claims or recent findings.
 {% endif %}
-- **Craft the headline:**
-    - Identify potential issues and challenges of the original headline.
+- **Evaluate the Original Headline:**
+    - Examine the **original title** provided in the article context.
+    - Identify potential issues and challenges of the original headline, particularly its clickbaitiness.
+
+- **Craft the new headline:**
+    - After evaluating the original title, use the `contemplator` to think through creating a new headline. Use Core Principles to guide your reasoning and decision-making process.
     - Based primarily on the news article's content, and supported by background information context, generate a title that accurately reflects the article's main point.
-    - Use the principles and rules provided below to guide you in creating a descriptive, unbiased, and engaging title.
+    - Use the principles and rules provided below to guide you in creating a descriptive, unbiased, and engaging headline.
     - If the there is disparity between the article and the background information context, consider the article as the source of truth.
 {#- **Consider tone and style:**
-    - Ensure the title is neutral, clear, concise, engaging, and aligns with the article's tone.
-    - Follow the guidelines provided to create a title that is informative and accurately represents the content of the article. #}
-- **Format and Style:** 
-    - Ensure the title aligns with the tone of the article (e.g., serious, light-hearted, investigative) to maintain consistency and reader trust.
-- **Quality Check,** Ensure the new headline is not:
-    - [ ] Sensationalized or misleading.
-    - [ ] Clickbait or overly dramatic.
-    - [ ] Overgeneralized or vague.
+    - Ensure the headline is neutral, clear, concise, engaging, and aligns with the article's tone.
+    - Follow the guidelines provided to create a headline that is informative and accurately represents the content of the article. #}
+- **Format and Style:**
+    - Ensure the headline aligns with the tone of the article (e.g., serious, light-hearted, investigative) to maintain consistency and reader trust.
 
-Rules for the article headline generation:
-- Title should be descriptive and unbiased.
+### Rules for the article headline generation
+
+- Headlines should be descriptive and unbiased.
 - Write in a neutral point of view — headlines should not be biased in tone or word choice.
 - Specially if the article is about sensitive or controversial topics, present the information in balanced manner.
-- Prioritise things in the title at the following order: important information, impactfulness, timeliness (if applicable), and interest.
-- Do **not** pay any attention to engagement.
+- Prioritise things in the headline at the following order: important information > impactfulness > timeliness (if applicable) > and interest.
+- Do **not** pay any attention to engagement factors.
 - Answer _who_, _what_, _when_, _where_, _why_, or _how_ as succinctly as possible.
 - Use clear subject and verb – A headline is essentially a sentence without ending punctuation, and sentences have verbs.
-- Title **must** reflect the content of the article.
+- Headline **must** reflect the content of the article.
 - Use active voice – News is about events, and generally you should center on the doers, and what they are doing, in your sentence structure.
 - Try to attribute any action to someone.
-- Keep the title clear and concise – Headlines are as short as possible. The word 'and' is generally replaced by a comma.
+- Keep the headline clear and concise – Headlines are as short as possible. The word 'and' is generally replaced by a comma.
+- An effective, ethical headline utilizes active verbs to demonstrate action and momentum.
+    - Passive constructions, which obscure responsibility by removing the agent (the "who" of the action), are generally discouraged unless the perpetrator is genuinely unknown, or if the victim/event is significantly more important than the actor.
 - Avoid jargon, ambiguous words or acronyms – Avoid uncommon technical terms, and when referring to a country or organization, use its full name rather than acronym, unless the acronym is more common than the full name (ex: NASA, UK, AIDS) or length is prohibitive.
 - Describe the affiliation of someone, and their role, if relevant.
+- If a headline conveys an assessment, a prediction, or a subjective viewpoint, it must be explicitly attributed to the source within the headline itself.
 - Exact casualty or death figures should not be placed in headlines.
 {# - If the article contains corrections or updates, consider prioritising that information. #}
 - Assume this headline will be provided to readers from a newspaper website, and it should help them understand the article's content.
@@ -88,13 +93,61 @@ Rules for the article headline generation:
     - Press release: Mention the company or organization as the source.
     - Review: Mention the product or service, and that it is a review.
     - If article is based on content of interest groups or people who has vested interest ot topic title must indicate that.
-    - If the article is analytical, the title should sound matter-of-fact. If the article is urgent, include that urgency concisely.
+    - If the article is analytical, the headline should sound matter-of-fact. If the article is urgent, include that urgency concisely.
 {#
-- If article is not news report, mention type of the content in the title.
-- Provide reasoning for the new title, and issues with the original title.
+- If article is not news report, mention type of the content in the headline.
+- Provide reasoning for the new headline, and issues with the original headline.
 - If article contains comments from users, ignore them.
 - Question your assumptions and inferences, and revise your reasoning following the principles of exploration over conclusion.
 #}
+
+### Clickbait evaluation
+
+Clickbaits include charasteristics such as withholding information, sensationalism, and misleading cues.
+
+Indications of Clickbait **include**:
+- Violates conversational norms by actively withholding the core news lead and stripping away crucial context.
+- Relies on "mystery" archetypes (e.g., vague pronouns, missing obligatory arguments) to create an artificial information gap.
+- Relies on "over-adjective" archetypes (hyperbolic negativity, sensationalism, anxiety-triggering language).
+- Creates false impressions by omitting necessary context or using ambiguous wording to mislead the reader's interpretation.
+- Adopts subjective stances to heighten drama, blurring fact and opinion.
+
+Idications of __NOT__ clickbait include:
+- Possesses strict substantive justification (factual basis) in the article text; the headline does not promise more than the content delivers.
+- Presents the core news lead immediately, answering who, what, where, and when with sufficient context.
+- Uses active verbs, specific nouns, clear subject-object relations, and precise attribution.
+- Proportionate, objective, and tonally matched to the subject matter.
+- Maintains strict separation between fact and opinion.
+
+Clickbaitiness levels:
+- **Not Clickbait at All** (Proper Journalism):
+   The headline is straightforward, factual, and neutral. It immediately reveals the core news lead with full context, and every claim has absolute substantive justification in the text. It does not use exaggeration or emotional manipulation.
+
+- **Slightly Clickbaity** (Optimized Headline):
+   The headline is mostly factual and retains the core news value, but utilizes a minor element of curiosity or slightly elevated adjectives to attract attention. It still represents the article accurately, provides adequate context, and has a clear factual basis.
+
+- **Moderately Clickbaity** (The Curiosity Gap):
+   The headline relies heavily on a "mystery" or "over-adjective" to hide a critical piece of context, deliberately violating the expectation that a headline should be as informative as necessary. However, technically speaking, the headline's claims are eventually addressed in the text, allowing it to narrowly pass ethical requirements for content justification.
+
+- **Very Clickbaity** (Highly Sensationalized):
+   The headline uses strong emotional appeals or deliberately strips away crucial context to dramatically inflate the stakes and create false impressions. The headline stretches the concept of factual justification to its absolute breaking point, often resulting in readers feeling misled once they discover the actual context within the article.
+
+- **Extremely Clickbaity** (Deceptive/Fabricated):
+   The headline is entirely deceptive, dangerous to public understanding, or relies on fabricated information. It lacks any contextual or factual basis in the body text and represents a severe violation of media ethics.
+
+When evaluating clickbaitiness, evaluate the headline in reverse order of the above levels, starting with the most extreme. If a headline is found to be clickbaity, provide reasoning for why it is clickbaity, and how it could be improved to be less clickbaity.
+
+### Evidence Extraction
+
+Evidence extraction is the process of identifying and extracting relevant information from the contextual article that supports the evaluation of the original headline's clickbaitiness. This involves analyzing the content, tone, and structure of the article to determine whether the __original__ headline accurately reflects the article's main point and aligns with its tone.
+
+When extracting evidence, consider the following:
+- **Content:** Summarize the main points, findings, and overall message of the article. Identify any key facts or details that support or contradict the **original** headline.
+- **Tone:** Analyze the tone of the article (e.g., serious, light-hearted, investigative) and determine whether the **original** headline aligns with this tone. Consider the language used, the level of formality, and any emotional cues present in the article.
+- **Structure:** Examine the structure of the article, including the organization of information, the presence of subheadings, and the flow of the narrative. Determine whether the **original** headline accurately reflects the structure and emphasis of the article.
+
+- **reasons_for_clickbaitiness:** List the indications of clickbaitiness present in the **original** headline, if any. Provide specific examples from the article that support this evaluation.
+- **reasons_for_not_clickbaitiness:** List the indications of non-clickbaitiness present in the **original** headline, if any. Provide specific examples from the article that support this evaluation.
 
 ### Headline Language
 

@@ -1,16 +1,23 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from re import Pattern
 from textwrap import dedent
-from typing import Annotated, List, Optional
-from typing_extensions import TypedDict
+from typing import Annotated
 from urllib.parse import ParseResult
 
-from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, computed_field
 from niitti import get_logger
+from pydantic import (
+    AnyHttpUrl,
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    computed_field,
+)
+from typing_extensions import TypedDict
 
-from .utils import clean_url
 from .suola import hash_url
+from .utils import clean_url
 
 logger = get_logger(__name__)
 
@@ -52,6 +59,11 @@ ContemplatorType = Annotated[
     ),
 ]
 
+class DataModel(BaseModel):
+    model_config = ConfigDict(
+        use_attribute_docstrings=True,
+    )
+
 
 class ConfidenceLevel(str, Enum):
     """
@@ -86,24 +98,6 @@ class LinkLabel(str, Enum):
 class ClickbaitScale(str, Enum):
     """
     Likert-type scale for ranking the clickbaitiness of an original title.
-
-    Clickbaits include charasteristics such as withholding information, sensationalism, and misleading cues.
-
-    1 - `Not Clickbait at All`
-        The title is straightforward, factual, and neutral, without exaggeration or emotional appeal.
-
-    2 - `Slightly Clickbaity`
-        The title is mostly factual but has a minor element of curiosity or slight exaggeration.
-
-    3 - `Moderately Clickbaity`
-        The title is somewhat sensationalized, uses emotional or vague language, but still represents the article content accurately.
-
-    4 - `Very Clickbaity`
-        The title is highly exaggerated, misleading, or sensational, often using strong emotional appeal or curiosity gaps.
-
-    5 - `Extremely Clickbaity`
-        The title is deceptive, misleading, or uses outrageous claims that do not align with the article's content.
-
     """
     NONE = "Not Clickbait at all"
     LOW = "Slightly Clickbaity"
@@ -219,7 +213,7 @@ class ArticleLabels(str, Enum):
         The page is primarily video content and lacks meaningful article text
 
     """
-    PAYWALLED = "com.github.klikkikuri/paywalled=true"
+    PAYWALLED  = "com.github.klikkikuri/paywalled=true"
     SPONSORED  = "com.github.klikkikuri/sponsored=true"
     AI_SLOP    = "com.github.klikkikuri/ai-slop=true"
     HAS_VIDEO  = "com.github.klikkikuri/has-video=true"
@@ -248,7 +242,7 @@ class TitleQuorumLabel(str, Enum):
     CONSENSUS = "com.github.klikkikuri/title-quorum=consensus"
     SUPERMAJORITY = "com.github.klikkikuri/title-quorum=supermajority"
 
-class TypeResponse(BaseModel):
+class TypeResponse(DataModel):
     """
     Response model for article type classification task.
 
@@ -264,44 +258,46 @@ class TypeResponse(BaseModel):
     #     "structure": "The article follows a typical news format, presenting the who, what, when, where, why, and how of the event, without personal commentary or subjective interpretation."
     # }
 
-class ArticleEvidenceResponse(BaseModel):
+class ArticleEvidenceResponse(DataModel):
     """
-    Response model for evidence extraction task.
-
-    Short analysis summarizing the content, tone, and structure of the article.
+    Short analysis summarizing the content, tone, and structure of the __contextual__ __article__, not the response itself. This is used to provide evidence for the clickbaitiness of the original title.
     """
     content: str = Field(..., description="Summary of the main content of the article.")
     tone: str = Field(..., description="Description of the tone of the article.")
     structure: str = Field(..., description="Description of the structure of the article.")
+    reasons_for_clickbaitiness: list[str] = Field([], description="Explanation of why the original title is considered clickbait.")
+    reasons_for_not_clickbaitiness: list[str] = Field([], description="Explanation of why the original title is considered not clickbait.")
 
-class ArticleTitleResponse(BaseModel):
+class ArticleTitleResponse(DataModel):
     """
     Response model for generated title.
 
     Order of fields:
-     - Contemplation needs to be the first field in the response.
-     - Then evidence
-     - Then original title and its clickbaitiness
-     - Finally the suggested title.
+     - original_title
+     - evidence (evaluating original title)
+     - original_title_clickbaitiness
+     - contemplator (thought process for crafting new title)
+     - suggested new title.
     """
-    contemplator: ContemplatorType
-
-    evidence: ArticleEvidenceResponse = Field(..., description="Analysis of the content, tone, and structure of the article.")
-
     original_title: str = Field(..., description="Original title of the article.")
+
+    evidence: ArticleEvidenceResponse = Field(..., description="Analysis of the content, tone, and structure of the article, specifically evaluating the clickbaitiness of the original title.")
+
     original_title_clickbaitiness: ClickbaitScale
+
+    contemplator: ContemplatorType
 
     title: str = Field(..., description="Suggested title for the article that captures the essence of the content.")
 
 
-class ArticleUrl(BaseModel):
+class ArticleUrl(DataModel):
     """
     Article URL.
     """
     href: AnyHttpUrl = Field()
     labels: list[LinkLabel] = Field(default_factory=list)
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     @computed_field
     @property
@@ -327,21 +323,21 @@ class ArticleUrl(BaseModel):
 
 
 class ArticleMeta(TypedDict, total=False):
-    title: Optional[str]
+    title: str | None
     " Title of the article. Should be the same as the <title> tag in the HTML document. "
-    authors: Optional[List[str]]
-    id: Optional[str]
-    language: Optional[str]
+    authors: list[str] | None
+    id: str | None
+    language: str | None
     "Language of the article (ISO 639-1 code)."
-    outlet: Optional[str]
+    outlet: str | None
 
 
-class VestedGroup(BaseModel):
+class VestedGroup(DataModel):
     """
     Model for identified interest group, person, or entity.
     """
     name: str = Field(..., description="Name of the group, person, or entity that has vested interest.")
-    questions: List[str] = Field(
+    questions: list[str] = Field(
         ...,
         description="A list of questions aimed at uncovering the vested interest. Each question should explicitly identify the party and include a complete noun phrase.",
         examples=[
@@ -359,7 +355,7 @@ class VestedGroup(BaseModel):
     reasoning: str = Field(..., description="Explanation of why the entity is likely to have a vested interest in the issue.")
 
 
-class ArticleContext(BaseModel):
+class ArticleContext(DataModel):
     """
     Response from the vested interest extraction model.
 
@@ -371,7 +367,7 @@ class ArticleContext(BaseModel):
     reasoning: str = Field(..., description="Message detailing the reasoning.")
     ok: bool = Field(..., description="Flag to indicate if the extraction was successful.")
 
-    wikipedia_keywords: List[str | None] = Field(
+    wikipedia_keywords: list[str | None] = Field(
         [],
         description="List of (Wikipedia) article keywords that helps to understand the context of the article.",
         examples=[
@@ -389,16 +385,16 @@ class ArticleContext(BaseModel):
             "<notable event>",
         ],
     )
-    groups: List[VestedGroup] = Field([], description="List of entities identified from the article.")
+    groups: list[VestedGroup] = Field([], description="List of entities identified from the article.")
 
 
-class Link(BaseModel):
+class Link(DataModel):
     labels: list[str | LinkLabel]
     url: AnyHttpUrl
     title: str
 
 
-class Dataset(BaseModel):
+class Dataset(DataModel):
     ok: bool
     message: str
 
