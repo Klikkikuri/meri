@@ -25,7 +25,7 @@ from .settings.newssources import NewsSource
 
 MAX_PARALLEL_FETCHES = 3
 
-MINIMUM_TEXT_WORDS = 50
+MINIMUM_TEXT_WORDS = 75
 """ Minimum number of words in article text to be considered valid. Articles with less text will be filtered out.
 This is a simple heuristic to remove articles that failed to extract properly or are not actual news articles
 (e.g. videos, galleries, etc.). """
