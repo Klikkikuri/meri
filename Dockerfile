@@ -82,19 +82,29 @@ ENV SENTRY_ENVIRONMENT="development"
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
     XDG_CONFIG_HOME="/app/instance"
-    
+
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
     ANONYMIZED_TELEMETRY="False"
 
 RUN echo "source ${VIRTUAL_ENV}/bin/activate" >> /etc/bash.bashrc
 
-# Not needed since the base image already has these installed
-# RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
-#     --mount=type=cache,target=/var/lib/apt,sharing=locked \
-#     apt-get update && apt-get --no-install-recommends install -y \
-#         # Install git and bash-completion
-#         git bash-completion
+# git and bash-completion are already provided by the devcontainer base image.
+# These are the search/inspection tools coding agents reach for by default; without them agents
+# silently fall back to slower or less accurate alternatives (or assume a binary that is not there).
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get --no-install-recommends install -y \
+        # Fast recursive code search, respects .gitignore
+        ripgrep \
+        # Fast file finding, installed as `fdfind` on Debian
+        fd-find \
+        # Structured data querying; `yq` is the jq wrapper for YAML config files
+        jq yq \
+        # Linting for the shell scripts in the repository (cron.sh, entrypoint.sh)
+        shellcheck && \
+    # Debian renames fd to avoid a conflict; expose the name every tool and agent expects
+    ln -sf "$(command -v fdfind)" /usr/local/bin/fd
 
 # Install development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
