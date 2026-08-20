@@ -270,14 +270,14 @@ class ArticleEvidenceResponse(DataModel):
 
 class ArticleTitleResponse(DataModel):
     """
-    Response model for generated title.
+    Response model for generated headline.
 
     Order of fields:
      - original_title
      - evidence (evaluating original title)
      - original_title_clickbaitiness
-     - contemplator (thought process for crafting new title)
-     - suggested new title.
+     - contemplator (thought process for evaluating original headline and crafting a new headline)
+     - suggested new headline. Example
     """
     original_title: str = Field(..., description="Original title of the article.")
 
@@ -287,7 +287,7 @@ class ArticleTitleResponse(DataModel):
 
     contemplator: ContemplatorType
 
-    title: str = Field(..., description="Suggested title for the article that captures the essence of the content.")
+    title: str = Field(..., description="Suggested headline for the article that captures the essence of the content and follows journalistic standards, while avoiding clickbait tactics.")
 
 
 class ArticleUrl(DataModel):
