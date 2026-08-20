@@ -25,6 +25,7 @@
 #   labels:
 #     - "paywalled=true, article-type = opinion" # Match if BOTH paywalled=true AND article-type=opinion
 #     - "sponsored=true"                         # OR match if sponsored=true
+#     - "type=video"                             # OR match if primary video content
 #     - "article-type in (opinion, review)"      # OR match if opinion or review
 
 sentry:
