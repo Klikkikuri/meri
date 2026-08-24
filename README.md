@@ -18,6 +18,16 @@ git submodule update --init --recursive
 Note that `suola` is installed from a released wheel (see `[tool.uv.sources]` in `pyproject.toml`), not from the
 `packages/suola` checkout.
 
+Of those submodules only `packages/niitti` is a **uv workspace member**. `packages/sulku` is deliberately not
+one: meri talks to Sulku over HTTP (`meri.sulku.service`), never by importing it, and Sulku is its own uv
+workspace with its own `packages/niitti` checkout. Making it a member would force a single niitti resolution
+across both projects, which is why the two repositories used to fight over the niitti source.
+
+The practical consequence is that `--recursive` checks Niitti out **twice** — at `packages/niitti` and at
+`packages/sulku/packages/niitti`. This is expected. A Niitti change therefore has to be committed once and then
+have its pointer bumped in both repositories; the `check-niitti-sync` pre-commit hook fails the commit if the
+two checkouts drift apart.
+
 Since suola v0.5.0 the module parses **compiled JSON rules only**; `packages/suola/rules.yaml` is build-time
 source that `make rules` compiles into `packages/suola/build/rules.json`. That compiled file is the default for
 the `suola_rules` setting when it exists, and the rules built into the module are used otherwise. The setting

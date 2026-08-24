@@ -85,18 +85,19 @@ suola = [
 ]
 #luotsi = { path = "src/luotsi" }
 niitti = { workspace = true }
-sulku = { workspace = true }
 #suola = { workspace = true }
 #karikko = { workspace = true }
 #meri = { path = "./src/meri" }
 
 [tool.uv.workspace]
-members = ["packages/niitti", "packages/sulku"]
+# `packages/sulku` is a submodule but deliberately NOT a member: meri only speaks to Sulku over HTTP
+# (`meri.sulku.service`), and membership would force one niitti resolution across both projects — sulku
+# carries its own `packages/niitti` checkout and is its own uv workspace.
+members = ["packages/niitti"]
 #members = ["packages/suola/python"]
 #members = ["src/*"]
 # Exclude self from workspace
 #exclude = ["src/meri"]
-exclude = ["packages/sulku/packages/niitti"]
 
 [build-system]
 requires = ["hatchling"]
@@ -128,3 +129,8 @@ tracing = [
 dev = [
     "nbconvert>=7.17.1",
 ]
+
+[tool.pytest.ini_options]
+# Confine collection to meri's own tests: `packages/` holds submodules (sulku, niitti, rahti, suola)
+# that are separate projects with their own dependencies and test suites.
+testpaths = ["tests"]

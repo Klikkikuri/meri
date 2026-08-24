@@ -35,3 +35,13 @@ repos:
   hooks:
     # Run the linter.
     - id: ruff-check
+
+# Meri and Sulku each vendor their own `packages/niitti` submodule; keep the two pointers in step.
+- repo: local
+  hooks:
+    - id: check-niitti-sync
+      name: Niitti submodules point at the same commit
+      entry: scripts/check-niitti-sync.sh
+      language: script
+      always_run: true
+      pass_filenames: false
