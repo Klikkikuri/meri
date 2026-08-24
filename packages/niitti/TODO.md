@@ -1,1 +1,0 @@
-- The public API is currently too flat. The root `__init__.py` exports a lot of implementation details. The public API is therefore coupled to internal implementation concepts. make the primary API smaller. Keep lower-level functions available from submodules.
