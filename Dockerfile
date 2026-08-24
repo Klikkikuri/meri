@@ -105,7 +105,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         # Linting for the shell scripts in the repository (cron.sh, entrypoint.sh)
         shellcheck && \
     # Debian renames tools to avoid a conflict; expose the name agents expects
-    ln -sf "$(command -v fdfind)" /usr/local/bin/fd &&
+    ln -sf "$(command -v fdfind)" /usr/local/bin/fd && \
     ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
 # Install development dependencies
