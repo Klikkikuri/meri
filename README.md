@@ -18,6 +18,12 @@ git submodule update --init --recursive
 Note that `suola` is installed from a released wheel (see `[tool.uv.sources]` in `pyproject.toml`), not from the
 `packages/suola` checkout.
 
+Since suola v0.5.0 the module parses **compiled JSON rules only**; `packages/suola/rules.yaml` is build-time
+source that `make rules` compiles into `packages/suola/build/rules.json`. That compiled file is the default for
+the `suola_rules` setting when it exists, and the rules built into the module are used otherwise. The setting
+also accepts an `http(s)://` URL — such as the `rules.json` published by suola's CI into the `rahti` repository,
+see `config.example.yaml` — which is downloaded and cached under the user cache directory.
+
 ## Running Meri
 
 Copy the example configuration files:
