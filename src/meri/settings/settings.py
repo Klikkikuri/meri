@@ -56,8 +56,8 @@ _requests_cache_available: bool = find_spec("requests_cache") is not None
 
 _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 
-# Default Suola rules path from monorepo
-_suola_rules = Path("packages/suola/rules.yaml").resolve()
+# Compiled Suola rules from the monorepo, built by `make rules` in the suola checkout.
+_suola_rules = Path("packages/suola/build/rules.json").resolve()
 
 
 def _iter_subclasses(base_cls):
@@ -118,10 +118,24 @@ class Settings(NiittiSettings):
 
     sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
 
-    suola_rules: Path | None = Field(
-        _suola_rules if _suola_rules.exists() else None,
-        description="Path to Suola rules file. If not set, inbuilt rules will be used.",
+    suola_rules: str | None = Field(
+        str(_suola_rules) if _suola_rules.exists() else None,
+        description="Location of the compiled Suola JSON rules: an `http(s)://` URL, a `file://` URL or a "
+        "filesystem path. If empty, the rules built into the Suola module are used.",
     )
+
+    @field_validator("suola_rules")
+    @classmethod
+    def validate_suola_rules(cls, v: str | None) -> str | None:
+        from meri.suola import assert_json_rules
+
+        v = v.strip() if v else ""
+        if not v:
+            return None
+
+        # Fail here rather than deep in the Wasm module, so a stale YAML location names the setting it came from.
+        assert_json_rules(v)
+        return v
 
     url_blacklist: list[str] = Field(default_factory=list, description="List of URL patterns to ignore.")
     """

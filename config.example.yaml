@@ -11,7 +11,10 @@
 # REQUESTS_CACHE: true  # Enable HTTP requests cache (auto-detected if available)
 # MAX_WORKERS: 3  # Maximum number of worker threads for article processing
 # PROMPT_DIR: "/app/prompts"  # Directory for prompt templates
-# suola_rules: "/app/packages/suola/rules.yaml"  # Optional: path to Suola rules file
+## Location of the compiled Suola JSON rules: an `http(s)://` URL, a `file://` URL or a filesystem path.
+## Defaults to `packages/suola/build/rules.json` when present (`make rules` in the suola checkout), otherwise
+## the rules built into the Suola module. Leave empty to always use the built-in rules.
+# suola_rules: "https://raw.githubusercontent.com/Klikkikuri/rahti/refs/heads/main/rules.json"  # Published rules
 
 ## Telemetry / OpenTelemetry settings
 # telemetry:
@@ -25,6 +28,7 @@
 #   labels:
 #     - "paywalled=true, article-type = opinion" # Match if BOTH paywalled=true AND article-type=opinion
 #     - "sponsored=true"                         # OR match if sponsored=true
+#     - "type=video"                             # OR match if primary video content
 #     - "article-type in (opinion, review)"      # OR match if opinion or review
 
 sentry:
