@@ -53,7 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=packages,target=packages \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --frozen --no-install-project --no-dev --group otel
 
 
 # Install the application
@@ -61,7 +61,7 @@ COPY . /app
 
 # Sync the project
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev --package meri
+    uv sync --frozen --no-dev --group otel --package meri
 
 ENTRYPOINT ["/app/entrypoint.sh"]
 
@@ -101,15 +101,20 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         fd-find \
         # Structured data querying; `yq` is the jq wrapper for YAML config files
         jq yq \
+        fzf bat \
         # Linting for the shell scripts in the repository (cron.sh, entrypoint.sh)
         shellcheck && \
-    # Debian renames fd to avoid a conflict; expose the name every tool and agent expects
-    ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+    # Debian renames tools to avoid a conflict; expose the name agents expects
+    ln -sf "$(command -v fdfind)" /usr/local/bin/fd &&
+    ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
 # Install development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --dev --package meri && \
+    uv sync --frozen --dev --group otel --package meri && \
     chown -R vscode:vscode /app/.venv
+
+# remove sudoers file to prevent sudo access in the devcontainer
+RUN rm -f /etc/sudoers.d/vscode
 
 USER vscode
 

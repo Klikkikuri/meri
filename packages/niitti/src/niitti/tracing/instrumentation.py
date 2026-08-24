@@ -2,7 +2,7 @@
 Tracing instrumentation helpers, detectors, and emoji mappings.
 """
 
-EXTRA_RESOURCE_DETECTOR = [("opentelemetry.resource.detector.container", "ContainerResourceDetector")]
+EXTRA_RESOURCE_DETECTOR = [("opentelemetry.resource.detector.containerid", "ContainerResourceDetector")]
 
 EXTRA_INSTRUMENTOR = [
     ("opentelemetry.instrumentation.system_metrics", "SystemMetricsInstrumentor"),

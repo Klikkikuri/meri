@@ -104,17 +104,17 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 otel = [
-    "opentelemetry-distro>=0.50b0",
-    "opentelemetry-exporter-otlp>=1.29.0",
-    "opentelemetry-instrumentation-click>=0.50b0",
-    "opentelemetry-instrumentation-jinja2>=0.50b0",
-    "opentelemetry-instrumentation-logging>=0.50b0",
-    "opentelemetry-instrumentation-openai-v2>=2.1b0",
-    "opentelemetry-instrumentation-requests>=0.50b0",
-    "opentelemetry-instrumentation-system-metrics>=0.50b0",
-    "opentelemetry-instrumentation-threading>=0.50b0",
-    "opentelemetry-instrumentation-urllib>=0.50b0",
-    "opentelemetry-instrumentation-urllib3>=0.50b0",
+    "opentelemetry-exporter-otlp>=1.44.0",
+    "opentelemetry-instrumentation-click>=0.65b0",
+    "opentelemetry-instrumentation-jinja2>=0.65b0",
+    "opentelemetry-instrumentation-logging>=0.65b0",
+    "opentelemetry-instrumentation-openai-v2>=2.4b0",
+    "opentelemetry-instrumentation-requests>=0.65b0",
+    "opentelemetry-instrumentation-system-metrics>=0.65b0",
+    "opentelemetry-instrumentation-threading>=0.65b0",
+    "opentelemetry-instrumentation-urllib3>=0.65b0",
+    # Backs niitti's EXTRA_RESOURCE_DETECTOR container detector.
+    "opentelemetry-resource-detector-containerid>=0.65b0",
     "sentry-sdk[opentelemetry-otlp]>=2.48.0",
 ]
 logging = [

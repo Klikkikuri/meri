@@ -64,17 +64,18 @@ def configure_tracing(
         }
     )
 
-    resources = []
+    # get_aggregated_resources() expects detector instances and calls detect() itself.
+    detectors = []
     for detector_pkg, cls in EXTRA_RESOURCE_DETECTOR:
         try:
             logger.debug("Loading extra resource detector %s", detector_pkg)
             mod = import_module(detector_pkg)
             detector_cls = getattr(mod, cls)
-            resources.append(detector_cls().detect())
+            detectors.append(detector_cls())
         except ImportError as e:
             logger.debug("Detector %s.%s not found: %s", detector_pkg, cls, e)
 
-    resource = get_aggregated_resources(resources, resource)
+    resource = get_aggregated_resources(detectors, resource)
     trace_provider = TracerProvider(resource=resource)
 
     otel_endpoint = settings.endpoint or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
