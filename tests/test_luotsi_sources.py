@@ -92,15 +92,17 @@ def test_sheets_source_failure_returns_empty(mock_get: MagicMock):
     assert SheetsFeedbackSource(GoogleSheets(spreadsheet_id="sheet-id")).get_feedback() == []
 
 
-def test_client_collects_from_every_source(csv_feedback: list[Feedback]):
-    settings = LuotsiSettings(sources=[Csv(path=str(FEEDBACK_CSV)), Csv(path=str(FEEDBACK_CSV))])
+def two_csv_sources() -> LuotsiSettings:
+    """Two identical sources, with the guardrail chain switched off so only source fan-out is under test."""
+    return LuotsiSettings(sources=[Csv(path=str(FEEDBACK_CSV)), Csv(path=str(FEEDBACK_CSV))], guardrails=[])
 
-    assert len(Luotsi(settings).get_feedback()) == 2 * len(csv_feedback)
+
+def test_client_collects_from_every_source(csv_feedback: list[Feedback]):
+    assert len(Luotsi(two_csv_sources()).get_feedback()) == 2 * len(csv_feedback)
 
 
 def test_client_survives_a_failing_source(csv_feedback: list[Feedback], monkeypatch: pytest.MonkeyPatch):
-    settings = LuotsiSettings(sources=[Csv(path=str(FEEDBACK_CSV)), Csv(path=str(FEEDBACK_CSV))])
-    client = Luotsi(settings)
+    client = Luotsi(two_csv_sources())
     monkeypatch.setattr(client.sources[0], "get_feedback", MagicMock(side_effect=RuntimeError("boom")))
 
     assert len(client.get_feedback()) == len(csv_feedback)

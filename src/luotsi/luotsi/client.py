@@ -6,7 +6,8 @@ Builds the configured feedback sources, collects their items and hands back one 
 
 import logging
 
-from .abc import Feedback, FeedbackSource
+from .abc import Feedback, FeedbackItem, FeedbackSource
+from .guards import build_guards
 from .settings import LuotsiSettings
 from .settings.source import Csv, GoogleSheets
 from .sources import CsvFeedbackSource, SheetsFeedbackSource
@@ -15,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Luotsi:
-    """Collects reader feedback from every configured source."""
+    """Collects reader feedback from every configured source and sanitizes it before anyone else sees it."""
 
     def __init__(self, settings: LuotsiSettings) -> None:
         """
@@ -23,7 +24,10 @@ class Luotsi:
         """
         self.settings = settings
         self.sources = [self._build_source(config) for config in settings.sources]
-        logger.info("Initialized Luotsi with %d feedback source(s)", len(self.sources))
+        self.guards = build_guards(settings.guardrails)
+        logger.info(
+            "Initialized Luotsi with %d feedback source(s) and %d guard(s)", len(self.sources), len(self.guards)
+        )
 
     @staticmethod
     def _build_source(config: Csv | GoogleSheets) -> FeedbackSource:
@@ -36,11 +40,11 @@ class Luotsi:
 
     def get_feedback(self) -> list[Feedback]:
         """
-        Collect feedback from every source.
+        Collect feedback from every source and run it through the guardrail chain.
 
-        One failing source does not stop the others.
+        One failing source does not stop the others, and one guard failing mid-run does not discard the batch.
 
-        :return: Feedback items from all sources.
+        :return: Sanitized feedback items.
         """
         feedbacks: list[Feedback] = []
         for source in self.sources:
@@ -49,5 +53,12 @@ class Luotsi:
             except Exception as e:  # noqa: BLE001
                 logger.error("Error fetching feedback from %s: %s", type(source).__name__, e)
 
-        logger.info("Fetched %d feedback item(s)", len(feedbacks))
-        return feedbacks
+        items = [FeedbackItem(original=feedback, processed=feedback) for feedback in feedbacks]
+        for guard in self.guards:
+            try:
+                items = guard.run(items)
+            except Exception as e:  # noqa: BLE001
+                logger.error("Guard %r failed and was skipped: %s", guard.name, e)
+
+        logger.info("Fetched %d feedback item(s), %d survived the guardrail chain", len(feedbacks), len(items))
+        return [item.processed for item in items]

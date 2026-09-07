@@ -29,14 +29,14 @@ class Feedback(BaseModel):
     """
 
     type: FeedbackType = Field(..., description="Reader verdict on the generated title.")
-    message: str = Field("", description="Free-text reader comment. Empty when the reader only voted.")
+    message: str = Field(default="", description="Free-text reader comment. Empty when the reader only voted.")
     url_sign: str = Field(..., description="Hash signature of the article URL.")
-    submitted_at: datetime | None = Field(None, description="Submission time in UTC. None when unparseable.")
-    page_url: str | None = Field(None, description="URL of the page the feedback was submitted from.")
-    original_title: str | None = Field(None, description="Original headline of the article.")
-    converted_title: str | None = Field(None, description="Generated non-clickbait title the reader rated.")
-    clickbait_level: str | None = Field(None, description="Clickbait level the reader saw.")
-    database_updated: str | None = Field(None, description="Publication time of the data set the reader saw.")
+    submitted_at: datetime | None = Field(default=None, description="Submission time in UTC. None when unparseable.")
+    page_url: str | None = Field(default=None, description="URL of the page the feedback was submitted from.")
+    original_title: str | None = Field(default=None, description="Original headline of the article.")
+    converted_title: str | None = Field(default=None, description="Generated non-clickbait title the reader rated.")
+    clickbait_level: str | None = Field(default=None, description="Clickbait level the reader saw.")
+    database_updated: str | None = Field(default=None, description="Publication time of the data set the reader saw.")
 
 
 @dataclass
