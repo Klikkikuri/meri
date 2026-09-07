@@ -20,6 +20,7 @@ PROMPT_TEMPLATE_ARTICLE_TITLE = "artcile_title_inst.md.j2"
 PROMPT_TEMPLATE_OUTPUT_FORMAT = "output_format_json.md.j2"
 PROMPT_TEMPLATE_ARTICLE = "article.md.j2"
 PROMPT_TEMPLATE_ARTICLE_UPDATED = "article_updated.md.j2"
+PROMPT_TEMPLATE_FEEDBACK = "feedback.md.j2"
 
 RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
 """ Regular expression to extract JSON block from the response. """

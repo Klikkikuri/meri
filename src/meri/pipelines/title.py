@@ -12,6 +12,7 @@ from meri.llm import (
     PROMPT_TEMPLATE_ARTICLE,
     PROMPT_TEMPLATE_ARTICLE_TITLE,
     PROMPT_TEMPLATE_ARTICLE_UPDATED,
+    PROMPT_TEMPLATE_FEEDBACK,
     get_prompt_template,
 )
 from meri.settings import settings
@@ -30,6 +31,7 @@ class TitlePredictor(StructuredPipeline):
         "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
         "article_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_TITLE),
         "previous_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_UPDATED),
+        "feedback": get_prompt_template(PROMPT_TEMPLATE_FEEDBACK),
     }
 
     def run(self, article, context: List[Document] = [], **kwargs):

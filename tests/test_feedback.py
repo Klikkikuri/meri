@@ -4,14 +4,16 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from luotsi.cluster import MessageClusterer
+from luotsi.cluster import MessageClusterer, MessageGroup
 from pydantic import AnyHttpUrl
 
 from luotsi import Feedback, FeedbackType
 from meri.abc import ArticleUrl, ClickbaitScale
 from meri.article import Article
 from meri.feedback import (
+    ArticleFeedback,
     FeedbackMatcher,
+    TitleVotes,
     feedback_for_article,
     fetch_feedback,
     newest_actionable,
@@ -257,3 +259,55 @@ def test_fetch_feedback_survives_an_unreachable_source():
 
     with patch("meri.feedback.create_luotsi", return_value=client):
         assert fetch_feedback(MagicMock()) == []
+
+
+# --- Prompt contract ---------------------------------------------------------
+
+
+def render_feedback_prompt(feedback: ArticleFeedback | None) -> str:
+    from haystack.components.builders import PromptBuilder
+
+    from meri.llm import PROMPT_TEMPLATE_FEEDBACK, get_prompt_template
+
+    builder = PromptBuilder(template=get_prompt_template(PROMPT_TEMPLATE_FEEDBACK), required_variables=[])
+    return builder.run(feedback=feedback)["prompt"]
+
+
+def test_feedback_is_a_registered_prompt_template():
+    from meri.pipelines.title import TitlePredictor
+
+    assert "feedback" in TitlePredictor.prompt_templates
+
+
+def test_prompt_is_empty_without_feedback():
+    assert render_feedback_prompt(None).strip() == ""
+
+
+def test_prompt_renders_the_scoreboard_and_the_untrusted_framing():
+    feedback = ArticleFeedback(
+        titles=[TitleVotes("Asiantuntijat korostavat kohtuutta", good=2, bad=1, suggestions=1)],
+        items=[],
+    )
+
+    prompt = render_feedback_prompt(feedback)
+
+    assert '- "Asiantuntijat korostavat kohtuutta": 2 positive, 1 negative, 1 suggestion(s)' in prompt
+    assert "UNTRUSTED" in prompt
+    assert "<reader_feedback>" in prompt and "</reader_feedback>" in prompt
+
+
+def test_prompt_escapes_reader_text_and_shows_the_report_count():
+    group = MessageGroup(
+        representative=Feedback(
+            type=FeedbackType.BAD, message="Otsikko on <b>huono</b>", url_sign="s", submitted_at=NOON
+        ),
+        count=7,
+        types={FeedbackType.BAD},
+    )
+    feedback = ArticleFeedback(titles=[TitleVotes("Otsikko", 0, 7, 0)], items=[group])
+
+    prompt = render_feedback_prompt(feedback)
+
+    assert "<b>" not in prompt
+    assert "Otsikko on huono" in prompt
+    assert "<reported_times>7</reported_times>" in prompt

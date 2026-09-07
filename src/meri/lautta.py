@@ -15,7 +15,7 @@ from niitti.logging import NiittiBoundLogger
 
 from .abc import ArticleTitleResponse
 from .article import Article
-from .feedback import newest_actionable
+from .feedback import ArticleFeedback, newest_actionable
 from .labels import LabelSelector, LabelSet
 from .pipelines.title import TitlePredictor
 from .rahti import RahtiData, RahtiEntry, RahtiUrl
@@ -548,24 +548,36 @@ class RahtiCleaner:
         )
 
 
-def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list[RahtiEntry | None]] = None) -> list[ArticleTitleData]:
+def generate_titles(
+    articles: list[DiscoveredArticle],
+    old_titles: Optional[list[RahtiEntry | None]] = None,
+    feedback: Optional[list[ArticleFeedback | None]] = None,
+) -> list[ArticleTitleData]:
     """
     Process articles for titles. Articles matching skip_processing.labels bypass LLM title generation.
+
+    :param old_titles: The Rahti entry matching each article, positionally.
+    :param feedback: Reader feedback for each article, positionally.
     """
     results = []
 
-    def predictor_run(article: Article, old_title: RahtiEntry | None) -> ArticleTitleResponse:
+    def predictor_run(
+        article: Article, old_title: RahtiEntry | None, article_feedback: ArticleFeedback | None
+    ) -> ArticleTitleResponse:
         predictor = TitlePredictor()
         kwargs = {}
         if old_title:
             kwargs["rahti"] = old_title
+        if article_feedback:
+            kwargs["feedback"] = article_feedback
         return predictor.run(article, **kwargs)  # type: ignore
 
-    # For simplicity, if old_titles is not provided, create a list of None values
+    # For simplicity, if old_titles/feedback are not provided, create lists of None values
     if old_titles is None:
         old_titles = [None] * len(articles)  # type: ignore
 
     old_titles = cast(list, old_titles)
+    article_feedbacks: list[ArticleFeedback | None] = feedback if feedback is not None else [None] * len(articles)
 
     submitted_count = 0
     failed_count = 0
@@ -573,14 +585,14 @@ def generate_titles(articles: list[DiscoveredArticle], old_titles: Optional[list
     with ThreadPoolExecutor(max_workers=settings.MAX_WORKERS) as executor:
         futures = []
         skip_reasons = []
-        for (article, source), old_title in zip(articles, old_titles):
+        for (article, source), old_title, article_feedback in zip(articles, old_titles, article_feedbacks):
             matched_sel = matching_selector(article)
             if matched_sel:
                 skip_reasons.append(matched_sel.raw_expression)
                 futures.append(None)
             else:
                 skip_reasons.append(None)
-                futures.append(executor.submit(predictor_run, article, old_title))
+                futures.append(executor.submit(predictor_run, article, old_title, article_feedback))
                 submitted_count += 1
 
         for (article, source), future, skip_reason in zip(articles, futures, skip_reasons):
