@@ -1459,6 +1459,9 @@ wheels = [
 name = "niitti"
 version = "0.1.0"
 source = { editable = "packages/niitti" }
+dependencies = [
+    { name = "platformdirs" },
+]
 
 [package.optional-dependencies]
 all = [
@@ -1487,6 +1490,7 @@ requires-dist = [
     { name = "niitti", extras = ["logging", "settings", "tracing"], marker = "extra == 'all'", editable = "packages/niitti" },
     { name = "opentelemetry-instrumentation-logging", marker = "extra == 'tracing'", specifier = ">=0.50b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.29.0" },
+    { name = "platformdirs", specifier = ">=4.3.6" },
     { name = "pydantic", marker = "extra == 'settings'", specifier = ">=2.10.5" },
     { name = "pydantic-settings", marker = "extra == 'settings'", specifier = ">=2.7.1" },
     { name = "sentry-sdk", marker = "extra == 'tracing'", specifier = ">=2.48.0" },
