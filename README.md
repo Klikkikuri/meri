@@ -139,6 +139,12 @@ LLM:s can be configured in the `config.yaml` file in `llm` -section. If no speci
 
 - `DEBUG`: If set to `true`, debug mode is enabled.
 - `KLIKKIKURI_CONFIG_FILE`: Path to the configuration file. Default is user `$XDG_CONFIG_DIR/meri/config.yaml`
+- `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`: Roots of the configuration, data and cache directories.
+  The images set them to `/app/instance`, `/app/instance/data` and `/app/instance/cache`, because `/app/instance`
+  is the only persistent location in the container. Keep the three roots different: if the data root and the
+  configuration root are equal, a written file can outrank `/app/instance/config.yaml`.
+- `HF_HOME`: Root of the Hugging Face cache. The images set it to `/app/instance/cache/huggingface`, because
+  `huggingface_hub` does not use `XDG_CACHE_HOME`.
 
 If LLM's are not explicitly configured in the `config.yaml` file, the following environment variables are used to autodetect the LLM:
 

@@ -79,9 +79,15 @@ ENV UV_LINK_MODE=copy
 
 ENV SENTRY_ENVIRONMENT="development"
 
+# `/app/instance` is the only persistent location, so the XDG roots point into it. Data and cache use
+# subdirectories: `user_config_dir` and `user_data_dir` would otherwise resolve to the same directory, and a file
+# written there would outrank `/app/instance/config.yaml`.
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
-    XDG_CONFIG_HOME="/app/instance"
+    XDG_CONFIG_HOME="/app/instance" \
+    XDG_DATA_HOME="/app/instance/data" \
+    XDG_CACHE_HOME="/app/instance/cache" \
+    HF_HOME="/app/instance/cache/huggingface"
 
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
@@ -128,11 +134,15 @@ WORKDIR /app
 
 VOLUME [ "/app/instance" ]
 
+# See the note in the development stage about the XDG roots.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=${VIRTUAL_ENV} \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
-    XDG_CONFIG_HOME="/app/instance"
+    XDG_CONFIG_HOME="/app/instance" \
+    XDG_DATA_HOME="/app/instance/data" \
+    XDG_CACHE_HOME="/app/instance/cache" \
+    HF_HOME="/app/instance/cache/huggingface"
 
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
@@ -146,7 +156,7 @@ COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 COPY --from=build /app /app
 
 # Create non-root user
-RUN useradd -m -u 1000 meri && mkdir /app/instance && chown -R meri:meri /app/instance
+RUN useradd -m -u 1000 meri && mkdir -p /app/instance/data /app/instance/cache && chown -R meri:meri /app/instance
 
 USER meri
 
