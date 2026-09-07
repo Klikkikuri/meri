@@ -17,13 +17,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import numpy as np
 
+    Vector = np.ndarray
+    Embedder = Callable[[str], Vector]
+
 logger = logging.getLogger(__name__)
 
 INSTALL_HINT = "Install the semantic extra to use an embedding model: pip install 'luotsi[semantic]'"
 
 
 @cache
-def load_embedder(path: Path) -> "Callable[[str], np.ndarray]":
+def load_embedder(path: Path) -> "Embedder":
     """
     Load a local Model2Vec static embedding model.
 
@@ -41,7 +44,7 @@ def load_embedder(path: Path) -> "Callable[[str], np.ndarray]":
     logger.info("Loading embedding model from %s", path)
     model = StaticModel.from_pretrained(str(path))
 
-    def embed(text: str) -> "np.ndarray":
+    def embed(text: str) -> "Vector":
         return model.encode([text])[0]
 
     return embed

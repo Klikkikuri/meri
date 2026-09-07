@@ -5,7 +5,7 @@ One module per guard, and one builder that turns configuration into an ordered l
 """
 
 import logging
-from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from ..abc import Guardrail
 from ..settings.guardrails import (
@@ -21,6 +21,9 @@ from .language import LanguageGuard
 from .pii import PiiRedactionGuard
 from .sanitize import SanitizeGuard
 from .truncate import TruncateGuard
+
+if TYPE_CHECKING:
+    from ..embeddings import Embedder
 
 __all__ = [
     "InjectionGuard",
@@ -50,7 +53,7 @@ copy of the message, and truncation runs last so the cap applies to the final te
 
 def build_guards(
     configs: list[GuardrailConfig] | None,
-    embed: Callable[[str], "object"] | None = None,
+    embed: "Embedder | None" = None,
 ) -> list[Guardrail]:
     """
     Build the guardrail chain.
@@ -67,7 +70,7 @@ def build_guards(
             case PiiConfig():
                 guards.append(PiiRedactionGuard(config))
             case InjectionConfig():
-                guards.append(InjectionGuard(config))
+                guards.append(InjectionGuard(config, embed))
             case LanguageConfig():
                 guards.append(LanguageGuard(config))
             case TruncateConfig():

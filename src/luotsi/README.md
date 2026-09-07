@@ -15,6 +15,33 @@ settings = LuotsiSettings(sources=[{"type": "csv", "path": "/app/instance/feedba
 feedback = Luotsi(settings).get_feedback()
 ```
 
+## Tuning the injection guard
+
+The guard has two tiers. The blocklist matches a short list of literal phrases that carry no reading other than
+an instruction to the model. The centroid tier — active when `embedding_model` is set — compares the message
+against centroids trained from the labeled exemplar files in `luotsi/guards/data/`.
+
+The tuning surface is the data, not the code:
+
+```bash
+luotsi train-guard luotsi/guards/data/vectors.potion-multilingual-128M.json \
+  --data luotsi/guards/data/exemplars.en.txt \
+  --data luotsi/guards/data/exemplars.fi.txt \
+  --model /app/instance/potion-multilingual-128M
+```
+
+Training is deterministic and prints a report: the clusters it found, the injection centroids that a benign
+centroid sits close enough to veto, and a self-check that re-classifies every training line. Read the report
+before committing an artifact — it is where a blind spot becomes visible.
+
+Add to `__label__injection` when a new attack pattern appears. Add to `__label__benign` when a real reader is
+dropped: the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real
+feedback accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw
+reader messages.
+
+`luotsi translate-exemplars` grows the data into a new language. It is a maintainer tool: run it, read the
+result, commit it. Deployments never translate.
+
 ## Personal data
 
 Luotsi holds feedback in memory only. It does not write comment text to logs and does not persist it. The

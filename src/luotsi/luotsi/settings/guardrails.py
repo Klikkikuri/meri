@@ -38,7 +38,7 @@ class InjectionConfig(_Guardrail):
         default=None, description="Trained centroid artifact. Overrides the one packaged with Luotsi."
     )
     floor: float = Field(
-        default=0.65,
+        default=0.60,
         ge=0.0,
         le=1.0,
         description="Minimum similarity to an injection centroid before a message can be dropped.",

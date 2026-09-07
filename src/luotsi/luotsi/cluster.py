@@ -13,10 +13,14 @@ from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from .abc import Feedback, FeedbackType
 from .embeddings import load_embedder
 from .settings import LuotsiSettings
+
+if TYPE_CHECKING:
+    from .embeddings import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +103,7 @@ class MessageClusterer:
     — in a multilingual vector space — a Finnish and an English version of the same complaint.
     """
 
-    def __init__(self, embed: "Callable[[str], object] | None", threshold: float) -> None:
+    def __init__(self, embed: "Embedder | None", threshold: float) -> None:
         """
         :param embed: Embedding callable for the semantic mode, or None for the built-in mode.
         :param threshold: Similarity at or above which two messages join one group.

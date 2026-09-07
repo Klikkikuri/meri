@@ -7,6 +7,7 @@ Builds the configured feedback sources, collects their items and hands back one 
 import logging
 
 from .abc import Feedback, FeedbackItem, FeedbackSource
+from .embeddings import load_embedder
 from .guards import build_guards
 from .settings import LuotsiSettings
 from .settings.source import Csv, GoogleSheets
@@ -24,7 +25,9 @@ class Luotsi:
         """
         self.settings = settings
         self.sources = [self._build_source(config) for config in settings.sources]
-        self.guards = build_guards(settings.guardrails)
+        # A configured model is a hard requirement: load errors propagate rather than degrade the guard silently.
+        embed = load_embedder(settings.embedding_model) if settings.embedding_model else None
+        self.guards = build_guards(settings.guardrails, embed=embed)
         logger.info(
             "Initialized Luotsi with %d feedback source(s) and %d guard(s)", len(self.sources), len(self.guards)
         )
