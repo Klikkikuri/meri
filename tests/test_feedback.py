@@ -279,6 +279,19 @@ def test_feedback_is_a_registered_prompt_template():
     assert "feedback" in TitlePredictor.prompt_templates
 
 
+def test_feedback_survives_the_prompt_variable_filter():
+    """
+    `StructuredPipeline.run` drops any kwarg that the assembled prompt does not declare as a variable, silently.
+    The template's literal `feedback` reference is what registers it, so guard that here.
+    """
+    from meri.pipelines.title import TitlePredictor
+
+    predictor = TitlePredictor()
+    predictor._build_pipeline()
+
+    assert "feedback" in predictor._prompt.variables
+
+
 def test_prompt_is_empty_without_feedback():
     assert render_feedback_prompt(None).strip() == ""
 
