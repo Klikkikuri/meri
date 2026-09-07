@@ -26,6 +26,9 @@ services:
       context: ./packages/sulku
       dockerfile: Dockerfile
       target: production
+    # Auto-reload on source changes: the package is bind-mounted at /app, so
+    # uvicorn's reloader picks up edits without a container restart.
+    command: sulku serve --host 0.0.0.0 --port 8000 --reload
     ports:
       - "8000:8000"
     volumes:
@@ -34,6 +37,14 @@ services:
       - /app/.venv
     networks:
       - meri
+    develop:
+      # Dependency changes need an image rebuild: `docker compose watch sulku`
+      # (from the host; the devcontainer has no docker CLI)
+      watch:
+        - action: rebuild
+          path: ./packages/sulku/pyproject.toml
+        - action: rebuild
+          path: ./packages/sulku/uv.lock
 
   development:
     extends:
