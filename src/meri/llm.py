@@ -2,11 +2,10 @@ import inspect
 import re
 from enum import Enum
 from importlib.resources import files
-from pathlib import Path
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
-from platformdirs import user_data_dir
+from niitti.paths import data_dir
 from pydantic import AnyUrl, SecretStr
 
 from .settings import (
@@ -116,7 +115,7 @@ def get_prompt_template(template_name: str) -> str:
     prompt_file_name = template_name
     if not template_name.endswith(".md.j2"):
         prompt_file_name += ".md.j2"
-    user_prompt_dir = Path(user_data_dir(__package__), "prompts")
+    user_prompt_dir = data_dir(__package__ or "meri") / "prompts"
 
     user_prompt_file = user_prompt_dir / prompt_file_name
     if user_prompt_file.exists():
