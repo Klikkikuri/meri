@@ -18,6 +18,7 @@ dependencies = [
     "httpx>=0.28.1",
     "jinja2-time>=0.2.0",
     "langdetect>=1.0.9",
+    "luotsi",
     "lxml[html-clean]>=5.3.0",
     "markdownify>=0.14.1",
     "niitti[all]",
@@ -83,7 +84,7 @@ suola = [
     #{ path = "packages/suola/python" },
     #{ workspace = true }
 ]
-#luotsi = { path = "src/luotsi" }
+luotsi = { path = "src/luotsi", editable = true }
 niitti = { workspace = true }
 #suola = { workspace = true }
 #karikko = { workspace = true }

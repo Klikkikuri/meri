@@ -1,0 +1,32 @@
+[project]
+name = "luotsi"
+version = "0.1.0"
+description = "Luotsi 🧭 – Klikkikuri reader feedback collection and sanitization"
+readme = "README.md"
+authors = [
+    { name = "Teemu Autto", email = "klikkikuri@teemu.rautakuu.org" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "click>=8.1.8",
+    "langdetect>=1.0.9",
+    "pydantic>=2.10.5",
+    "requests>=2.32.3",
+    "tenacity>=9.0.0",
+]
+
+[project.optional-dependencies]
+# Powers both the semantic clustering mode and the injection guard's centroid tier.
+semantic = [
+    "model2vec>=0.6.0",
+]
+
+[project.scripts]
+luotsi = "luotsi.__main__:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["luotsi"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1039,6 +1039,28 @@ wheels = [
 ]
 
 [[package]]
+name = "luotsi"
+version = "0.1.0"
+source = { editable = "src/luotsi" }
+dependencies = [
+    { name = "click" },
+    { name = "langdetect" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "tenacity" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.1.8" },
+    { name = "langdetect", specifier = ">=1.0.9" },
+    { name = "model2vec", marker = "extra == 'semantic'", specifier = ">=0.6.0" },
+    { name = "pydantic", specifier = ">=2.10.5" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "tenacity", specifier = ">=9.0.0" },
+]
+
+[[package]]
 name = "lxml"
 version = "6.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1211,6 +1233,7 @@ dependencies = [
     { name = "httpx" },
     { name = "jinja2-time" },
     { name = "langdetect" },
+    { name = "luotsi" },
     { name = "lxml", extra = ["html-clean"] },
     { name = "markdownify" },
     { name = "niitti", extra = ["all"] },
@@ -1284,6 +1307,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2-time", specifier = ">=0.2.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
+    { name = "luotsi", editable = "src/luotsi" },
     { name = "lxml", extras = ["html-clean"], specifier = ">=5.3.0" },
     { name = "markdownify", specifier = ">=0.14.1" },
     { name = "niitti", extras = ["all"], editable = "packages/niitti" },
