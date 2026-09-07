@@ -91,8 +91,8 @@ niitti = { workspace = true }
 
 [tool.uv.workspace]
 # `packages/sulku` is a submodule but deliberately NOT a member: meri only speaks to Sulku over HTTP
-# (`meri.sulku.service`), and membership would force one niitti resolution across both projects — sulku
-# carries its own `packages/niitti` checkout and is its own uv workspace.
+# (`meri.sulku.service`), and membership would force one niitti resolution across both projects — sulku is its
+# own uv workspace and pins niitti as a git dependency. `scripts/sync-niitti.sh` moves both to one revision.
 members = ["packages/niitti"]
 #members = ["packages/suola/python"]
 #members = ["src/*"]

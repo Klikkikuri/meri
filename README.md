@@ -20,13 +20,18 @@ Note that `suola` is installed from a released wheel (see `[tool.uv.sources]` in
 
 Of those submodules only `packages/niitti` is a **uv workspace member**. `packages/sulku` is deliberately not
 one: meri talks to Sulku over HTTP (`meri.sulku.service`), never by importing it, and Sulku is its own uv
-workspace with its own `packages/niitti` checkout. Making it a member would force a single niitti resolution
-across both projects, which is why the two repositories used to fight over the niitti source.
+workspace. Membership would force a single niitti resolution across both projects, which is why the two
+repositories used to fight over the niitti source.
 
-The practical consequence is that `--recursive` checks Niitti out **twice** — at `packages/niitti` and at
-`packages/sulku/packages/niitti`. This is expected. A Niitti change therefore has to be committed once and then
-have its pointer bumped in both repositories; the `check-niitti-sync` pre-commit hook fails the commit if the
-two checkouts drift apart.
+Niitti is held in two places, and they can hold different revisions:
+
+- `packages/niitti`, the submodule that meri builds against as an editable workspace member.
+- `packages/sulku/pyproject.toml`, where Sulku pins a git revision of Niitti. Sulku consumes Niitti and does not
+  develop it, so it needs a version, not a checkout.
+
+To put both on the same Niitti revision, run `scripts/sync-niitti.sh [<ref>]` (default `origin/main`). It moves
+the submodule, rewrites Sulku's pin, and relocks Sulku. It changes files only — read the diff and commit the two
+repositories yourself.
 
 Since suola v0.5.0 the module parses **compiled JSON rules only**; `packages/suola/rules.yaml` is build-time
 source that `make rules` compiles into `packages/suola/build/rules.json`. That compiled file is the default for
