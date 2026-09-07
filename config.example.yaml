@@ -148,6 +148,49 @@ rahti:
     name: "[🤖 bot] Klikkikuri harbormaster"
     email: "klikkikuri+satamamestari@protonmail.com"
 
+# --- Luotsi (reader feedback) settings ---
+# Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
+# without reader feedback.
+# luotsi:
+#   sources:
+#     - type: sheets
+#       spreadsheet_id: "1AbC..."       # the responses sheet of the feedback form
+#       worksheet: "Form Responses 1"   # optional; the first sheet is used when omitted
+#       # The form timestamp column carries no timezone and its layout follows the spreadsheet locale.
+#       # Verify both against the real sheet before production.
+#       timezone: "Europe/Helsinki"
+#       timestamp_format: "%m/%d/%Y %H:%M:%S"
+#     - type: csv
+#       path: "/app/instance/feedback.csv"
+#
+#   # Local Model2Vec directory, provisioned with `luotsi download-model`. Shared by message consolidation and the
+#   # injection guard's centroid tier. Omit for the built-in mode: character-n-gram consolidation and a
+#   # blocklist-only injection guard. A path that is set but cannot load fails the run at start, by design.
+#   embedding_model: "/app/instance/potion-multilingual-128M"
+#
+#   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
+#   guardrails:
+#     - type: sanitize            # strip invisible characters, collapse whitespace; keeps casing and accents
+#     - type: pii                 # redact emails, phone numbers, IP addresses and URLs
+#     - type: injection
+#       # blocklist: ["extra literal phrase"]   # added to the built-in indicators
+#       # vectors: "/app/instance/vectors.json" # overrides the artifact packaged with Luotsi
+#       floor: 0.60               # minimum similarity to an injection centroid before a drop is possible
+#       margin: 0.10              # how far it must exceed the closest benign centroid to actually drop
+#     - type: language
+#       languages: ["fi", "en"]
+#       allow_unknown: true       # short messages are often undetectable; dropping them loses real feedback
+#     - type: truncate
+#       max_message_length: 500
+#
+#   # Most message GROUPS (after consolidation) to put in one article's prompt.
+#   max_messages_per_article: 3
+#
+#   clustering:
+#     # Cosine similarity at which two messages are treated as the same complaint. It measures different things
+#     # per mode — character-3-gram overlap without a model, embedding distance with one — so tune it per mode.
+#     similarity_threshold: 0.8
+
 # --- LLM (Language Model) settings ---
 llm:
 

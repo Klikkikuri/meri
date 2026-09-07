@@ -23,6 +23,7 @@ from typing import cast
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
+from luotsi.settings import LuotsiSettings
 from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
@@ -157,6 +158,11 @@ class Settings(NiittiSettings):
     sulku: SulkuSettings = Field(
         default_factory=lambda: SulkuSettings(),  # type: ignore
         description="Sulku AI-detection service settings.",
+    )
+
+    luotsi: LuotsiSettings | None = Field(
+        default=None,
+        description="Luotsi reader feedback settings. Omit to run without reader feedback.",
     )
 
     @model_validator(mode="before")

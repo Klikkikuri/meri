@@ -9,11 +9,13 @@ from typing import Iterable, List, NamedTuple, Optional, cast
 
 import pytz
 import wrapt
+from luotsi import Feedback
 from niitti import get_logger
 from niitti.logging import NiittiBoundLogger
 
 from .abc import ArticleTitleResponse
 from .article import Article
+from .feedback import newest_actionable
 from .labels import LabelSelector, LabelSet
 from .pipelines.title import TitlePredictor
 from .rahti import RahtiData, RahtiEntry, RahtiUrl
@@ -495,9 +497,12 @@ class RahtiCleaner:
             self._logger.debug("Inserting new Rahti entry: %r", entry.title)
             return self.insert(entry)
 
-    def needs_updating(self, article: Article) -> bool:
+    def needs_updating(self, article: Article, feedback: Optional[list[Feedback]] = None) -> bool:
         """
         Check if the given article needs updating compared to the matched Rahti entry.
+
+        Reader feedback newer than the stored entry also triggers an update. Only actionable feedback counts, and
+        the entry's `updated` is bumped past it on upsert, so one batch of feedback causes one regeneration.
         """
 
         # Early exit if no dates to compare
@@ -508,6 +513,18 @@ class RahtiCleaner:
         rahti_entry = self.find_by_article(article)
         if not rahti_entry:
             self._logger.debug("No matching Rahti entry found for article, needs updating: %r", article.get_url())
+            return True
+
+        newest_feedback = newest_actionable(feedback or [])
+        if newest_feedback and newest_feedback > rahti_entry.updated:
+            self._logger.debug(
+                "Reader feedback is newer than the stored Rahti entry, needs updating: %r",
+                article.get_url(),
+                extra={
+                    "feedback_updated": newest_feedback.isoformat(),
+                    "rahti_updated": rahti_entry.updated.isoformat(),
+                },
+            )
             return True
 
         minimum_date = datetime.min.replace(tzinfo=pytz.UTC)
