@@ -7,25 +7,33 @@
 ## Agent Instructions
 
 - Use responsibility-driven design to separate concerns and encapsulate functionality.
-- Development is done in the dev container (the `development` compose service), with the working tree at `/app`.
-- This project uses `uv`. Use `uv run`, `uv add` etc to run and manage the project.
-- Use `uv run black` to format code, `uv run ruff check` to lint code, and `uv run pyright` to check type hints.
-    -> Do NOT use formatters for the code you did not write. For code you did not write, use `uv run ruff check --fix` to fix formatting issues.
-- Run tests with `uv run pytest`.
+- Development is done in the dev container
 - If unclear how to proceed, ASK the user. Provide options and explain trade-offs. Do not make assumptions about user intent.
 - If you notice user made changes, don't overwrite them. Instead, ask the user if they want to keep their changes if they are contrary to the generated code.
 - Unless it adds a significant amount of complexity or is necessary for performance, keep the code generalizable.
-- Keep code clean, modular and DRY.
+- Keep code clean, modular and DRY. Prefer simplicity.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
 - Do NOT read sensitive files like `.env` – if information related to them is needed, ask.
 - Keep the documentation up to date.
+- Do not overly rely on comments to explain code. Verify. Code should be self-explanatory.
+- When responding or writing in English, use ASD-STE100 Simplified Technical English
 
-Code comments:
+### Code comments:
 - Keep inline comments concise (usually 1-2 lines)
 - Use rst documentation format. Document intention, design, but avoid unnecessary verbosity.
 - Use inline code comments to explain complex logic, non-obvious decisions, and intention.
 - Avoid hard-wrapping it to a fixed column width - that hurts readability
 - Line length should be 120, but can be exceeded for long URLs, paths, or other cases where breaking the line would reduce readability.
 - Note: Remind yourself of this point regularly, as it often gets lost between context compactions
+
+### Simplicity First
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
 
 ## Tooling
 
@@ -34,6 +42,10 @@ The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `
 `rg` (ripgrep), `fd`, `jq`, `yq` and `shellcheck`. The project's Python tooling is on `PATH` from `/app/.venv`:
 `uv`, `python`, `pytest`, `ruff`, `black`, `pyright`, `pre-commit`, `ipython`, `jupyter` and `meri`.
 
+- This project uses `uv`. Use `uv run`, `uv add` etc to run and manage the project.
+- Use `uv run black` to format code, `uv run ruff check` to lint code, and `uv run pyright` to check type hints.
+    -> Do NOT use formatters for the code you did not write. For code you did not write, use `uv run ruff check --fix` to fix formatting issues.
+- Run tests with `uv run pytest`.
 - Prefer `rg` over `grep` and `fd` over `find`. Both respect `.gitignore`, which matters in a tree carrying
   submodules, notebooks and `.venv`.
 - Use `jq` for JSON and `yq` for YAML config files.
