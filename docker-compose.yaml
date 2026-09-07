@@ -34,17 +34,11 @@ services:
       - /app/.venv
     networks:
       - meri
-    healthcheck:
-      test: ["CMD-SHELL", "sulku health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   development:
     extends:
       service: meri
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
       target: development
