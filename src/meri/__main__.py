@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from importlib.util import find_spec
 
 from jinja2 import Template
+from luotsi import LuotsiSettings
+from luotsi.cluster import MessageClusterer
+from luotsi.embeddings import load_embedder
 from opentelemetry import trace
 from sentry_sdk import monitor
 from niitti import get_logger
@@ -28,6 +31,13 @@ from .lautta import (
     should_skip_processing,
 )
 from .bootstrap import setup
+from .feedback import (
+    ArticleFeedback,
+    FeedbackMatcher,
+    feedback_for_article,
+    fetch_feedback,
+    newest_actionable,
+)
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
 
@@ -96,6 +106,14 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
+    # Load the embedding model before any fetching or LLM spend: a configured model that cannot load is a broken
+    # deployment, and it must say so at the start of the run rather than part way through it.
+    if settings.luotsi and settings.luotsi.embedding_model:
+        load_embedder(settings.luotsi.embedding_model)
+
+    # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down.
+    feedback_matcher = FeedbackMatcher(fetch_feedback(settings.luotsi))
+
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
 
@@ -118,7 +136,9 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     # Initial cleanup: filter out articles that do not need updating
     rahti = RahtiCleaner(old_data)
 
-    latest_articles = [a for a in latest_articles if rahti.needs_updating(a.article)]
+    latest_articles = [
+        a for a in latest_articles if rahti.needs_updating(a.article, feedback_matcher.find_by_article(a.article))
+    ]
 
     # Early stop if no articles need updating
     if not latest_articles:
@@ -138,6 +158,11 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     processable_articles = []
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
+    article_feedback: list[ArticleFeedback | None] = []
+    # Defaults stand in when feedback is disabled; the matcher is empty then, so neither is ever consulted.
+    luotsi_settings = settings.luotsi or LuotsiSettings()
+    clusterer = MessageClusterer.from_settings(luotsi_settings)
+    feedback_limit = luotsi_settings.max_messages_per_article
     for a in full_articles:
         # Classify as primary video content if video metadata is present without meaningful article text
         if ArticleLabels.HAS_VIDEO in a.article.labels and not has_text(a.article):
@@ -166,6 +191,9 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                 span.set_attribute("prune_reason", "keep")
                 processable_articles.append(a)
                 old_titles.append(rahti.find_by_article(a.article))
+                article_feedback.append(
+                    feedback_for_article(feedback_matcher, a.article, clusterer, feedback_limit)
+                )
                 title_slots.append(len(processable_articles) - 1)
 
     full_articles = processable_articles
@@ -188,7 +216,14 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                         result.final_z_score,
                     )
 
-    generated_titles = generate_titles(full_articles, old_titles=old_titles)
+    logger.info(
+        "Matched reader feedback for %d (of %d) articles",
+        sum(1 for f in article_feedback if f),
+        len(full_articles),
+        extra={"unmatched_signatures": len(feedback_matcher.unmatched)},
+    )
+
+    generated_titles = generate_titles(full_articles, old_titles=old_titles, feedback=article_feedback)
     titles = [generated_titles[slot] if isinstance(slot, int) else slot for slot in title_slots]
 
     # Match articles to old Rahti entries
@@ -202,6 +237,15 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
             continue
 
         rahti_entry = convert_for_rahti(result.source, result.article, result.title)
+
+        # `convert_for_rahti` stamps the entry from article time alone, so without this bump the same feedback
+        # would trigger a regeneration on every following run. Skipped articles are bumped too, for the same
+        # reason. A failed generation is never upserted, so it is never bumped, and is retried next run.
+        newest = newest_actionable(feedback_matcher.find_by_article(result.article))
+        if newest and newest > rahti_entry.updated:
+            logger.debug("Reader feedback triggered regeneration", url=str(result.article.get_url()))
+            rahti_entry.updated = newest
+
         rahti.upsert(rahti_entry)
 
     # Final pass - remove old entries that are no longer needed
