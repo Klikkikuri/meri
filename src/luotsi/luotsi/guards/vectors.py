@@ -41,7 +41,7 @@ class GuardVectors(BaseModel):
         individual numbers inside them.
         """
         header = {name: getattr(self, name) for name in ("model_name", "dim", "cluster_threshold")}
-        head = ",".join(f'{key!r}: {value!r}'.replace("'", '"') for key, value in header.items())
+        head = ",".join(f"{key!r}: {value!r}".replace("'", '"') for key, value in header.items())
         lines = ",\n  ".join(
             centroid.model_copy(update={"vector": [round(v, PRECISION) for v in centroid.vector]}).model_dump_json()
             for centroid in self.centroids
