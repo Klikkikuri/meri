@@ -41,14 +41,10 @@ services:
       - SULKU_DATA_DIR=/app/data
     networks:
       - meri
-    develop:
-      # Dependency changes need an image rebuild: `docker compose watch sulku`
-      # (from the host; the devcontainer has no docker CLI)
-      watch:
-        - action: rebuild
-          path: ./packages/sulku/pyproject.toml
-        - action: rebuild
-          path: ./packages/sulku/uv.lock
+    # Dependency changes need `docker compose up --build -V sulku` (from the host; the devcontainer has no docker
+    # CLI). `-V` is the whole point: /app/.venv is an anonymous volume, and a plain recreate re-attaches the old
+    # one over the rebuilt image, so the new dependencies never arrive. `docker compose watch` cannot renew it,
+    # which is why there are no `action: rebuild` rules here — they would report success and change nothing.
 
   development:
     extends:
