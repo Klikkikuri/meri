@@ -1,7 +1,6 @@
 """Tests for the injection guard, its labeled data and its trainer."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
@@ -14,7 +13,6 @@ from luotsi.guards.labeled import (
     write,
 )
 from luotsi.guards.trainer import train_centroids
-from luotsi.guards.translate import translate
 from luotsi.guards.vectors import Centroid, GuardVectors
 from luotsi.settings.guardrails import InjectionConfig
 
@@ -238,39 +236,3 @@ def test_artifact_load_rejects_a_dimension_mismatch(tmp_path: Path):
 
     with pytest.raises(ValueError, match="train-guard"):
         GuardVectors.load(path, dim=256)
-
-
-# --- Translation -------------------------------------------------------------
-
-
-def reply(content: str) -> MagicMock:
-    return MagicMock(json=lambda: {"choices": [{"message": {"content": content}}]}, raise_for_status=lambda: None)
-
-
-@pytest.fixture(autouse=True)
-def translate_key(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("LUOTSI_TRANSLATE_API_KEY", "test-key")
-
-
-def test_translate_returns_the_translated_lines():
-    with patch("requests.post", return_value=reply("__label__benign hyvä otsikko\n")) as post:
-        result = translate([LabeledLine("benign", "good headline")], "Finnish", endpoint="http://x", model="m")
-
-    assert result == [LabeledLine("benign", "hyvä otsikko")]
-    assert "Finnish" in post.call_args.kwargs["json"]["messages"][0]["content"]
-
-
-def test_translate_rejects_a_line_count_mismatch():
-    batch = [LabeledLine("benign", "one"), LabeledLine("benign", "two")]
-
-    with (
-        patch("requests.post", return_value=reply("__label__benign yksi\n")),
-        pytest.raises(ValueError, match="1 line"),
-    ):
-        translate(batch, "Finnish", endpoint="http://x", model="m")
-
-
-def test_translate_rejects_a_changed_label():
-    reply_text = "__label__injection hyvä otsikko\n"
-    with patch("requests.post", return_value=reply(reply_text)), pytest.raises(ValueError, match="changed label"):
-        translate([LabeledLine("benign", "good headline")], "Finnish", endpoint="http://x", model="m")

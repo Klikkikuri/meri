@@ -122,10 +122,15 @@ def test_download_model_delegates_and_prints_the_config_line(tmp_path: Path, mon
 
 
 def test_translate_exemplars_writes_the_translation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
-    from luotsi.guards.labeled import LabeledLine
+    """
+    The output file proves the CLI re-attaches labels correctly.
 
+    The pipeline returns bare strings, so `__label__benign` in the result can only have come from the source
+    line. That makes this assertion the guard for the split-and-re-attach the strings-only contract requires.
+    """
     monkeypatch.setattr(
-        "meri.cli.feedback.translate", lambda lines, lang, **kw: [LabeledLine(line.label, "käännös") for line in lines]
+        "meri.pipelines.feedback_translate.ExemplarTranslator.translate",
+        lambda self, lines, language: ["käännös" for _ in lines],
     )
     source = tmp_path / "src.txt"
     source.write_text("__label__benign good headline\n", encoding="utf-8")

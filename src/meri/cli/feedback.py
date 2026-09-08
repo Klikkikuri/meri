@@ -1,8 +1,9 @@
 """
 Maintainer commands for the reader feedback guardrails.
 
-These read Meri's configuration and hand the work to Luotsi, so an operator names paths once, in `config.yaml`,
-instead of repeating them on a command line. None of this runs in a deployment.
+These read Meri's configuration, so an operator names paths once, in `config.yaml`, instead of repeating them
+on a command line. Guard training is Luotsi's work; translation is Meri's, through the `feedback_translate`
+pipeline, because Luotsi carries no LLM client. None of this runs in a deployment.
 
 The injection guard's centroid artifact is deliberately NOT shipped with Luotsi: it is bound to the embedding
 model it was trained with, so each deployment trains its own from the exemplar data.
@@ -11,10 +12,14 @@ model it was trained with, so each deployment trains its own from the exemplar d
 from pathlib import Path
 
 from luotsi.embeddings import DEFAULT_MODEL, download_model, load_embedder
-from luotsi.guards.labeled import packaged_exemplars, parse, parse_files, write
+from luotsi.guards.labeled import (
+    LabeledLine,
+    packaged_exemplars,
+    parse,
+    parse_files,
+    write,
+)
 from luotsi.guards.trainer import DEFAULT_CLUSTER_THRESHOLD, train_centroids
-from luotsi.guards.translate import DEFAULT_ENDPOINT, translate
-from luotsi.guards.translate import DEFAULT_MODEL as DEFAULT_TRANSLATE_MODEL
 from luotsi.settings import InjectionConfig, LuotsiSettings
 from niitti import get_logger
 
@@ -147,21 +152,27 @@ def train_guard(
 @click.argument("src", type=click.Path(exists=True, dir_okay=False, path_type=Path))
 @click.argument("dst", type=click.Path(dir_okay=False, path_type=Path))
 @click.option("--to", "language", required=True, help="Target language, named as you would to a translator.")
-@click.option("--endpoint", default=DEFAULT_ENDPOINT, show_default=True, help="Chat completions URL.")
-@click.option("--model", default=DEFAULT_TRANSLATE_MODEL, show_default=True, help="Model to translate with.")
-def translate_exemplars(src: Path, dst: Path, language: str, endpoint: str, model: str) -> None:
+@click.pass_context
+def translate_exemplars(ctx: click.Context, src: Path, dst: Path, language: str) -> None:
     """
     Translate a labeled exemplar file into another language.
 
-    Read the result before committing it. The API key comes from `LUOTSI_TRANSLATE_API_KEY`, or `OPENAI_API_KEY`.
+    Runs through the `feedback_translate` pipeline, so the model and its credentials come from Meri's `llm:` and
+    `pipelines:` configuration like any other pipeline. Read the result before committing it.
     """
-    exemplars = parse(src.read_text(encoding="utf-8").splitlines())
-    click.echo(f"Translating {len(exemplars)} exemplar(s) to {language} with {model} ...")
+    # Imported here, and constructed inside the command, because `settings` only resolves in a setup() context.
+    from ..pipelines.feedback_translate import ExemplarTranslator
 
+    exemplars = parse(src.read_text(encoding="utf-8").splitlines())
+    click.echo(f"Translating {len(exemplars)} exemplar(s) to {language} ...")
+
+    # The pipeline takes and returns plain text. Labels are this file's format, so they are split off here and
+    # re-attached from the source, never read back from the model.
     try:
-        translated = translate(exemplars, language, endpoint=endpoint, model=model)
+        translated = ExemplarTranslator().translate([(line.label, line.text) for line in exemplars], language)
     except ValueError as e:
         raise click.ClickException(str(e)) from e
 
-    dst.write_text(write(translated), encoding="utf-8")
-    click.echo(f"Wrote {len(translated)} exemplar(s) to {dst}. Read them before committing.")
+    result = [LabeledLine(source.label, text) for source, text in zip(exemplars, translated, strict=True)]
+    dst.write_text(write(result), encoding="utf-8")
+    click.echo(f"Wrote {len(result)} exemplar(s) to {dst}. Read them before committing.")
