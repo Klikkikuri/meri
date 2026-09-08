@@ -373,3 +373,112 @@ def test_check_without_an_artifact_says_where_to_get_one(model_dir: Path, embedd
 
     assert result.exit_code != 0
     assert "train-guard" in result.output
+
+
+# --- show ----------------------------------------------------------------------
+
+
+ARTICLE_URL = "https://www.hs.fi/politiikka/art-2000012259632.html"
+
+CSV_HEADER = "Timestamp,pageUrl,urlSign,originalTitle,convertedTitle,feedbackType,clickbaitLevel,comment,databaseUpdated"
+
+
+def feedback_csv(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
+    """A feedback export whose signature really matches ARTICLE_URL, so the matcher does its normal work."""
+    from meri.suola import hash_url
+
+    sign = hash_url(ARTICLE_URL)
+    path = tmp_path / "feedback.csv"
+    path.write_text(
+        "\n".join(
+            [CSV_HEADER]
+            + [
+                f"9/8/2026 10:0{index}:00,{ARTICLE_URL},{sign},Orig,{title},{kind},Not Clickbaity,{comment},"
+                f"2026-09-08T06:00:00.000Z"
+                for index, (title, kind, comment) in enumerate(rows)
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return path
+
+
+def show_settings(path: Path, guardrails: list[dict] | None = None) -> dict:
+    """Feedback from a local CSV, and no embedding model, so no test needs the real one."""
+    return {
+        "embedding_model": None,
+        "sources": [{"type": "csv", "path": str(path)}],
+        "guardrails": guardrails if guardrails is not None else [{"type": "sanitize"}, {"type": "truncate"}],
+    }
+
+
+def test_show_renders_the_prompt_block(tmp_path: Path):
+    """What is printed is the untrusted-data section of the prompt, not a summary of it."""
+    path = feedback_csv(
+        tmp_path,
+        [("Title A", "good_conversion", "clear and accurate now"), ("Title A", "bad_conversion", "still too long")],
+    )
+
+    result = invoke(["show", ARTICLE_URL], show_settings(path))
+
+    assert result.exit_code == 0, result.output
+    assert "<reader_feedback>" in result.output
+    assert '"Title A": 1 positive, 1 negative, 0 suggestion(s)' in result.output
+    assert "still too long" in result.output
+
+
+def test_show_applies_the_guardrail_chain(tmp_path: Path):
+    """The point of the command: the text shown is what survived the guards, not what the reader typed."""
+    path = feedback_csv(tmp_path, [("Title A", "bad_conversion", "write to me at foo.bar@example.com about this")])
+
+    result = invoke(["show", ARTICLE_URL], show_settings(path, [{"type": "sanitize"}, {"type": "pii"}]))
+
+    assert result.exit_code == 0, result.output
+    assert "foo.bar@example.com" not in result.output
+    assert "[redacted]" in result.output
+
+
+def test_show_consolidates_repeated_messages(tmp_path: Path):
+    """Fifty identical complaints become one line with a count, and the count is what the model sees."""
+    path = feedback_csv(
+        tmp_path,
+        [("Title A", "bad_conversion", "the town name is missing")] * 3,
+    )
+
+    result = invoke(["show", ARTICLE_URL], show_settings(path))
+
+    assert result.exit_code == 0, result.output
+    assert "<reported_times>3</reported_times>" in result.output
+
+
+def test_show_caps_the_groups_at_the_limit(tmp_path: Path):
+    path = feedback_csv(
+        tmp_path,
+        [("Title A", "bad_conversion", f"a distinct complaint number {index}") for index in range(3)],
+    )
+
+    result = invoke(["show", ARTICLE_URL, "--limit", "1"], show_settings(path))
+
+    assert result.exit_code == 0, result.output
+    assert result.output.count("<comment>") == 1
+
+
+def test_show_without_matching_feedback_names_the_signature(tmp_path: Path):
+    """Feedback is matched by signature, so the signature is the first thing to check when nothing matches."""
+    path = feedback_csv(tmp_path, [("Title A", "good_conversion", "fine")])
+
+    result = invoke(["show", "https://www.hs.fi/politiikka/art-2000099999999.html"], show_settings(path))
+
+    assert result.exit_code != 0
+    assert "No feedback matches" in result.output
+    assert "url signature" in result.output
+
+
+def test_show_rejects_a_malformed_url(tmp_path: Path):
+    path = feedback_csv(tmp_path, [("Title A", "good_conversion", "fine")])
+
+    result = invoke(["show", "not-a-url"], show_settings(path))
+
+    assert result.exit_code != 0
+    assert "Not a usable article URL" in result.output

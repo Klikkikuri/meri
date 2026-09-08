@@ -12,6 +12,7 @@ model it was trained with, so each deployment trains its own from the exemplar d
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
+from luotsi.cluster import MessageClusterer
 from luotsi.embeddings import download_model, load_embedder
 from luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
 from luotsi.guards.labeled import (
@@ -328,6 +329,60 @@ def check(ctx: click.Context, text: str, vectors: Path | None, floor: float | No
     """
     guard = _load_guard(ctx, vectors, floor, margin)
     click.echo(explain(text, guard.embed, guard.artifact, guard.floor, guard.margin).render())
+
+
+@cli.command("show")
+@click.argument("url")
+@click.option("--limit", type=int, help="Most message groups to render. Defaults to `max_messages_per_article`.")
+@click.pass_context
+def show(ctx: click.Context, url: str, limit: int | None) -> None:
+    """
+    Render the reader feedback for one article URL as the model receives it.
+
+    Pulls from the configured sources, runs the guardrail chain, consolidates repeated messages and renders the
+    `feedback.md.j2` block — so what is printed is the untrusted-data section of the prompt itself, after
+    everything that filters it. Use it to see what a reader's comment actually became, or why an article's
+    feedback is not reaching the model.
+
+    Diagnostics go to stderr, so stdout is the prompt block alone and can be piped.
+    """
+    # Imported here: `meri.feedback` pulls in the article model and the clusterer, and none of the other
+    # commands in this group need either.
+    from jinja2 import Template
+    from pydantic import ValidationError
+
+    from ..article import Article
+    from ..feedback import FeedbackMatcher, feedback_for_article, fetch_feedback
+    from ..prompts import PROMPT_TEMPLATE_FEEDBACK, get_prompt_template
+
+    settings = _luotsi_settings(ctx)
+
+    # Validated rather than constructed, so a malformed URL is a command error and not a traceback. Only the
+    # URL is needed: feedback is matched by signature, so nothing has to be fetched or extracted.
+    try:
+        article = Article.model_validate({"urls": [{"href": url}]})
+    except ValidationError as e:
+        raise click.ClickException(f"Not a usable article URL: {url}") from e
+
+    signature = article.urls[0].signature
+
+    feedback = fetch_feedback(settings)
+    aggregate = feedback_for_article(
+        FeedbackMatcher(feedback),
+        article,
+        MessageClusterer.from_settings(settings),
+        settings.max_messages_per_article if limit is None else limit,
+    )
+
+    click.echo(f"url signature : {signature}", err=True)
+    click.echo(f"feedback kept : {len(feedback)} item(s) survived the guardrails, from every source", err=True)
+
+    if aggregate is None:
+        # The signature above is the thing to check first: feedback is matched by it, not by the URL text.
+        raise click.ClickException(f"No feedback matches {url}.")
+
+    click.echo(f"this article  : {len(aggregate.titles)} title(s) rated, {len(aggregate.items)} message group(s)\n", err=True)
+    click.echo(Template(get_prompt_template(PROMPT_TEMPLATE_FEEDBACK)).render(feedback=aggregate).strip())
 
 
 @cli.command("translate-exemplars")

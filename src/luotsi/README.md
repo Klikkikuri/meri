@@ -98,6 +98,18 @@ alone does not distinguish a message that sits on an attack from one that is mer
 and, as above, it does not show when a drop came down to a thousandth. Sanitized text is shown whenever cleaning
 changed the message, which is how invisible padding becomes visible.
 
+`meri feedback show` goes the other way, from one article to the prompt the model receives:
+
+```bash
+meri feedback show https://www.example.com/news/some-article
+```
+
+It pulls from the configured sources, runs the whole chain, consolidates repeated messages and renders the
+`feedback.md.j2` block — so what lands on stdout is the untrusted-data section of the prompt itself, not a
+summary of it. Only the URL is needed: feedback is matched by signature, so nothing is fetched or extracted.
+Diagnostics (the signature, how many items survived the guards, how many groups this article got) go to stderr,
+so the block can be piped. When nothing matches, the signature it printed is the first thing to check.
+
 Add to a drop class when a new attack pattern appears. Add to `__label__benign` when a real reader is dropped:
 the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real feedback
 accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw reader
