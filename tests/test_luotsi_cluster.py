@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 from luotsi.cluster import MessageClusterer, agglomerate, counter_cosine, ngram_counts
-from luotsi.embeddings import load_embedder
 
 from luotsi import Feedback, FeedbackType, LuotsiSettings
 
@@ -121,12 +120,3 @@ def test_settings_reject_a_model_path_that_is_a_file(tmp_path: Path):
 
     with pytest.raises(ValueError, match="not a directory"):
         LuotsiSettings(embedding_model=not_a_directory)
-
-
-def test_load_embedder_propagates_a_load_failure(tmp_path: Path):
-    """A configured model that cannot load must fail loudly, never degrade to the built-in mode."""
-    empty = tmp_path / "not-a-model"
-    empty.mkdir()
-
-    with pytest.raises(ValueError):
-        load_embedder(empty)

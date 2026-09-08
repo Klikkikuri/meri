@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import click
+import pytest
 
 from luotsi import Feedback, FeedbackType, LuotsiSettings
 from meri.__main__ import run
@@ -401,3 +402,80 @@ def test_feedback_older_than_the_entry_does_not_warn_on_a_pruned_article(monkeyp
         run.callback(sample=False, max_workers=1)
 
     assert "carries unacted reader feedback" not in caplog.text
+
+
+# --- Embedding model provisioning ------------------------------------------------
+
+
+def configured_model(monkeypatch, ctx, tmp_path):
+    """
+    Point the run at a model directory. `LuotsiSettings()` carries none, so the block is otherwise skipped.
+
+    The clusterer loads the model for itself further down the run; in a real one that is the cached load from
+    the start of it, so the stub stands in for the same shared model.
+    """
+    model = tmp_path / "model"
+    model.mkdir()
+    ctx.obj["settings"].luotsi = LuotsiSettings(embedding_model=model)
+    monkeypatch.setattr("luotsi.cluster.load_embedder", lambda _path: lambda _text: None)
+    return model
+
+
+def test_a_missing_model_is_fetched_before_anything_else(monkeypatch, tmp_path):
+    """
+    The run provisions its own model, and retrains the guard with it.
+
+    `force` is the point: a re-fetch keeps the identifier and the dimension, so the artifact would otherwise
+    read as current while its centroids belong to the weights that were replaced.
+    """
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
+    model = configured_model(monkeypatch, ctx, tmp_path)
+
+    events = []
+    monkeypatch.setattr("meri.__main__.ensure_model", lambda path: events.append(("fetch", path)) or True)
+    monkeypatch.setattr("meri.__main__.load_embedder", lambda path: events.append(("load", path)))
+    monkeypatch.setattr("meri.__main__.provision", lambda _s, force=False: events.append(("provision", force)))
+
+    with ctx:
+        run.callback(sample=False, max_workers=1)
+
+    assert events == [("fetch", model), ("load", model), ("provision", True)]
+
+
+def test_a_model_already_there_is_not_retrained_around(monkeypatch, tmp_path):
+    """Nothing was fetched, so the artifact is left to its own staleness check."""
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
+    configured_model(monkeypatch, ctx, tmp_path)
+
+    forced = []
+    monkeypatch.setattr("meri.__main__.ensure_model", lambda _path: False)
+    monkeypatch.setattr("meri.__main__.load_embedder", lambda _path: None)
+    monkeypatch.setattr("meri.__main__.provision", lambda _s, force=False: forced.append(force))
+
+    with ctx:
+        run.callback(sample=False, max_workers=1)
+
+    assert forced == [False]
+
+
+def test_no_download_model_keeps_the_hub_out_of_the_run(monkeypatch, tmp_path):
+    """The opt-out for a deployment that provisions its own model: an unprovisioned one is then an error."""
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
+    model = configured_model(monkeypatch, ctx, tmp_path)
+
+    def refuse(_path):
+        raise AssertionError("--no-download-model must not reach the hub")
+
+    def missing(path):
+        raise FileNotFoundError(f"No Model2Vec model in {path}.")
+
+    monkeypatch.setattr("meri.__main__.ensure_model", refuse)
+    monkeypatch.setattr("meri.__main__.load_embedder", missing)
+
+    with ctx, pytest.raises(click.ClickException, match="download-model") as failure:
+        run.callback(sample=False, max_workers=1, download_model=False)
+
+    assert str(model) in failure.value.message

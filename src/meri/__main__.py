@@ -31,7 +31,7 @@ from .lautta import (
     should_skip_processing,
 )
 from .bootstrap import setup
-from .cli.feedback import cli as feedback_cli
+from .cli.feedback import cli as feedback_cli, ensure_model
 from .cli.fetch import cli as fetch_cli
 from .cli.headlines import cli as headlines_cli
 from .article import Article
@@ -116,10 +116,11 @@ def cli(ctx: click.Context, cache: bool, debug: bool):
 @cli.command()
 @click.option("--sample", is_flag=True, help="Use limited dataset.")
 @click.option("--max-workers", type=int, default=1 if os.getenv("DEBUG") else None, help="Maximum number of worker threads to use for fetching articles.")
+@click.option("--download-model/--no-download-model", default=True, help="Fetch the configured embedding model when its directory holds none. Use --no-download-model to keep hub access out of the run.")
 @click.pass_context
 @tracer.start_as_current_span("run")
 @monitor(monitor_slug=MERI_RUN_MONITOR_SLUG)
-def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None):
+def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None, download_model: bool = True):
 
     if max_workers is not None:
         ctx.obj['settings'].MAX_WORKERS = max_workers
@@ -136,13 +137,21 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
-    # Load the embedding model before any fetching or LLM spend: a configured model that cannot load is a broken
-    # deployment, and it must say so at the start of the run rather than part way through it. The injection
-    # guard's vectors are provisioned in the same breath and for the same reason — this is the one command that
-    # writes them, so the read-only ones can be trusted not to.
+    # Provision and load the embedding model before any fetching or LLM spend: a configured model that cannot
+    # load is a broken deployment, and it must say so at the start of the run rather than part way through it.
+    # The injection guard's vectors are provisioned in the same breath and for the same reason — this is the one
+    # command that writes them, so the read-only ones can be trusted not to.
     if settings.luotsi and settings.luotsi.embedding_model:
-        load_embedder(settings.luotsi.embedding_model)
-        provision(settings.luotsi)
+        model = settings.luotsi.embedding_model
+        fetched = ensure_model(model) if download_model else False
+        try:
+            load_embedder(model)
+        except OSError as e:
+            raise click.ClickException(f"{e}\n\n`meri feedback download-model` provisions it.") from e
+        # A fetch keeps the model's identifier and its dimension, so the artifact would otherwise read as
+        # current while its centroids belong to the weights that were just replaced, and no operator is here
+        # to be told to retrain.
+        provision(settings.luotsi, force=fetched)
 
     # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down. The
     # guardrail chain runs per article, inside the matcher, so a growing corpus costs only what this run reads.

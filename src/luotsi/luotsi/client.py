@@ -35,7 +35,7 @@ def model_identity(settings: LuotsiSettings) -> str | None:
     return settings.embedding_model.name if settings.embedding_model else None
 
 
-def provision(settings: LuotsiSettings) -> Path | None:
+def provision(settings: LuotsiSettings, *, force: bool = False) -> Path | None:
     """
     Bring the artifacts this configuration needs up to date. WRITES; call it deliberately.
 
@@ -47,6 +47,9 @@ def provision(settings: LuotsiSettings) -> Path | None:
     Does nothing when the chain runs no injection guard, or when there is no embedding model to train with.
 
     :param settings: The feedback configuration.
+    :param force: Rebuild the artifact even when it reads as current. For the one staleness the recorded
+        identity cannot see: the same model identifier re-fetched, whose new weights the old centroids do not
+        belong to.
     :raises ValueError: When the exemplars cannot produce a classifier.
     :raises OSError: When the artifact cannot be written.
     :return: The artifact path, or None when there was nothing to provision.
@@ -61,7 +64,7 @@ def provision(settings: LuotsiSettings) -> Path | None:
 
     path = artifact_path(config, settings.guard_vectors)
     _, reason = ensure_guard_vectors(
-        config, load_embedder(settings.embedding_model), model_identity(settings), path
+        config, load_embedder(settings.embedding_model), model_identity(settings), path, force=force
     )
     if reason:
         logger.info("Provisioned guard vectors at %s: %s", path, reason)

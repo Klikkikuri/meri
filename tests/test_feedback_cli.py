@@ -7,12 +7,14 @@ guard the settings plumbing and the messages an operator sees when something is 
 
 from pathlib import Path
 
+import click
 import numpy as np
 import pytest
 from click.testing import CliRunner
+from luotsi.embeddings import model_exists
 from luotsi.guards.vectors import GuardVectors
 
-from meri.cli.feedback import cli
+from meri.cli.feedback import cli, ensure_model
 from meri.settings.luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors
 from meri.settings.luotsi import model_dir as resolved_dir
 from meri.settings.settings import Settings
@@ -161,6 +163,95 @@ def test_download_model_fetches_the_hub_model_the_configuration_names(downloads:
 
     assert result.exit_code == 0, result.output
     assert downloads == [(resolved_dir("minishlab/potion-base-8M"), "minishlab/potion-base-8M")]
+
+
+def saved_model(path: Path) -> Path:
+    """A directory as a finished fetch leaves it."""
+    path.mkdir(parents=True, exist_ok=True)
+    for name in ("config.json", "model.safetensors", "tokenizer.json"):
+        (path / name).write_text("", encoding="utf-8")
+    return path
+
+
+@pytest.fixture
+def staged(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """A stubbed fetch that writes a model where it is told, so what `ensure_model` publishes can be read."""
+    targets: list[Path] = []
+
+    def fetch(target: Path, _model: str) -> None:
+        targets.append(target)
+        saved_model(target)
+
+    monkeypatch.setattr("meri.cli.feedback.download_model", fetch)
+    return targets
+
+
+def test_ensure_model_leaves_a_provisioned_directory_alone(model_dir: Path, downloads: list):
+    """The common case: every run after the first must not re-fetch, and must not touch the hub to find out."""
+    saved_model(model_dir)
+
+    assert ensure_model(model_dir) is False
+    assert downloads == []
+
+
+def test_ensure_model_fetches_the_hub_model_the_directory_resolves_from(staged: list):
+    """A cold deployment provisions itself from the configuration alone: the directory names the model."""
+    destination = resolved_dir("minishlab/potion-base-8M")
+
+    assert ensure_model(destination) is True
+    assert model_exists(destination)
+
+
+def test_ensure_model_publishes_by_rename(staged: list):
+    """
+    Runs overlap, so a second process must never read a half-written model.
+
+    The fetch goes to a directory of its own and is renamed into place, exactly as the guard's artifact is.
+    """
+    destination = resolved_dir(DEFAULT_EMBEDDING_MODEL)
+
+    ensure_model(destination)
+
+    assert staged and staged[0] != destination
+    assert staged[0].parent == destination.parent
+    assert not staged[0].exists()
+
+
+def test_ensure_model_refuses_a_directory_it_cannot_name_a_model_for(tmp_path: Path, downloads: list):
+    """A model provisioned by other means: nothing says what to fetch, so say that rather than guess."""
+    with pytest.raises(click.ClickException, match="download-model"):
+        ensure_model(tmp_path / "own-model")
+
+    assert downloads == []
+
+
+def test_ensure_model_refuses_a_half_written_download(downloads: list):
+    """What an interrupted fetch leaves. Overwriting a configured directory unasked is not this command's call."""
+    destination = resolved_dir(DEFAULT_EMBEDDING_MODEL)
+    destination.mkdir(parents=True)
+    (destination / "model.safetensors").write_text("", encoding="utf-8")
+
+    with pytest.raises(click.ClickException, match="download-model"):
+        ensure_model(destination)
+
+    assert downloads == []
+
+
+def test_train_guard_on_an_unprovisioned_model_names_the_command(model_dir: Path):
+    """No `embedder` fixture here: this is the real loader meeting an empty directory."""
+    result = invoke(["train-guard"], {"embedding_model": str(model_dir)})
+
+    assert result.exit_code != 0
+    assert "download-model" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_show_on_an_unprovisioned_model_names_the_command(model_dir: Path):
+    """`show` reaches the loader through the matcher, so it needs its own answer."""
+    result = invoke(["show", "https://example.com/article"], {"embedding_model": str(model_dir)})
+
+    assert result.exit_code != 0
+    assert "download-model" in result.output
 
 
 def unwrapped(output: str) -> str:

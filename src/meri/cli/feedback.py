@@ -9,12 +9,15 @@ The injection guard's centroid artifact is deliberately NOT shipped with Luotsi:
 model it was trained with, so each deployment trains its own from the exemplar data.
 """
 
+import os
+import shutil
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from luotsi.client import model_identity
 from luotsi.cluster import MessageClusterer
-from luotsi.embeddings import download_model, load_embedder
+from luotsi.embeddings import download_model, load_embedder, model_exists
 from luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
 from luotsi.guards.labeled import (
     LabeledLine,
@@ -70,6 +73,16 @@ def _embedding_model(settings: LuotsiSettings) -> Path:
     return settings.embedding_model
 
 
+def _embedder(path: Path) -> "Embedder":
+    """Load the configured model, or say how to provision it. These commands read; they never fetch."""
+    try:
+        return load_embedder(path)
+    except FileNotFoundError as e:
+        raise click.ClickException(
+            f"{e}\n\n`meri feedback download-model` fetches it, and `meri run` does the same at start."
+        ) from e
+
+
 def _configured_model(ctx: click.Context) -> Path | None:
     """
     The directory the configured model loads from, or None.
@@ -96,6 +109,56 @@ def _download_defaults(ctx: click.Context, target_dir: Path | None, model: str |
     """
     destination = target_dir or _configured_model(ctx) or model_dir(DEFAULT_EMBEDDING_MODEL)
     return destination, model or hub_id_of(destination) or DEFAULT_EMBEDDING_MODEL
+
+
+def ensure_model(path: Path) -> bool:
+    """
+    Fetch the configured model when its directory holds none. WRITES, and reaches the hub.
+
+    What `meri run` calls so that a cold deployment provisions itself, the way it already trains its own guard
+    vectors. The hub identifier is the one the directory resolves from, so an operator names a model once and a
+    run needs nothing else.
+
+    Publishes by rename, for the same reason :func:`~luotsi.guards.provision.write_artifact` does: runs overlap,
+    and a second process must never read a half-written model.
+
+    :param path: The resolved model directory, from `luotsi.embedding_model`.
+    :raises click.ClickException: When the directory names no hub model, or holds a partial one.
+    :return: True when it fetched a model, False when one was already there.
+    """
+    if model_exists(path):
+        return False
+
+    hub_id = hub_id_of(path)
+    if not hub_id or hub_id.count("/") != 1:
+        raise click.ClickException(
+            f"No model in {path}, and nothing says where to fetch one: it is not a directory a hub identifier "
+            f"resolves to. Provision it with `meri feedback download-model {path}`, or name a hub model in "
+            f"`luotsi.embedding_model`."
+        )
+
+    if path.exists() and any(path.iterdir()):
+        # An interrupted fetch, so this is not a directory to replace unasked; `download-model` writes in place
+        # and is the deliberate way to say "overwrite whatever is there".
+        raise click.ClickException(
+            f"{path} holds files but no loadable model, which is what an interrupted download leaves. "
+            f"`meri feedback download-model` fetches over it."
+        )
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(dir=path.parent, prefix=f".{path.name}."))
+    try:
+        download_model(staging, hub_id)
+        os.replace(staging, path)
+    except OSError:
+        # Two runs starting together fetch the same model into staging directories of their own; the loser
+        # renames onto a directory that is no longer empty. Its work is redundant, not failed.
+        if not model_exists(path):
+            raise
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+    return True
 
 
 class ShowsResolvedDefaults(CommandBase):
@@ -164,7 +227,7 @@ def _load_guard(ctx: click.Context, vectors: Path | None, floor: float | None, m
             f"train-guard`, or pass --vectors to read a different file."
         )
 
-    embedder = load_embedder(model_path)
+    embedder = _embedder(model_path)
     return _Guard(
         embed=embedder,
         artifact=GuardVectors.load(artifact_path, dim=len(embedder("dimension probe"))),
@@ -271,7 +334,7 @@ def train_guard(
     identity = model_identity(settings)
     click.echo(f"Training on {len(exemplars)} exemplar(s) with {identity} ...")
 
-    embed = load_embedder(model_path)
+    embed = _embedder(model_path)
     artifact, _ = ensure_guard_vectors(injection, embed, identity, destination, force=True)
 
     # The report is the reason to run this by hand rather than let a run provision the same artifact: it is the
@@ -392,6 +455,11 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
     # sentence rather than a traceback.
     try:
         matcher = build_matcher(settings)
+    except FileNotFoundError as e:
+        # The chain builds the model before the vectors, so an unprovisioned deployment fails here first.
+        raise click.ClickException(
+            f"{e}\n\n`meri feedback download-model` fetches it, and `meri run` does the same at start."
+        ) from e
     except ValueError as e:
         raise click.ClickException(f"{e}\n\nA run provisions them; `meri feedback train-guard` does it now.") from e
 

@@ -52,11 +52,18 @@ widens the same surface rather than adding a tier of its own. The Finnish file i
 **The trained artifact is not shipped with this package.** It is bound to the embedding model that produced
 it, so each deployment builds its own. `luotsi.provision(settings)` does that — and `meri run` calls it at
 the start of every run, so a deployment that edits its exemplars or swaps its model gets a rebuilt artifact
-with no operator action:
+with no operator action.
+
+The model is provisioned the same way: `meri run` fetches it into the directory `embedding_model` resolves to
+when nothing is there, so a cold deployment needs no operator action either. Fetch it ahead of time, or into a
+directory the configuration does not name, with:
 
 ```bash
-meri feedback download-model    # once, into the directory Meri resolves `embedding_model` to
+meri feedback download-model    # into the directory Meri resolves `embedding_model` to
 ```
+
+A run that must not reach the hub — an air-gapped deployment provisioning its own model directory — takes
+`meri run --no-download-model`, and then a missing model is an error rather than a download.
 
 **Provisioning writes; guards only read.** That is the same division this package already makes for the
 embedding model — `download_model` fetches, `load_embedder` loads and fails if nothing is there — and it is
@@ -73,9 +80,11 @@ The model is identified by whatever the host calls it — in Meri the hub identi
 `minishlab/potion-multilingual-128M` and `otherorg/potion-multilingual-128M` are distinguishable where a bare
 directory name would not be. **One case this does not catch:** fetching a new revision of the same model into
 the same directory changes the weights but not the identifier or the dimension, so the artifact reads as
-current and the guard keeps centroids built from the old weights. `meri feedback download-model` overwrites
-in place, so after re-provisioning a model, retrain with `meri feedback train-guard`. Only fingerprinting
-what the model produces would close this automatically.
+current and the guard keeps centroids built from the old weights. Only fingerprinting what the model produces
+would close this by itself, so the two routes to new weights each answer for it: `provision(settings,
+force=True)` rebuilds the artifact unconditionally, and `meri run` passes `force` exactly when it fetched a
+model — which is how an unattended run stays honest. `meri feedback download-model` overwrites in place and
+has nobody to force, so it says to retrain with `meri feedback train-guard`.
 
 Without a model, or with nowhere to keep the artifact, the guard refuses to be built and the run fails at
 start. There is no reduced mode to fall back to, so a deployment that cannot run the guard says so in its

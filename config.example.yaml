@@ -152,8 +152,8 @@ rahti:
 # Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
 # without reader feedback; a `luotsi:` key with nothing after it reads as null and does the same. An explicit
 # empty mapping (`luotsi: {}`) is the one that turns feedback ON with every default, which means the default
-# guardrail chain and so the injection guard. That needs an embedding model — the guard trains its own
-# artifact, but nothing can provision the model for it — so `meri feedback download-model` comes first.
+# guardrail chain and so the injection guard. That needs an embedding model, which a run fetches for itself
+# the first time, exactly as it trains its own artifact.
 # luotsi:
 #   sources:
 #     - type: sheets
@@ -169,7 +169,9 @@ rahti:
 #   # The Model2Vec model shared by message consolidation and the injection guard's centroid tier. A hub
 #   # identifier lives under the data directory, at `$MERI_DATA_DIR/embedding/<identifier>`, so this
 #   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
-#   # provisioned by other means. Either way `meri feedback download-model` fills it, with no arguments.
+#   # provisioned by other means. `meri run` fills the directory when it holds no model — pass
+#   # `--no-download-model` to keep hub access out of a run — and `meri feedback download-model` fills it with
+#   # no arguments, for provisioning ahead of time or fetching over what is there.
 #   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
 #   # consolidation and NO injection guard — that mode must also leave `injection` out of `guardrails` below,
 #   # because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.

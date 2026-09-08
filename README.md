@@ -86,6 +86,7 @@ uv sync
 uv run pytest tests/             # run the test suite
 uv run meri run --sample         # full pipeline, limited to the 5 newest articles
 uv run meri run --max-workers 1  # serial, for debugging
+uv run meri run --no-download-model  # fail rather than fetch a missing embedding model from the hub
 uv run meri test <article-url>   # extract + generate a headline for one URL, without writing to Rahti
 uv run meri fetch <article-url>  # extract one URL and print it as Markdown, without calling a model
 uv run meri list-sources
