@@ -296,6 +296,25 @@ class ArticleMeta(TypedDict, total=False):
     outlet: str | None
 
 
+class TranslatedLine(DataModel):
+    """One translated exemplar line. The label is not echoed: it is re-attached from the source."""
+
+    index: int = Field(..., description="The number of the source line this translates. Copy it exactly.")
+    text: str = Field(..., description="The translated text, without its label.")
+
+
+class TranslationResponse(DataModel):
+    """
+    Response model for exemplar translation.
+
+    There is no `contemplator` field: translation is mechanical, and the corpus being translated is a catalog of
+    attack payloads that a thinking-out-loud field would only invite the model to engage with. A bare list
+    cannot be the root either, because a strict JSON schema needs an object.
+    """
+
+    lines: list[TranslatedLine] = Field(..., description="One entry per source line, in any order.")
+
+
 class Link(DataModel):
     labels: list[str | LinkLabel]
     url: AnyHttpUrl

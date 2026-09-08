@@ -26,7 +26,8 @@ class StructuredPipeline:
     costs one attempt instead of the whole budget.
     """
 
-    output_model: BaseModel
+    output_model: ClassVar[type[BaseModel]]
+    """The pydantic model the LLM is asked to fill, and the answer is parsed into."""
 
     PIPELINE_NAME: ClassVar[str] = "default"
 
