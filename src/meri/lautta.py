@@ -561,10 +561,13 @@ def generate_titles(
     """
     results = []
 
+    # One predictor for the whole run, so a single generator and its connection pool serve every worker thread
+    # instead of one being built per article. Safe to share: tests/test_title_concurrency.py holds it.
+    predictor = TitlePredictor()
+
     def predictor_run(
         article: Article, old_title: RahtiEntry | None, article_feedback: ArticleFeedback | None
     ) -> ArticleTitleResponse:
-        predictor = TitlePredictor()
         kwargs = {}
         if old_title:
             kwargs["rahti"] = old_title
