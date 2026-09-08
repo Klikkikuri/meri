@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from luotsi.embeddings import download_model, load_embedder
+from luotsi.guards.evaluate import embed_lines, evaluate, sweep
 from luotsi.guards.labeled import (
     LabeledLine,
     packaged_exemplars,
@@ -21,6 +22,7 @@ from luotsi.guards.labeled import (
     write,
 )
 from luotsi.guards.trainer import DEFAULT_CLUSTER_THRESHOLD, train_centroids
+from luotsi.guards.vectors import GuardVectors
 from luotsi.settings import InjectionConfig, LuotsiSettings
 from niitti import get_logger
 
@@ -103,17 +105,26 @@ class ShowsResolvedDefaults(CommandBase):
         return super().get_help(ctx)
 
 
+def _injection_config(settings: LuotsiSettings) -> InjectionConfig:
+    """
+    The configured injection guard.
+
+    Falls back to the defaults when the chain does not list one, so the maintainer commands work against a
+    deployment that has not configured the guard yet — the thresholds are the same either way.
+    """
+    return next(
+        (guard for guard in settings.guardrails or [] if isinstance(guard, InjectionConfig)), InjectionConfig()
+    )
+
+
 def _vectors_path(settings: LuotsiSettings) -> Path | None:
     """The artifact path the configured injection guard reads, when one is configured."""
-    for guard in settings.guardrails or []:
-        if isinstance(guard, InjectionConfig) and guard.vectors:
-            return guard.vectors
-    return None
+    return _injection_config(settings).vectors
 
 
 @click.group("feedback")
 def cli() -> None:
-    """Reader feedback tooling: provision the embedding model and train the injection guard."""
+    """Reader feedback tooling: provision the embedding model, train the injection guard and probe it."""
 
 
 @cli.command("download-model", cls=ShowsResolvedDefaults)
@@ -189,9 +200,7 @@ def train_guard(
             "list, or pass --output."
         )
 
-    injection = next(
-        (guard for guard in settings.guardrails or [] if isinstance(guard, InjectionConfig)), InjectionConfig()
-    )
+    injection = _injection_config(settings)
     exemplars = parse_files(list(data_files) or packaged_exemplars())
     click.echo(f"Training on {len(exemplars)} exemplar(s) with {model_path.name} ...")
 
@@ -212,6 +221,64 @@ def train_guard(
 
     if report.misclassifications:
         click.echo("\nThe self-check found misclassifications. Read them before deploying this artifact.")
+
+
+@cli.command("probe")
+@click.argument("data_files", nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.option(
+    "--vectors",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Artifact to classify against. Defaults to the configured injection guard's `vectors` path.",
+)
+@click.option("--floor", type=float, help="Override the configured decision floor.")
+@click.option("--margin", type=float, help="Override the configured decision margin.")
+@click.option("--sweep", "with_sweep", is_flag=True, help="Also print error rates over a grid of thresholds.")
+@click.option("--quiet", is_flag=True, help="Print the rates only, not the lines behind them.")
+@click.pass_context
+def probe(
+    ctx: click.Context,
+    data_files: tuple[Path, ...],
+    vectors: Path | None,
+    floor: float | None,
+    margin: float | None,
+    with_sweep: bool,
+    quiet: bool,
+) -> None:
+    """
+    Classify labeled lines with a trained artifact and report what it gets wrong.
+
+    The training report only describes the data the artifact was built from, where every exemplar is its own
+    centroid. This measures lines it was NOT trained on: an attack line that survives is an evasion, a benign
+    line that drops is a reader being silenced. Both are what the next round of exemplars should be written
+    from.
+
+    DATA_FILES are labeled exemplar files, in the same format `train-guard` reads.
+    """
+    settings = _luotsi_settings(ctx)
+    model_path = _embedding_model(settings)
+    injection = _injection_config(settings)
+
+    artifact_path = vectors or _vectors_path(settings)
+    if not artifact_path:
+        raise click.ClickException(
+            "No artifact to probe. Set `vectors` on the injection guard in your `luotsi.guardrails` list, or "
+            "pass --vectors."
+        )
+
+    floor = injection.floor if floor is None else floor
+    margin = injection.margin if margin is None else margin
+
+    lines = parse_files(list(data_files))
+    embedder = load_embedder(model_path)
+    artifact = GuardVectors.load(artifact_path, dim=len(embedder("dimension probe")))
+    click.echo(f"Probing {len(lines)} line(s) against {artifact_path} ...\n")
+
+    embedded = embed_lines(lines, embedder)
+    click.echo(evaluate(embedded, artifact, floor, margin).render(show_lines=not quiet))
+
+    if with_sweep:
+        click.echo()
+        click.echo(sweep(embedded, artifact, floor, margin).render())
 
 
 @cli.command("translate-exemplars")

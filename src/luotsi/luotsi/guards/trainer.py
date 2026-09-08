@@ -23,12 +23,33 @@ logger = logging.getLogger(__name__)
 DEFAULT_CLUSTER_THRESHOLD = 0.85
 """Similarity at which two exemplars of one label share a centroid."""
 
+BRITTLE_SHADOW = 0.75
+"""Above this, a benign centroid leaves its attack centroid less working range than the margin it must clear."""
+
+NARROW_SHADOW = 0.65
+"""Above this, the pair is worth a look. Below it, shadowing is the ordinary overlap of two related sentences."""
+
+AS_IS = "as-is"
+"""The variant name for the unmodified exemplar."""
+
+ROBUSTNESS_WRAPPINGS = {
+    "greeting": "hi, {}, thanks",
+    "critique": "the rewrite is clearer than the original, {}",
+}
+"""
+Content-preserving text a real reader adds around what they came to say.
+
+The self-check on unmodified lines cannot fail on its own account: every exemplar is its own centroid and scores
+1.000 against itself, so only a benign neighbour closer than the margin can break it. Re-checking each line
+wrapped in ordinary reader text is what shows whether a centroid defends an idea or only its own wording.
+"""
+
 
 @dataclass
 class Shadow:
-    """An injection centroid that a benign centroid sits close enough to partly veto."""
+    """An attack centroid that a benign centroid sits close enough to partly veto."""
 
-    injection: str
+    attack: str
     benign: str
     similarity: float
 
@@ -40,6 +61,8 @@ class Misclassification:
     label: str
     text: str
     verdict: str
+    variant: str = AS_IS
+    """Which form of the line failed: :data:`AS_IS`, or the wrapping that broke it."""
 
 
 @dataclass
@@ -51,14 +74,21 @@ class TrainingReport:
 
     shadows: list[Shadow] = field(default_factory=list)
     """
-    Injection centroids a benign centroid sits close to.
+    Attack centroids a benign centroid sits close to, most similar first.
 
-    Informational, not an error. Shadowing IS the designed veto — the question a maintainer answers is whether
-    this particular benign line is protection worth having or an over-broad line neutering a defense.
+    Shadowing IS the designed veto, so this is not an error list. It is ranked instead: a pair above
+    :data:`BRITTLE_SHADOW` leaves the attack centroid less room than the margin it has to clear, so that centroid
+    defends its own wording and nothing else. Ordinary overlap sits far below and is reported only as a count —
+    a catalog with several drop classes produces hundreds of those, and listing them buries the few that matter.
     """
 
     misclassifications: list[Misclassification] = field(default_factory=list)
-    """Training lines the artifact itself gets wrong at the default thresholds."""
+    """
+    Training lines the artifact gets wrong, either as written or once wrapped in ordinary reader text.
+
+    A failure on :data:`AS_IS` is a hard error: two centroids contradict each other. A failure on a wrapping is
+    brittleness — the line classifies correctly only in the exact form it was trained on.
+    """
 
     def render(self) -> str:
         """Format the report for the command line."""
@@ -67,21 +97,39 @@ class TrainingReport:
             lines.append(f"  {label}: {len(sizes)} cluster(s), sizes {sizes}")
 
         lines.append("")
-        lines.append(f"Veto/coverage notes ({len(self.shadows)}):")
-        for shadow in self.shadows:
-            lines.append(f"  {shadow.similarity:.3f}  injection: {shadow.injection}")
-            lines.append(f"          benign:    {shadow.benign}")
-        if not self.shadows:
-            lines.append("  none")
-
+        lines.extend(self._render_shadows())
         lines.append("")
-        lines.append(f"Self-check ({len(self.misclassifications)} misclassified):")
-        for miss in self.misclassifications:
-            lines.append(f"  {miss.label} -> {miss.verdict}: {miss.text}")
-        if not self.misclassifications:
-            lines.append("  every training line classifies correctly")
-
+        lines.extend(self._render_self_check())
         return "\n".join(lines)
+
+    def _render_shadows(self) -> list[str]:
+        """List the shadows tight enough to matter, and count the rest."""
+        brittle = [shadow for shadow in self.shadows if shadow.similarity >= BRITTLE_SHADOW]
+        narrow = sum(1 for shadow in self.shadows if NARROW_SHADOW <= shadow.similarity < BRITTLE_SHADOW)
+        weak = len(self.shadows) - len(brittle) - narrow
+
+        lines = [f"Benign centroids shadowing an attack centroid ({len(self.shadows)}):"]
+        lines.append(f"  brittle (>= {BRITTLE_SHADOW}), the attack centroid defends only its own wording: {len(brittle)}")
+        for shadow in brittle:
+            lines.append(f"    {shadow.similarity:.3f}  attack: {shadow.attack}")
+            lines.append(f"            benign: {shadow.benign}")
+        lines.append(f"  narrow ({NARROW_SHADOW} - {BRITTLE_SHADOW}), worth a look: {narrow}")
+        lines.append(f"  ordinary overlap, not shown: {weak}")
+        return lines
+
+    def _render_self_check(self) -> list[str]:
+        """Separate the hard errors from the lines that only work verbatim."""
+        hard = [miss for miss in self.misclassifications if miss.variant == AS_IS]
+        brittle = [miss for miss in self.misclassifications if miss.variant != AS_IS]
+
+        lines = [f"Self-check ({len(hard)} wrong as written, {len(brittle)} wrong once wrapped):"]
+        for miss in hard:
+            lines.append(f"  {miss.label} -> {miss.verdict}: {miss.text}")
+        for miss in brittle:
+            lines.append(f"  {miss.label} -> {miss.verdict} with a {miss.variant}: {miss.text}")
+        if not self.misclassifications:
+            lines.append("  every training line classifies correctly, wrapped or not")
+        return lines
 
 
 def train_centroids(
@@ -140,13 +188,13 @@ def train_centroids(
     )
 
     report.shadows = _find_shadows(artifact, floor, margin)
-    report.misclassifications = _self_check(artifact, lines, vectors, floor, margin)
+    report.misclassifications = _self_check(artifact, lines, vectors, embed, floor, margin)
     return artifact, report
 
 
 def _find_shadows(artifact: GuardVectors, floor: float, margin: float) -> list[Shadow]:
     """
-    List injection centroids that a benign centroid sits close enough to veto part of.
+    List attack centroids that a benign centroid sits close enough to veto part of.
 
     The veto never edits training — the attack catalog stays whole. A benign pocket only shadows part of its
     neighborhood at classification time, and tightening that one line restores the defense at once.
@@ -162,7 +210,7 @@ def _find_shadows(artifact: GuardVectors, floor: float, margin: float) -> list[S
             similarity = float(np.dot(attack.vector, good.vector))
             if similarity > floor - margin:
                 shadows.append(
-                    Shadow(injection=attack.representative, benign=good.representative, similarity=similarity)
+                    Shadow(attack=attack.representative, benign=good.representative, similarity=similarity)
                 )
 
     return sorted(shadows, key=lambda shadow: shadow.similarity, reverse=True)
@@ -172,22 +220,44 @@ def _self_check(
     artifact: GuardVectors,
     lines: Sequence[LabeledLine],
     vectors: "Mapping[str, Vector]",
+    embed: "Embedder",
     floor: float,
     margin: float,
 ) -> list[Misclassification]:
-    """Re-classify every training line with the trained artifact, and report what it gets wrong."""
+    """
+    Re-classify every training line with the trained artifact, as written and wrapped, and report what it gets
+    wrong.
+
+    Checking the line as written catches only the extreme case, where a benign centroid sits closer to an attack
+    centroid than the margin: nothing else can beat a line's own centroid at similarity 1.000. The wrappings are
+    what make this a real check. A line that passes as written and fails once a reader says "hi" in front of it
+    is defending its own string rather than the thing it is an example of, and the maintainer needs to see that
+    before shipping the artifact.
+
+    Reported at most once per line, naming the first variant that failed, so one weak exemplar is one finding.
+    """
     from .injection import classify
+
+    def verdict_of(text: str, vector: "Vector") -> str | None:
+        """The wrong verdict for this text, or None when it classifies correctly."""
+        dropped, _ = classify(vector, artifact, floor, margin)
+        if dropped == (line.label != BENIGN):
+            return None
+        return "dropped" if dropped else "passed"
 
     misses: list[Misclassification] = []
     for line in lines:
-        dropped, _ = classify(vectors[line.text], artifact, floor, margin)
-        expected_drop = line.label != BENIGN
-        if dropped != expected_drop:
-            misses.append(
-                Misclassification(
-                    label=line.label,
-                    text=line.text,
-                    verdict="dropped" if dropped else "passed",
+        variants = [(AS_IS, line.text, vectors[line.text])]
+        variants += [
+            (name, wrapped, embed(wrapped))
+            for name, template in ROBUSTNESS_WRAPPINGS.items()
+            if (wrapped := template.format(line.text))
+        ]
+
+        for variant, text, vector in variants:
+            if (verdict := verdict_of(text, vector)) is not None:
+                misses.append(
+                    Misclassification(label=line.label, text=line.text, verdict=verdict, variant=variant)
                 )
-            )
+                break
     return misses

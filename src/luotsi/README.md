@@ -4,7 +4,8 @@ Luotsi collects reader feedback on Klikkikuri's generated titles and makes it sa
 
 Readers rate a title (good / bad / suggestion) and can add a free-text comment. The submissions land in a Google
 Sheet. Luotsi reads that sheet (or a local CSV export), normalizes the rows, and passes them through a chain of
-guardrails that removes prompt injection attempts, redacts personal data, and limits length and language.
+guardrails that removes prompt injection, hateful agenda steering and spam, redacts personal data, and limits
+length and language.
 
 The default chain holds the injection guard, which needs an embedding model and a trained artifact to run at all.
 
@@ -30,6 +31,12 @@ The guard has one tier. It compares the message against centroids trained from t
 `luotsi/guards/data/`, so it catches rewordings of the attack catalog and not only its exact phrasings. It needs
 both an embedding model and a trained artifact.
 
+The English file carries four labels. `injection` is instructions aimed at the model, `toxic` is agenda steering
+— a reader trying to make the headline carry a hateful framing, not abuse — and `spam` is off-topic text,
+advertising and zero-effort noise. `benign` is the veto. The three drop classes share one decision: `classify`
+takes the nearest non-benign centroid whatever its label, against one floor and one margin, so a new drop class
+widens the same surface rather than adding a tier of its own. The Finnish file is still `injection` and `benign`.
+
 **The trained artifact is not shipped with this package.** It is bound to the embedding model that produced it,
 so each deployment trains its own. Meri owns that command, because it is where the paths are configured:
 
@@ -44,14 +51,55 @@ mode to fall back to, so a deployment that cannot run the guard says so in its c
 holds the guard, so the default chain needs both. A broken deployment must not degrade quietly.
 
 The exemplar files DO ship: they are this package's domain knowledge and the tuning surface. Training is
-deterministic and prints a report — the clusters it found, the injection centroids that a benign centroid sits
-close enough to veto, and a self-check that re-classifies every training line. Read the report before deploying
-an artifact; it is where a blind spot becomes visible.
+deterministic and prints a report — the clusters it found, the benign centroids sitting close enough to veto an
+attack centroid, and a self-check. Read the report before deploying an artifact; it is where a blind spot
+becomes visible.
 
-Add to `__label__injection` when a new attack pattern appears. Add to `__label__benign` when a real reader is
-dropped: the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real
-feedback accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw
-reader messages.
+Read the report's two halves for what they are:
+
+- **Shadows are ranked, not listed.** A catalog with several drop classes produces hundreds of benign/attack
+  pairs above the old cutoff, so only the `brittle` ones — where the benign centroid leaves the attack centroid
+  less room than the margin it has to clear — are printed. The rest are counted. A non-zero brittle count is the
+  thing to act on.
+- **The self-check re-checks each line wrapped in ordinary reader text**, not only as written. As written it
+  cannot fail on its own account: every exemplar is its own centroid and scores 1.000 against itself. `wrong
+  once wrapped` is the real number, and it is how a line that defends only its own string gets caught.
+
+`meri feedback probe` answers the question training cannot, because the trainer only ever sees its own data:
+
+```bash
+meri feedback probe candidates.txt              # what does the artifact do with lines it never saw
+meri feedback probe candidates.txt --sweep      # ... and how the two error rates trade against each other
+```
+
+It classifies labeled lines exactly as a deployment would — sanitized, embedded, through the same `classify` —
+and names the two errors apart: an attack line that survives is an **evasion**, a benign line that drops is a
+reader being **silenced**. Both are what the next exemplars should be written from. `--sweep` re-scores the same
+lines over a grid of floors and margins, which is what turns "the guard missed this" into either a threshold to
+move or the evidence that no threshold setting is good enough.
+
+Add to a drop class when a new attack pattern appears. Add to `__label__benign` when a real reader is dropped:
+the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real feedback
+accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw reader
+messages.
+
+Two rules that the data earned the hard way:
+
+- **A benign line must never be a negated copy of an attack line.** The embedder is negation-blind, so "do not
+  put their nationality in the title" lands about 0.88 from the line demanding exactly that, and the attack
+  centroid is left defending only its own literal string. Make the same point in different words.
+- **Do not trust the self-check to tell you a line is safe.** It is trivially perfect, because every exemplar is
+  its own centroid and scores 1.000 against itself. Judge a candidate by whether it still classifies correctly
+  when wrapped in ordinary reader text — a greeting, a leading clause of genuine critique.
+
+The additions below the shipped sections came from an adversarial exercise: attacker and defender agents wrote
+candidates, each round was trained and re-probed, and what survived is what the guard did not already catch.
+
+Two limits are known and are not data gaps. Long feedback defeats the guard by dilution — the message is
+embedded and scored whole, so a payload padded with genuine critique falls below the floor while the benign half
+raises the veto, and this holds even for payloads that are already centroids. And zero-effort noise does not
+generalize: junk strings get near-arbitrary static vectors, so each shape is its own centroid and the space of
+shapes is unbounded. A length and character-class rule is the right instrument for that, not this file.
 
 `meri feedback translate-exemplars` grows the data into a new language:
 

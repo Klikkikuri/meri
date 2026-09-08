@@ -64,7 +64,7 @@ def test_train_guard_writes_the_configured_vectors_path(tmp_path: Path, model_di
     assert result.exit_code == 0, result.output
     artifact = GuardVectors.load(destination)
     assert artifact.model_name == "stub-model"
-    assert {entry.label for entry in artifact.centroids} == {"injection", "benign"}
+    assert {entry.label for entry in artifact.centroids} == {"injection", "benign", "toxic", "spam"}
 
 
 def test_train_guard_reports_the_self_check(tmp_path: Path, model_dir: Path, embedder):
@@ -74,7 +74,11 @@ def test_train_guard_reports_the_self_check(tmp_path: Path, model_dir: Path, emb
     )
 
     assert "Self-check" in result.output
-    assert "Veto/coverage notes" in result.output
+    assert "wrong once wrapped" in result.output
+    assert "Benign centroids shadowing an attack centroid" in result.output
+    # The shadows are ranked rather than listed: a four-class catalog produces hundreds of ordinary ones.
+    assert "brittle (>= 0.75)" in result.output
+    assert "ordinary overlap, not shown" in result.output
 
 
 def test_train_guard_honours_explicit_data_files(tmp_path: Path, model_dir: Path, embedder):
@@ -197,3 +201,92 @@ def test_translate_exemplars_writes_the_translation(tmp_path: Path, monkeypatch:
 
     assert result.exit_code == 0, result.output
     assert destination.read_text(encoding="utf-8") == "__label__benign käännös\n"
+
+
+# --- probe -------------------------------------------------------------------
+
+
+@pytest.fixture
+def artifact(tmp_path: Path, model_dir: Path, embedder) -> Path:
+    """An artifact trained from two lines, so a probe has something real to classify against."""
+    source = tmp_path / "train.txt"
+    source.write_text("__label__injection attack\n__label__benign ordinary\n", encoding="utf-8")
+    destination = tmp_path / "vectors.json"
+
+    result = invoke(
+        ["train-guard", "--data", str(source), "--output", str(destination)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    return destination
+
+
+def probe_file(tmp_path: Path, content: str) -> Path:
+    path = tmp_path / "probe.txt"
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def test_probe_reports_an_evasion(tmp_path: Path, model_dir: Path, artifact: Path, embedder):
+    """The measurement the training report cannot make: an attack line nobody trained the artifact on."""
+    lines = probe_file(tmp_path, "__label__injection something else entirely\n")
+
+    result = invoke(
+        ["probe", str(lines), "--vectors", str(artifact)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "1 evasion(s)  (100%)" in result.output
+    assert "[evasion] injection: something else entirely" in result.output
+
+
+def test_probe_reports_a_benign_line_as_a_false_positive(tmp_path: Path, model_dir: Path, artifact: Path, embedder):
+    """A reader being silenced is the other error, and it must not be reported as an evasion."""
+    lines = probe_file(tmp_path, "__label__benign attack\n")
+
+    result = invoke(
+        ["probe", str(lines), "--vectors", str(artifact)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "1 false positive(s)  (100%)" in result.output
+
+
+def test_probe_quiet_reports_the_rates_without_the_lines(tmp_path: Path, model_dir: Path, artifact: Path, embedder):
+    lines = probe_file(tmp_path, "__label__injection something else entirely\n")
+
+    result = invoke(
+        ["probe", str(lines), "--vectors", str(artifact), "--quiet"],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "1 evasion(s)" in result.output
+    assert "something else entirely" not in result.output
+
+
+def test_probe_sweep_marks_the_configured_thresholds(tmp_path: Path, model_dir: Path, artifact: Path, embedder):
+    """Tightening trades one error for the other, and the table is the evidence for which way to move."""
+    lines = probe_file(tmp_path, "__label__injection something else entirely\n__label__benign ordinary\n")
+
+    result = invoke(
+        ["probe", str(lines), "--vectors", str(artifact), "--sweep"],
+        {"embedding_model": str(model_dir), "guardrails": [{"type": "injection", "floor": 0.65, "margin": 0.05}]},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "floor=0.65, margin=0.05" in result.output
+    assert "0.65   0.05" in result.output
+    assert "<- configured" in result.output
+
+
+def test_probe_without_an_artifact_says_where_to_get_one(tmp_path: Path, model_dir: Path, embedder):
+    lines = probe_file(tmp_path, "__label__benign hyvä otsikko\n")
+
+    result = invoke(["probe", str(lines)], {"embedding_model": str(model_dir)})
+
+    assert result.exit_code != 0
+    assert "--vectors" in result.output

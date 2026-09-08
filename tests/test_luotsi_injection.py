@@ -1,9 +1,11 @@
 """Tests for the injection guard, its labeled data and its trainer."""
 
+import re
 from pathlib import Path
 
 import numpy as np
 import pytest
+from luotsi.guards import trainer
 from luotsi.guards.injection import InjectionGuard, classify
 from luotsi.guards.labeled import (
     LabeledLine,
@@ -28,10 +30,12 @@ def stub_embed(text: str) -> np.ndarray:
     """
     Place a message by the axis words it carries, so a test can state how attack-like a message is.
 
-    "attack attack ordinary" sits mostly on the attack axis and a little on the ordinary one.
+    "attack attack ordinary" sits mostly on the attack axis and a little on the ordinary one. Words are taken
+    without their punctuation, because a real tokenizer is not thrown by a comma and this stand-in must not be
+    either — the trainer's robustness check wraps lines in text that puts one there.
     """
     vector = np.zeros(3)
-    for word in text.split():
+    for word in re.findall(r"\w+", text):
         if word in AXES:
             vector += np.array(AXES[word])
     norm = np.linalg.norm(vector)
@@ -164,7 +168,8 @@ def test_packaged_exemplar_files_parse():
     """The exemplars ship — they are the curated catalog. The vectors trained from them do not."""
     exemplars = parse_files(packaged_exemplars())
 
-    assert {line.label for line in exemplars} == {"injection", "benign"}
+    # English carries all four classes; Finnish is still injection and benign only.
+    assert {line.label for line in exemplars} == {"injection", "benign", "toxic", "spam"}
     assert len(exemplars) > 100
 
 
@@ -206,6 +211,59 @@ def test_trainer_reports_a_benign_centroid_shadowing_an_attack():
     _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
 
     assert [shadow.benign for shadow in report.shadows] == ["attack ordinary"]
+
+
+def test_trainer_ranks_shadows_so_the_tight_ones_are_readable():
+    """
+    A catalog with several drop classes produces hundreds of shadows. Only the tight ones are actionable, so the
+    report lists those and counts the rest — listing all of them is what buried the finding before.
+    """
+    training = [
+        LabeledLine("injection", "attack"),
+        # Close enough to leave the attack centroid barely its own margin.
+        LabeledLine("benign", "attack attack ordinary"),
+        # Ordinary overlap between two related sentences.
+        LabeledLine("benign", "attack attack ordinary ordinary ordinary"),
+    ]
+
+    # A high cluster threshold keeps the two benign lines apart; at the default they merge into one centroid.
+    _, report = train_centroids(
+        training, stub_embed, model_name="stub", cluster_threshold=0.99, floor=0.60, margin=0.10
+    )
+    rendered = report.render()
+
+    assert [round(shadow.similarity, 2) for shadow in report.shadows] == [0.89, 0.55]
+    assert "brittle (>= 0.75), the attack centroid defends only its own wording: 1" in rendered
+    assert "ordinary overlap, not shown: 1" in rendered
+
+
+def test_trainer_flags_a_line_that_only_classifies_in_the_form_it_was_trained_on(monkeypatch):
+    """
+    The check that the training self-check could never do.
+
+    "attack" is its own centroid, so as written it scores 1.000 and cannot fail. Diluted with one benign word it
+    falls under the veto of the benign centroid next to it — the centroid defends its own string, not the idea.
+    """
+    monkeypatch.setattr(trainer, "ROBUSTNESS_WRAPPINGS", {"dilution": "{} ordinary"})
+    training = [LabeledLine("injection", "attack"), LabeledLine("benign", "attack ordinary ordinary")]
+
+    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+
+    assert [(miss.text, miss.verdict, miss.variant) for miss in report.misclassifications] == [
+        ("attack", "passed", "dilution")
+    ]
+    assert "1 wrong once wrapped" in report.render()
+
+
+def test_trainer_reports_a_line_once_naming_the_first_variant_that_broke_it(monkeypatch):
+    """One weak exemplar is one finding, however many wrappings it fails."""
+    monkeypatch.setattr(trainer, "ROBUSTNESS_WRAPPINGS", {"one": "{} ordinary", "two": "{} ordinary ordinary"})
+    training = [LabeledLine("injection", "attack"), LabeledLine("benign", "attack ordinary ordinary")]
+
+    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+
+    assert len(report.misclassifications) == 1
+    assert report.misclassifications[0].variant == "one"
 
 
 def test_trainer_self_check_is_clean_on_consistent_data():
