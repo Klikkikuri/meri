@@ -65,26 +65,6 @@ class DataModel(BaseModel):
     )
 
 
-class ConfidenceLevel(str, Enum):
-    """
-    Confidence level on the provided response.
-
-    The confidence level indicates the model's certainty in the correctness of the provided response.
-
-    - `Very Uncertain`: Very low confidence in the predicted class. The prediction is highly unreliable and is considered ambiguous.
-    - `Uncertain`: Low confidence in the predicted class. The prediction should be treated with caution.
-    - `Neutral`: Neither strong confidence nor strong lack of confidence in the predicted class.
-    - `Certain`: The model has high confidence in the predicted class. The prediction is likely correct.
-    - `Very Certain`: Very high or total confidence in the predicted class. The prediction is considered highly reliable.
-
-    """
-    LOW = "Very Uncertain"
-    UNCERTAIN = "Uncertain"
-    NEUTRAL = "Neutral"
-    CERTAIN = "Certain"
-    HIGH = "Very Certain"
-
-
 class LinkLabel(str, Enum):
     LINK_CANONICAL   = "com.github.klikkikuri/link-rel=canonical"
     "https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/rel#canonical"
@@ -242,22 +222,6 @@ class TitleQuorumLabel(str, Enum):
     CONSENSUS = "com.github.klikkikuri/title-quorum=consensus"
     SUPERMAJORITY = "com.github.klikkikuri/title-quorum=supermajority"
 
-class TypeResponse(DataModel):
-    """
-    Response model for article type classification task.
-
-    Contemplation needs to be the first field in the response.
-    """
-    contemplator: ContemplatorType
-    types: set[tuple[ArticleTypeLabels, ConfidenceLevel]] = Field(set([]),
-                                        description="List of article types identified, along with the confidence level of the prediction.",)
-
-    # "evidence": {
-    #     "content": "The article presents a detailed account of the event, including quotes from officials and eyewitnesses, and provides context and background information to inform the reader.",
-    #     "tone": "The tone is neutral and informative, focusing on facts and analysis rather than promoting a specific viewpoint or agenda.",
-    #     "structure": "The article follows a typical news format, presenting the who, what, when, where, why, and how of the event, without personal commentary or subjective interpretation."
-    # }
-
 class ArticleEvidenceResponse(DataModel):
     """
     Short analysis summarizing the content, tone, and structure of the __contextual__ __article__, not the response itself. This is used to provide evidence for the clickbaitiness of the original title.
@@ -330,62 +294,6 @@ class ArticleMeta(TypedDict, total=False):
     language: str | None
     "Language of the article (ISO 639-1 code)."
     outlet: str | None
-
-
-class VestedGroup(DataModel):
-    """
-    Model for identified interest group, person, or entity.
-    """
-    name: str = Field(..., description="Name of the group, person, or entity that has vested interest.")
-    questions: list[str] = Field(
-        ...,
-        description="A list of questions aimed at uncovering the vested interest. Each question should explicitly identify the party and include a complete noun phrase.",
-        examples=[
-            "What is <individual name>'s stance as <role or affiliation> on <related issue from article>?",
-            "Why might <organization name> have a vested interest in the coverage of <related issue from article>?",
-            "How does <affected group> view the impact of <issue discussed in the article>?",
-            "What is the potential bias of <interviewed person or organization> regarding <related issue from article>?",
-            "What role does <lobbying group or business entity> play in influencing public opinion on <topic>?",
-            "How does <individual or group> benefit from public perception of <issue>?",
-            "Why was <organization> included in the discussion of <issue>?",
-            "Why is <interviewed person or organization> in the news?",
-            "What possible interests does <corporation or interest group> have in the outcomes of <related topic>?",
-        ],
-    )
-    reasoning: str = Field(..., description="Explanation of why the entity is likely to have a vested interest in the issue.")
-
-
-class ArticleContext(DataModel):
-    """
-    Response from the vested interest extraction model.
-
-    If the article content is missing, too short or not suitable in any other way, the :attr:`ok` field should be `False`.
-
-    `<angle brackets>` in examples indicate placeholders for actual values.
-    """
-
-    reasoning: str = Field(..., description="Message detailing the reasoning.")
-    ok: bool = Field(..., description="Flag to indicate if the extraction was successful.")
-
-    wikipedia_keywords: list[str | None] = Field(
-        [],
-        description="List of (Wikipedia) article keywords that helps to understand the context of the article.",
-        examples=[
-            "Elinkeinoelämän keskusliitto",
-            "Työnantajajärjestöt",
-            "Kansallinen Kokoomus",
-            "Jyri Häkämies",
-            "Lobbaus Suomessa",
-            "Kolmikantainen yhteistyö",
-            "Victoria (Ruotsin kruununprinsessa)",
-            "<locality>",
-            "<attitude towards issue> in <locality>",
-            "<notable person>",
-            "<notable organization>",
-            "<notable event>",
-        ],
-    )
-    groups: list[VestedGroup] = Field([], description="List of entities identified from the article.")
 
 
 class Link(DataModel):

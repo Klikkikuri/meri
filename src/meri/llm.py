@@ -1,5 +1,4 @@
 import inspect
-import re
 from enum import Enum
 from importlib.resources import files
 
@@ -14,17 +13,10 @@ from .settings import (
 )
 from .settings.llms import GeneratorSettings
 
-PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
-PROMPT_TEMPLATE_NEWS_TYPE = "news_article_type.md.j2"
 PROMPT_TEMPLATE_ARTICLE_TITLE = "artcile_title_inst.md.j2"
-PROMPT_TEMPLATE_OUTPUT_FORMAT = "output_format_json.md.j2"
 PROMPT_TEMPLATE_ARTICLE = "article.md.j2"
 PROMPT_TEMPLATE_ARTICLE_UPDATED = "article_updated.md.j2"
 PROMPT_TEMPLATE_FEEDBACK = "feedback.md.j2"
-
-RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
-""" Regular expression to extract JSON block from the response. """
-
 
 logger = get_logger(__name__)
 
