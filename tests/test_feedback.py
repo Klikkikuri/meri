@@ -267,7 +267,7 @@ def test_fetch_feedback_survives_an_unreachable_source():
 def render_feedback_prompt(feedback: ArticleFeedback | None) -> str:
     from haystack.components.builders import PromptBuilder
 
-    from meri.llm import PROMPT_TEMPLATE_FEEDBACK, get_prompt_template
+    from meri.prompts import PROMPT_TEMPLATE_FEEDBACK, get_prompt_template
 
     builder = PromptBuilder(template=get_prompt_template(PROMPT_TEMPLATE_FEEDBACK), required_variables=[])
     return builder.run(feedback=feedback)["prompt"]

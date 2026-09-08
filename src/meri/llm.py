@@ -1,10 +1,8 @@
 import inspect
 from enum import Enum
-from importlib.resources import files
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
-from niitti.paths import data_dir
 from pydantic import AnyUrl, SecretStr
 
 from .settings import (
@@ -12,11 +10,6 @@ from .settings import (
     settings,
 )
 from .settings.llms import GeneratorSettings
-
-PROMPT_TEMPLATE_ARTICLE_TITLE = "artcile_title_inst.md.j2"
-PROMPT_TEMPLATE_ARTICLE = "article.md.j2"
-PROMPT_TEMPLATE_ARTICLE_UPDATED = "article_updated.md.j2"
-PROMPT_TEMPLATE_FEEDBACK = "feedback.md.j2"
 
 logger = get_logger(__name__)
 
@@ -93,27 +86,3 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
     # Create the generator instance
     r = generator_class(**generator_args)
     return r
-
-
-def get_prompt_template(template_name: str) -> str:
-    """
-    Get the prompt text based on the template name.
-
-    Searches for the prompt template in the user data directory first, then in the package data directory.
-    """
-
-    PROMPT_ENCODING = "utf-8"
-
-    # Hack-ish approach; append md.j2 if necessary"
-    prompt_file_name = template_name
-    if not template_name.endswith(".md.j2"):
-        prompt_file_name += ".md.j2"
-    user_prompt_dir = data_dir(__package__ or "meri") / "prompts"
-
-    user_prompt_file = user_prompt_dir / prompt_file_name
-    if user_prompt_file.exists():
-        return user_prompt_file.read_text(encoding=PROMPT_ENCODING)
-
-    # Check from package data directory
-    resource = f"prompts/{prompt_file_name}"
-    return files(__package__).joinpath(resource).read_text(encoding=PROMPT_ENCODING)

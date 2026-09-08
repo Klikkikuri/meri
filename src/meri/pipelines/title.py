@@ -8,7 +8,7 @@ from haystack import Document
 from niitti import get_logger
 
 from meri.abc import ArticleTitleResponse
-from meri.llm import (
+from meri.prompts import (
     PROMPT_TEMPLATE_ARTICLE,
     PROMPT_TEMPLATE_ARTICLE_TITLE,
     PROMPT_TEMPLATE_ARTICLE_UPDATED,
