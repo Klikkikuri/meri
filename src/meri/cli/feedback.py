@@ -339,10 +339,10 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
     """
     Render the reader feedback for one article URL as the model receives it.
 
-    Pulls from the configured sources, runs the guardrail chain, consolidates repeated messages and renders the
-    `feedback.md.j2` block — so what is printed is the untrusted-data section of the prompt itself, after
-    everything that filters it. Use it to see what a reader's comment actually became, or why an article's
-    feedback is not reaching the model.
+    Pulls from the configured sources, runs the guardrail chain over this article's feedback, consolidates
+    repeated messages and renders the `feedback.md.j2` block — so what is printed is the untrusted-data section
+    of the prompt itself, after everything that filters it. Use it to see what a reader's comment actually
+    became, or why an article's feedback is not reaching the model.
 
     Diagnostics go to stderr, so stdout is the prompt block alone and can be piped.
     """
@@ -352,7 +352,7 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
     from pydantic import ValidationError
 
     from ..article import Article
-    from ..feedback import FeedbackMatcher, feedback_for_article, fetch_feedback
+    from ..feedback import build_matcher, feedback_for_article
     from ..prompts import PROMPT_TEMPLATE_FEEDBACK, get_prompt_template
 
     settings = _luotsi_settings(ctx)
@@ -366,16 +366,20 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
 
     signature = article.urls[0].signature
 
-    feedback = fetch_feedback(settings)
+    matcher = build_matcher(settings)
+
+    # Read before the aggregate is built: the matcher guards this signature's bucket on first match and
+    # replaces it, so afterwards only the survivors are left to count.
+    matched = len(matcher.map.get(signature, []))
     aggregate = feedback_for_article(
-        FeedbackMatcher(feedback),
+        matcher,
         article,
         MessageClusterer.from_settings(settings),
         settings.max_messages_per_article if limit is None else limit,
     )
 
     click.echo(f"url signature : {signature}", err=True)
-    click.echo(f"feedback kept : {len(feedback)} item(s) survived the guardrails, from every source", err=True)
+    click.echo(f"feedback kept : {matched} item(s) matched, {len(matcher.map.get(signature, []))} survived the guardrails", err=True)
 
     if aggregate is None:
         # The signature above is the thing to check first: feedback is matched by it, not by the URL text.

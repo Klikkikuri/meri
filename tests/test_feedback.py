@@ -14,8 +14,8 @@ from meri.feedback import (
     ArticleFeedback,
     FeedbackMatcher,
     TitleVotes,
+    build_matcher,
     feedback_for_article,
-    fetch_feedback,
     newest_actionable,
 )
 from meri.lautta import RahtiCleaner
@@ -254,19 +254,115 @@ def test_message_groups_are_capped_newest_first(_hash, clusterer: MessageCluster
     ]
 
 
+# --- Lazy guarding -----------------------------------------------------------
+
+
+class RecordingGuard:
+    """A stand-in for the guardrail chain that remembers every bucket it was handed."""
+
+    def __init__(self, keep: bool = True) -> None:
+        self.calls: list[list[Feedback]] = []
+        self.keep = keep
+
+    def __call__(self, items: list[Feedback]) -> list[Feedback]:
+        self.calls.append(list(items))
+        return list(items) if self.keep else []
+
+
+@hash_urls
+def test_feedback_no_article_claims_is_never_guarded(_hash):
+    """
+    The point of the change: an unbounded corpus must not cost an unbounded amount of guarding.
+
+    Feedback for articles that have aged out of the feeds is never looked at, so it is never embedded and
+    never language-detected.
+    """
+    article = make_article("https://example.com/a")
+    guard = RecordingGuard()
+    matcher = FeedbackMatcher(
+        [make_feedback(article.urls[0].signature), make_feedback("sig::long-forgotten")], guard=guard
+    )
+
+    matcher.find_by_article(article)
+
+    assert [item.url_sign for bucket in guard.calls for item in bucket] == [article.urls[0].signature]
+
+
+@hash_urls
+def test_a_signature_is_guarded_only_once(_hash):
+    """Three consumers look the same article up per run; re-guarding would re-truncate and re-redact."""
+    article = make_article("https://example.com/a")
+    guard = RecordingGuard()
+    matcher = FeedbackMatcher([make_feedback(article.urls[0].signature)], guard=guard)
+
+    matcher.find_by_article(article)
+    matcher.find_by_article(article)
+
+    assert len(guard.calls) == 1
+    assert matcher.guarded == 1
+
+
+@hash_urls
+def test_an_article_whose_feedback_is_all_dropped_triggers_no_regeneration(_hash, clusterer: MessageClusterer):
+    """
+    What guarding at the match point buys: the gate and the prompt agree, so an article whose only feedback
+    is an attack never costs an LLM call.
+    """
+    cleaner, article = make_cleaner(NOON)
+    feedback = make_feedback(article.urls[0].signature, type=FeedbackType.BAD, submitted_at=NOON.replace(hour=13))
+    matcher = FeedbackMatcher([feedback], guard=RecordingGuard(keep=False))
+
+    matched = matcher.find_by_article(article)
+
+    assert matched == []
+    assert feedback_for_article(matcher, article, clusterer, limit=3) is None
+    assert cleaner.needs_updating(article, matched) is False
+    assert matcher.dropped == 1
+
+
+@hash_urls
+def test_unmatched_counts_a_signature_no_article_claims_even_unguarded(_hash):
+    """`unmatched` is seeded from raw feedback, so it means "no article claimed it", not "nothing survived"."""
+    article = make_article("https://example.com/a")
+    matcher = FeedbackMatcher(
+        [make_feedback(article.urls[0].signature), make_feedback("sig::orphan")], guard=RecordingGuard(keep=False)
+    )
+
+    matcher.find_by_article(article)
+
+    assert matcher.unmatched == {"sig::orphan"}
+
+
 # --- Fetching ----------------------------------------------------------------
 
 
-def test_fetch_feedback_is_empty_when_disabled():
-    assert fetch_feedback(None) == []
+def test_build_matcher_is_empty_when_disabled():
+    assert build_matcher(None).map == {}
 
 
-def test_fetch_feedback_survives_an_unreachable_source():
+def test_build_matcher_survives_an_unreachable_source():
     """A Sheets outage must not stop the pipeline."""
-    client = MagicMock(get_feedback=MagicMock(side_effect=RuntimeError("sheets down")))
+    client = MagicMock(collect=MagicMock(side_effect=RuntimeError("sheets down")))
 
     with patch("meri.feedback.create_luotsi", return_value=client):
-        assert fetch_feedback(MagicMock()) == []
+        assert build_matcher(MagicMock()).map == {}
+
+
+def test_build_matcher_lets_a_broken_deployment_fail():
+    """Fail-hard on construction: an embedding model that cannot load must stop the run, not degrade it."""
+    with patch("meri.feedback.create_luotsi", side_effect=RuntimeError("no model")), pytest.raises(RuntimeError):
+        build_matcher(MagicMock())
+
+
+def test_build_matcher_wires_the_chain_in_lazily():
+    """The matcher must hold the chain, not a pre-guarded list — otherwise nothing is saved."""
+    client = MagicMock(collect=MagicMock(return_value=[make_feedback("sig::a")]))
+
+    with patch("meri.feedback.create_luotsi", return_value=client):
+        matcher = build_matcher(MagicMock())
+
+    client.guard.assert_not_called()
+    assert matcher.map == {"sig::a": [make_feedback("sig::a")]}
 
 
 # --- Prompt contract ---------------------------------------------------------

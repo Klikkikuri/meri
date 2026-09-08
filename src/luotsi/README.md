@@ -116,11 +116,12 @@ changed the message, which is how invisible padding becomes visible.
 meri feedback show https://www.example.com/news/some-article
 ```
 
-It pulls from the configured sources, runs the whole chain, consolidates repeated messages and renders the
-`feedback.md.j2` block — so what lands on stdout is the untrusted-data section of the prompt itself, not a
-summary of it. Only the URL is needed: feedback is matched by signature, so nothing is fetched or extracted.
-Diagnostics (the signature, how many items survived the guards, how many groups this article got) go to stderr,
-so the block can be piped. When nothing matches, the signature it printed is the first thing to check.
+It pulls from the configured sources, runs the whole chain over this article's feedback, consolidates repeated
+messages and renders the `feedback.md.j2` block — so what lands on stdout is the untrusted-data section of the
+prompt itself, not a summary of it. Only the URL is needed: feedback is matched by signature, so nothing is
+fetched or extracted. Diagnostics (the signature, how many items matched and how many of those survived the
+guards, how many groups this article got) go to stderr, so the block can be piped. When nothing matches, the
+signature it printed is the first thing to check.
 
 Add to a drop class when a new attack pattern appears. Add to `__label__benign` when a real reader is dropped:
 the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real feedback

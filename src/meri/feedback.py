@@ -8,13 +8,14 @@ Two failure modes, deliberately different. Fetching is fail-soft — a Google Sh
 pipeline. Construction is fail-hard — a configured embedding model that cannot load is a broken deployment, and
 it fails at start, before any LLM spend.
 
-Personal data: feedback lives in memory only. Message text reaches the guardrail chain and the per-article
-prompt, and nowhere else. It is never logged and never persisted to Rahti — only the entry's `updated` timestamp
-moves.
+Personal data: feedback lives in memory only. Message text reaches the guardrail chain when an article claims
+it, and the per-article prompt, and nowhere else. It is never logged and never persisted to Rahti — only the
+entry's `updated` timestamp moves.
 """
 
 import re
 from collections import Counter, defaultdict
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import NamedTuple
 
@@ -97,29 +98,6 @@ def create_luotsi(settings: LuotsiSettings | None) -> Luotsi | None:
     return Luotsi(settings) if settings else None
 
 
-def fetch_feedback(settings: LuotsiSettings | None) -> list[Feedback]:
-    """
-    Fetch all reader feedback.
-
-    Fail-soft: an unreachable source must not stop the run. Construction failures still propagate — see the
-    module docstring.
-
-    :return: Sanitized feedback items, or an empty list when disabled or unreachable.
-    """
-    client = create_luotsi(settings)
-    if not client:
-        return []
-
-    try:
-        feedback = client.get_feedback()
-    except Exception as e:  # noqa: BLE001
-        logger.warning("Could not fetch reader feedback, continuing without it", error=str(e))
-        return []
-
-    logger.info("Fetched reader feedback", count=len(feedback))
-    return feedback
-
-
 def newest_actionable(feedback: list[Feedback]) -> datetime | None:
     """
     Time of the most recent feedback that justifies a regeneration.
@@ -136,14 +114,34 @@ class FeedbackMatcher:
     Matches feedback to articles by URL signature.
 
     Builds the lookup once, so one pass over the feedback serves every article.
+
+    Feedback enters raw and is guarded per signature, the first time an article claims it. The corpus grows
+    without bound while the articles one run touches do not, so guarding it all up front would make every run
+    pay for the whole history; this way it pays only for what it looks at. Every consumer — the regeneration
+    gate, the prompt and the Rahti bump — goes through :meth:`find_by_article`, so all three see one guarded
+    view and no unguarded reader text escapes.
     """
 
-    def __init__(self, feedback: list[Feedback]) -> None:
+    def __init__(self, feedback: list[Feedback], guard: Callable[[list[Feedback]], list[Feedback]] | None = None) -> None:
+        """
+        :param feedback: Raw feedback from every source.
+        :param guard: The guardrail chain, run per signature on first match. None leaves feedback unguarded.
+        """
         self.map: dict[str, list[Feedback]] = {}
         for item in feedback:
             self.map.setdefault(item.url_sign, []).append(item)
 
+        # Seeded from raw feedback, so a signature no article claims counts as unmatched even when the guards
+        # would have emptied it. It means "no article claimed this", not "nothing survived".
         self.unmatched: set[str] = set(self.map)
+
+        self._guard = guard
+        self._seen: set[str] = set()
+        self.guarded = 0
+        """Signatures put through the chain. Final only once every article has been matched."""
+
+        self.dropped = 0
+        """Feedback items the chain removed."""
 
     def find_by_article(self, article: Article) -> list[Feedback]:
         """
@@ -154,9 +152,42 @@ class FeedbackMatcher:
         matched: list[Feedback] = []
         for url in article.urls:
             if url.signature in self.map:
-                matched.extend(self.map[url.signature])
+                matched.extend(self._sanitized(url.signature))
                 self.unmatched.discard(url.signature)
         return matched
+
+    def _sanitized(self, signature: str) -> list[Feedback]:
+        """Guard one signature's feedback on first access, then serve it from the map."""
+        if self._guard and signature not in self._seen:
+            kept = self._guard(self.map[signature])
+            self.dropped += len(self.map[signature]) - len(kept)
+            self.guarded += 1
+            self.map[signature] = kept
+            self._seen.add(signature)
+        return self.map[signature]
+
+
+def build_matcher(settings: LuotsiSettings | None) -> FeedbackMatcher:
+    """
+    Fetch all reader feedback and wrap it in a matcher that guards it per article.
+
+    Fail-soft: an unreachable source must not stop the run. Construction stays outside the `try` so that a
+    broken embedding model or a missing guard artifact still fails the run at start — see the module docstring.
+
+    :return: A matcher over the fetched feedback, empty when feedback is disabled or unreachable.
+    """
+    client = create_luotsi(settings)
+    if not client:
+        return FeedbackMatcher([])
+
+    try:
+        feedback = client.collect()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Could not fetch reader feedback, continuing without it", error=str(e))
+        return FeedbackMatcher([])
+
+    logger.info("Fetched reader feedback", count=len(feedback))
+    return FeedbackMatcher(feedback, guard=client.guard)
 
 
 def feedback_for_article(

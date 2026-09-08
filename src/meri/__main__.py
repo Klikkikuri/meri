@@ -36,9 +36,8 @@ from .cli.fetch import cli as fetch_cli
 from .cli.headlines import cli as headlines_cli
 from .feedback import (
     ArticleFeedback,
-    FeedbackMatcher,
+    build_matcher,
     feedback_for_article,
-    fetch_feedback,
     newest_actionable,
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
@@ -114,8 +113,9 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     if settings.luotsi and settings.luotsi.embedding_model:
         load_embedder(settings.luotsi.embedding_model)
 
-    # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down.
-    feedback_matcher = FeedbackMatcher(fetch_feedback(settings.luotsi))
+    # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down. The
+    # guardrail chain runs per article, inside the matcher, so a growing corpus costs only what this run reads.
+    feedback_matcher = build_matcher(settings.luotsi)
 
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
@@ -250,6 +250,14 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
             rahti_entry.updated = newest
 
         rahti.upsert(rahti_entry)
+
+    # Logged here rather than beside the match count above: the bump loop matches articles of its own, so the
+    # totals are only final once it has run.
+    logger.info(
+        "Guarded reader feedback for %d signature(s)",
+        feedback_matcher.guarded,
+        extra={"dropped": feedback_matcher.dropped},
+    )
 
     # Final pass - remove old entries that are no longer needed
     for e in rahti.rahti.entries:

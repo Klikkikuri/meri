@@ -8,6 +8,7 @@ from luotsi import Feedback, FeedbackType, LuotsiSettings
 from meri.__main__ import run
 from meri.abc import ArticleLabels, article_url
 from meri.article import Article
+from meri.feedback import FeedbackMatcher
 from meri.lautta import ArticleTitleData, DiscoveredArticle, RahtiCleaner
 from meri.settings.newssources import NewsSource
 
@@ -132,11 +133,15 @@ ARTICLE_AT = datetime(2026, 7, 14, 8, 0, tzinfo=UTC)
 """The article's own time. Older than every entry time below, so only feedback can trigger a regeneration."""
 
 
-def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None):
+def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None, guard=None):
     """
     Drive `run()` over one article with the given reader feedback, and report what reached each stage.
 
     The Rahti entry starts at `entry_updated`, so a test can place feedback before or after it.
+
+    Feedback goes in raw and reaches `run` through a real `FeedbackMatcher`, so these scenarios exercise the
+    lazy guarding path rather than bypassing it. `guard` stands in for the guardrail chain and defaults to
+    passing everything through; every bucket it is handed is recorded in `calls["guarded"]`.
     """
     # The Suola rules have no entry for example.com, so signatures would otherwise all be empty and never match.
     monkeypatch.setattr("meri.abc.hash_url", lambda url: f"sig::{url}")
@@ -150,7 +155,7 @@ def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None
         updated_at=None,
     )
     discovered = DiscoveredArticle(source=source, article=article)
-    calls = {"generated": None, "upserted": [], "skipped": False}
+    calls = {"generated": None, "upserted": [], "skipped": False, "guarded": []}
 
     real_cleaner = RahtiCleaner
 
@@ -204,7 +209,14 @@ def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None
     monkeypatch.setattr("meri.__main__.prune_rahti", lambda entries, _sources: entries)
     monkeypatch.setattr("meri.__main__.Template", lambda _t: SimpleNamespace(render=lambda **kw: "msg"))
     monkeypatch.setattr("meri.__main__.RahtiData.model_validate_json", staticmethod(lambda _payload: True))
-    monkeypatch.setattr("meri.__main__.fetch_feedback", lambda _settings: feedback(article))
+    def stub_guard(items):
+        calls["guarded"].append(list(items))
+        return list(items) if guard is None else guard(items)
+
+    monkeypatch.setattr(
+        "meri.__main__.build_matcher",
+        lambda _settings: FeedbackMatcher(feedback(article), guard=stub_guard),
+    )
 
     ctx = click.Context(run)
     ctx.obj = {
@@ -306,3 +318,40 @@ def test_run_without_luotsi_configured_passes_no_feedback(monkeypatch):
         run.callback(sample=False, max_workers=1)
 
     assert calls["generated"] == [None]
+
+
+# --- Lazy guarding ---------------------------------------------------------------
+
+
+def test_the_matched_signature_is_guarded_once(monkeypatch):
+    """
+    The gate, the prompt and the bump all look this article up, and the chain must run for it exactly once.
+
+    Guarding is per signature and memoized, so three lookups cost one pass — that is the whole point of the
+    change, and re-guarding would silently re-truncate already-truncated text.
+    """
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    feedback_at = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+
+    ctx, calls, _ = build_feedback_run(monkeypatch, lambda a: rated(a, feedback_at), entry_updated)
+    with ctx:
+        run.callback(sample=False, max_workers=1)
+
+    assert len(calls["guarded"]) == 1
+
+
+def test_feedback_dropped_by_the_guards_triggers_no_regeneration(monkeypatch):
+    """
+    Guarding at the match point is what buys this: a reader whose only feedback is an attack cannot make the
+    run spend an LLM call. The gate, the prompt and the bump all read the same guarded view.
+    """
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    feedback_at = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+
+    ctx, calls, _ = build_feedback_run(
+        monkeypatch, lambda a: rated(a, feedback_at), entry_updated, guard=lambda _items: []
+    )
+    with ctx:
+        run.callback(sample=False, max_workers=1)
+
+    assert calls["generated"] is None
