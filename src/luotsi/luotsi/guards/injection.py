@@ -45,9 +45,17 @@ def nearest(vector: "Vector", artifact: GuardVectors) -> tuple[Match, Match]:
     """
     import numpy as np
 
+    # Centroids are stored L2-normalized, so the dot product is the cosine only once the message vector is too.
+    # A model whose config omits `normalize` returns raw vectors, and an unscaled similarity makes the floor and
+    # the margin mean nothing — the guard would pass attacks through without a word.
+    message = np.asarray(vector, dtype=float)
+    norm = float(np.linalg.norm(message))
+    if norm:
+        message = message / norm
+
     def closest(wanted_benign: bool) -> Match:
         scored = [
-            Match(float(np.dot(vector, centroid.vector)), centroid)
+            Match(float(np.dot(message, centroid.vector)), centroid)
             for centroid in artifact.centroids
             if (centroid.label == BENIGN) is wanted_benign
         ]

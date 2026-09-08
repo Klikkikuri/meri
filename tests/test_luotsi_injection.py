@@ -117,6 +117,14 @@ def test_similarity_below_the_floor_passes():
     assert vetoed is None
 
 
+def test_the_length_of_the_message_vector_does_not_move_the_decision():
+    """A Model2Vec config without `normalize` returns raw vectors, and scale alone must not push one over the floor."""
+    borderline = np.array([0.5, 0.0, np.sqrt(0.75)])
+
+    assert classify(borderline, ARTIFACT, floor=0.60, margin=0.10) == (False, None)
+    assert classify(borderline * 4, ARTIFACT, floor=0.60, margin=0.10) == (False, None)
+
+
 def test_a_benign_centroid_within_the_margin_vetoes_the_drop():
     """Doubt goes to the reader: a benign exemplar sitting nearly as close keeps the message."""
     dropped, vetoed = classify(stub_embed("attack ordinary"), ARTIFACT, floor=0.60, margin=0.10)
