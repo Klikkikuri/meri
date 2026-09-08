@@ -2,7 +2,7 @@
 Pipeline to predict the title of an article.
 """
 
-from typing import ClassVar, List
+from typing import ClassVar
 
 from haystack import Document
 from niitti import get_logger
@@ -37,12 +37,12 @@ class TitlePredictor(StructuredPipeline):
         "feedback": get_prompt_template(PROMPT_TEMPLATE_FEEDBACK),
     }
 
-    def run(self, article, context: List[Document] = [], **kwargs):
+    def run(self, article, context: list[Document] | None = None, **kwargs):
 
         prompt_vars = kwargs.copy()
         prompt_vars.update(article.model_dump())
 
-        prompt_vars["context"] = context
+        prompt_vars["context"] = context or []
         prompt_vars["article"] = article
         prompt_vars["settings"] = settings
 
