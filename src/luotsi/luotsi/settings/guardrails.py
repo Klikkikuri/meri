@@ -31,11 +31,9 @@ class InjectionConfig(_Guardrail):
     """Configuration for the prompt injection guard."""
 
     type: Literal["injection"] = "injection"
-    blocklist: list[str] = Field(
-        default_factory=list, description="Extra literal phrases to drop, on top of the built-in indicators."
-    )
     vectors: Path | None = Field(
-        default=None, description="Trained centroid artifact. Overrides the one packaged with Luotsi."
+        default=None,
+        description="Trained centroid artifact, from `meri feedback train-guard`. The guard cannot run without it.",
     )
     floor: float = Field(
         default=0.60,

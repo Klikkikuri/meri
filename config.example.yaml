@@ -168,8 +168,8 @@ rahti:
 #   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
 #   # provisioned by other means. Either way `meri feedback download-model` fills it, with no arguments.
 #   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
-#   # consolidation and a blocklist-only injection guard. A model that is set but cannot load fails the run at
-#   # start, by design.
+#   # consolidation and NO injection guard — that mode must also leave `injection` out of `guardrails` below,
+#   # because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
 #   embedding_model: "minishlab/potion-multilingual-128M"
 #
 #   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
@@ -177,10 +177,9 @@ rahti:
 #     - type: sanitize            # strip invisible characters, collapse whitespace; keeps casing and accents
 #     - type: pii                 # redact emails, phone numbers, IP addresses and URLs
 #     - type: injection
-#       # blocklist: ["extra literal phrase"]   # added to the built-in indicators
-#       # The trained centroid artifact. No artifact ships with Luotsi — it is bound to the embedding model that
-#       # produced it — so generate one with `meri feedback train-guard`, which writes to exactly this path.
-#       # Without it the guard runs its blocklist tier only, and says so at startup.
+#       # The trained centroid artifact, and the guard's only tier. No artifact ships with Luotsi — it is bound to
+#       # the embedding model that produced it — so generate one with `meri feedback train-guard`, which writes to
+#       # exactly this path. Without it, and without `embedding_model`, the guard fails the run at start.
 #       vectors: "/app/instance/guard-vectors.json"
 #       floor: 0.60               # minimum similarity to an injection centroid before a drop is possible
 #       margin: 0.10              # how far it must exceed the closest benign centroid to actually drop

@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from ..embeddings import Embedder
 
 __all__ = [
+    "DEFAULT_CHAIN",
     "InjectionGuard",
     "LanguageGuard",
     "PiiRedactionGuard",
@@ -48,6 +49,9 @@ The chain used when nothing is configured.
 
 Order matters: sanitizing first gives later mutating guards clean text, redaction runs before anything keeps a
 copy of the message, and truncation runs last so the cap applies to the final text.
+
+It holds the injection guard, which cannot run unconfigured: the default chain therefore needs an embedding
+model and a trained artifact, and a deployment without them lists its guards explicitly and leaves that one out.
 """
 
 
@@ -60,8 +64,9 @@ def build_guards(
     Build the guardrail chain.
 
     :param configs: Guard configurations, in the order they run. ``None`` selects :data:`DEFAULT_CHAIN`.
-    :param embed: Shared embedding callable. Guards with a semantic tier stay on their literal tier without it.
+    :param embed: Shared embedding callable. The injection guard requires one and refuses to build without it.
     :param model_name: Name of the configured embedding model, for guards that load a model-bound artifact.
+    :raises ValueError: When a configured guard cannot run — see :class:`~.injection.InjectionGuard`.
     :return: The constructed guards.
     """
     guards: list[Guardrail] = []

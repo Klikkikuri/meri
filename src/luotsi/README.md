@@ -6,6 +6,8 @@ Readers rate a title (good / bad / suggestion) and can add a free-text comment. 
 Sheet. Luotsi reads that sheet (or a local CSV export), normalizes the rows, and passes them through a chain of
 guardrails that removes prompt injection attempts, redacts personal data, and limits length and language.
 
+The default chain holds the injection guard, which needs an embedding model and a trained artifact to run at all.
+
 ## Use
 
 ```python
@@ -24,9 +26,9 @@ translation, runs as a Meri pipeline.
 
 ## The injection guard
 
-The guard has two tiers. The blocklist matches a short list of literal phrases that carry no reading other than
-an instruction to the model. The centroid tier compares the message against centroids trained from the labeled
-exemplar files in `luotsi/guards/data/`, and needs both an embedding model and a trained artifact.
+The guard has one tier. It compares the message against centroids trained from the labeled exemplar files in
+`luotsi/guards/data/`, so it catches rewordings of the attack catalog and not only its exact phrasings. It needs
+both an embedding model and a trained artifact.
 
 **The trained artifact is not shipped with this package.** It is bound to the embedding model that produced it,
 so each deployment trains its own. Meri owns that command, because it is where the paths are configured:
@@ -36,8 +38,10 @@ meri feedback download-model    # once, into the directory Meri resolves `embedd
 meri feedback train-guard       # writes the configured `vectors` path
 ```
 
-Without a trained artifact the guard still runs, on the blocklist tier alone, and says so at startup. An artifact
-that IS configured but cannot load fails the run instead — a broken deployment must not degrade quietly.
+Without a model or an artifact the guard refuses to be built, and the run fails at start. There is no reduced
+mode to fall back to, so a deployment that cannot run the guard says so in its configuration: it lists
+`guardrails` explicitly and leaves `injection` out. That includes `embedding_model: null`. The default chain
+holds the guard, so the default chain needs both. A broken deployment must not degrade quietly.
 
 The exemplar files DO ship: they are this package's domain knowledge and the tuning surface. Training is
 deterministic and prints a report — the clusters it found, the injection centroids that a benign centroid sits
