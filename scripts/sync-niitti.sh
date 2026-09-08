@@ -43,6 +43,13 @@ fi
 git -C "$NIITTI" checkout --quiet --detach "$sha"
 echo "$NIITTI -> $sha"
 
+# Meri holds Niitti as an editable workspace member, so its version and dependencies are recorded in the ROOT
+# lock as well. Every `uv sync --frozen` in the Dockerfile refuses a lock that no longer describes the checkout,
+# and the `uv-lock` pre-commit hook cannot see this one coming: what moved is a submodule pointer, not a
+# `pyproject.toml`.
+uv lock --quiet
+echo "uv.lock -> $NIITTI at $sha"
+
 if [ -f "$SULKU_PYPROJECT" ]; then
     sed -i -E "s|$pin_pattern|\1$sha\2|" "$SULKU_PYPROJECT"
 
@@ -58,6 +65,6 @@ cat <<MSG
 Review the changes, then commit them:
 
   git -C packages/sulku commit -m 'chore(niitti): bump to $(git -C "$NIITTI" log -1 --format=%s)' pyproject.toml uv.lock
-  git add packages/niitti packages/sulku
+  git add packages/niitti packages/sulku uv.lock
   git commit -m 'chore(niitti): bump the pinned revision'
 MSG
