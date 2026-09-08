@@ -1,5 +1,4 @@
 import inspect
-from enum import Enum
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
@@ -14,50 +13,46 @@ from .settings.llms import GeneratorSettings
 logger = get_logger(__name__)
 
 
-class UnknownPipelineType(ValueError):
+def resolve_llms(pipeline: str, settings: Settings = settings) -> list[GeneratorSettings]:
     """
-    Exception raised when an unknown pipeline type is encountered.
-    """
-    pass
+    Resolve the LLM chain a pipeline may use.
 
-class PipelineType(Enum):
-    """
-    Enum for pipeline types.
-    """
-    DEFAULT = "default"
+    The pipeline definition names LLMs by key into `llm:`, in the order to try them. A pipeline with no
+    definition, or one that names none, gets every configured LLM in configuration order.
 
-
-def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings, **kwargs) -> object:
+    :param pipeline: Pipeline name, as declared by `PIPELINE_NAME`.
+    :param settings: Settings to resolve against.
+    :raises ValueError: When no LLM is configured at all.
+    :return: The chain, never empty.
     """
-    Get the generator based on the pipeline type and settings.
-
-    The generator is selected based on the provider specified in the settings.
-    """
-
     if len(settings.llm) == 0:
         raise ValueError("No LLM settings found in the configuration.")
 
-    pipeline_llm: GeneratorSettings
+    definition = settings.pipelines.get(pipeline)
+    if not definition or not definition.llm:
+        logger.debug("Pipeline %r has no LLM preference; using all configured LLMs.", pipeline)
+        return list(settings.llm)
 
-    # FIXME: Use the default LLM always
-    pipeline = PipelineType.DEFAULT
-
-    match pipeline:
-        case PipelineType.DEFAULT:
-            # Check if "default" is in the list of LLMs
-            # TODO: Implement pipeline selection
-
-            # Fall back to the first LLM in the list
-            pipeline_llm = settings.llm[0]
-            logger.debug("Using default LLM: %s", pipeline_llm.name)
-        case _:
-            raise UnknownPipelineType(f"Unknown pipeline type: {pipeline}")
+    by_name = {llm.name: llm for llm in settings.llm}
+    # Settings validation already rejected an unknown name, so every lookup here resolves.
+    chain = [by_name[name] for name in definition.llm]
+    logger.debug("Pipeline %r resolved to LLM chain: %s", pipeline, ", ".join(llm.name for llm in chain))
+    return chain
 
 
-    module, class_name = pipeline_llm._generator.rsplit(".", 1)
+def get_generator(llm: GeneratorSettings, **kwargs) -> object:
+    """
+    Build the Haystack generator for one resolved LLM setting.
+
+    :param llm: The LLM to build a generator for.
+    :param kwargs: Merged into the generator's `generation_kwargs`.
+    :return: The generator instance.
+    """
+
+    module, class_name = llm._generator.rsplit(".", 1)
     # Create the generator instance
     generator_class = getattr(__import__(module, fromlist=[class_name]), class_name)
-    generator_args = pipeline_llm.model_dump(exclude={"provider", "_generator", "name"})
+    generator_args = llm.model_dump(exclude={"provider", "_generator", "name"})
 
     # Convert SecretStr to string for Haystack compatibility
     for key, value in generator_args.items():

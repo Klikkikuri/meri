@@ -86,12 +86,11 @@ def test_ollama_is_served_through_the_openai_compatible_api():
     """
     from meri.llm import get_generator
 
-    settings = Settings(llm=[{"name": "O", "provider": "ollama", "model": "llama3"}])
-    (llm,) = settings.llm
+    (llm,) = Settings(llm=[{"name": "O", "provider": "ollama", "model": "llama3"}]).llm
 
     assert str(llm.api_base_url) == "http://ollama:11434/v1"
 
-    generator = get_generator(settings=settings, response_format=DummyFormat)
+    generator = get_generator(llm, response_format=DummyFormat)
 
     assert type(generator).__name__ == "OpenAIChatGenerator"
     assert generator.api_base_url == "http://ollama:11434/v1"

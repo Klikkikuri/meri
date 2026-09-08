@@ -9,8 +9,9 @@ from niitti import get_logger
 from pydantic import BaseModel, ValidationError
 
 from meri.settings import settings
+from meri.settings.llms import GeneratorSettings
 
-from ..llm import PipelineType, get_generator
+from ..llm import get_generator, resolve_llms
 
 logger = get_logger(__name__)
 
@@ -23,7 +24,7 @@ class StructuredPipeline:
     pipeline: Optional[Pipeline]
     output_model: BaseModel
 
-    PIPELINE_NAME: ClassVar = PipelineType.DEFAULT
+    PIPELINE_NAME: ClassVar[str] = "default"
 
     prompt_templates: dict[str, str] = {}
 
@@ -36,16 +37,16 @@ class StructuredPipeline:
         """
         self.pipeline = None
 
-    def _build_pipeline(self) -> Pipeline:
+    def _make_pipeline(self, llm: GeneratorSettings) -> Pipeline:
         """
-        Build the pipeline for title generation.
-        This function is called only once, and the pipeline is cached for later use.
-        :return: The pipeline object.
-        """
-        if self.pipeline:
-            logger.debug("Pipeline already built, skipping.")
-            return self.pipeline
+        Build one prompt-builder-to-generator pipeline for a single LLM.
 
+        Haystack forbids sharing a component between pipelines, so each LLM needs its own ChatPromptBuilder as
+        well as its own generator. This is the seam the tests patch.
+
+        :param llm: The resolved LLM to build for.
+        :return: A new pipeline.
+        """
         prompt_template = "\n\n".join(self.prompt_templates.values())
 
         self._prompt = ChatPromptBuilder([
@@ -54,14 +55,30 @@ class StructuredPipeline:
         ])
 
         # Request native structured output from the model by passing output_model to response_format
-        self._llm = get_generator(self.PIPELINE_NAME, settings, response_format=self.output_model)
+        self._llm = get_generator(llm, response_format=self.output_model)
 
-        self.pipeline = Pipeline()
-        self.pipeline.add_component("prompt_builder", self._prompt)
-        self.pipeline.add_component("llm", self._llm)
+        pipeline = Pipeline()
+        pipeline.add_component("prompt_builder", self._prompt)
+        pipeline.add_component("llm", self._llm)
 
-        self.pipeline.connect("prompt_builder", "llm")
+        pipeline.connect("prompt_builder", "llm")
 
+        return pipeline
+
+    def _build_pipeline(self) -> Pipeline:
+        """
+        Build the pipeline, and cache it for later use.
+
+        The LLM is resolved here rather than in `__init__`: `settings` is a SettingsProxy that only resolves
+        inside a `bootstrap.setup()` context, and pipelines are constructed per article.
+
+        :return: The pipeline object.
+        """
+        if self.pipeline:
+            logger.debug("Pipeline already built, skipping.")
+            return self.pipeline
+
+        self.pipeline = self._make_pipeline(resolve_llms(self.PIPELINE_NAME, settings)[0])
         return self.pipeline
 
     def run(

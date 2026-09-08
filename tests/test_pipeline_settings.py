@@ -76,3 +76,46 @@ def test_a_subclass_forbids_the_extras_the_base_allows():
 
     with pytest.raises(ValueError, match="batch_sise"):
         TranslateSettings.model_validate({"batch_sise": 5})
+
+
+def test_resolve_llms_returns_the_named_chain_in_order():
+    """A definition names its LLMs by key into `llm:`, and the order is the order to try them."""
+    from meri.llm import resolve_llms
+
+    settings = Settings(llm=[PRIMARY, BACKUP], pipelines={"title": {"llm": ["Backup", "Primary"]}})
+
+    assert [llm.name for llm in resolve_llms("title", settings)] == ["Backup", "Primary"]
+
+
+def test_a_pipeline_with_no_definition_gets_every_configured_llm():
+    """Absence means defaults, so an undefined pipeline may use anything that is configured."""
+    from meri.llm import resolve_llms
+
+    settings = Settings(llm=[PRIMARY, BACKUP])
+
+    assert [llm.name for llm in resolve_llms("title", settings)] == ["Primary", "Backup"]
+
+
+def test_a_definition_that_names_no_llm_gets_every_configured_one():
+    """An entry that only sets retry knobs must not narrow the chain to nothing."""
+    from meri.llm import resolve_llms
+
+    settings = Settings(llm=[PRIMARY, BACKUP], pipelines={"title": {"max_retries": 1}})
+
+    assert [llm.name for llm in resolve_llms("title", settings)] == ["Primary", "Backup"]
+
+
+def test_resolving_without_any_configured_llm_fails():
+    """
+    The pre-existing guard: nothing to call is an error, not an empty chain.
+
+    The chain is emptied after construction, because detection fills it from the ambient environment and a
+    developer machine has credentials in it.
+    """
+    from meri.llm import resolve_llms
+
+    settings = Settings(llm=[PRIMARY])
+    settings.llm.clear()
+
+    with pytest.raises(ValueError, match="No LLM settings"):
+        resolve_llms("title", settings)
