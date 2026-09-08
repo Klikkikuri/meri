@@ -2,7 +2,7 @@
 Pipeline to predict the title of an article.
 """
 
-from typing import List
+from typing import ClassVar, List
 
 from haystack import Document
 from niitti import get_logger
@@ -27,7 +27,10 @@ class TitlePredictor(StructuredPipeline):
 
     PIPELINE_NAME = "title"
 
-    prompt_templates: dict[str, str] = {
+    # `feedback` and `rahti` are deliberately absent: both are optional blocks in the template.
+    REQUIRED_VARIABLES = ("text", "meta")
+
+    prompt_templates: ClassVar[dict[str, str]] = {
         "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
         "article_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_TITLE),
         "previous_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_UPDATED),

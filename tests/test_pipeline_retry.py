@@ -9,6 +9,7 @@ Nothing here reaches an LLM: `_make_pipeline` is the seam, and every test replac
 """
 
 import threading
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -254,3 +255,47 @@ def test_each_llm_is_built_once_under_concurrent_runs():
 
     assert built == ["Primary"], f"expected one build, got {built}"
     assert results == ["Concurrent"] * threads
+
+
+def test_a_declared_variable_is_required_and_the_rest_stay_optional():
+    """
+    Naming required variables must not make the optional blocks mandatory.
+
+    Meri's templates are built from `{% if %}` blocks, so `required_variables="*"` would break the title
+    pipeline on the first article with no reader feedback. This is why the list is declared per pipeline.
+    """
+    from meri.pipelines.title import TitlePredictor
+
+    builder = TitlePredictor()._prompt_builder()
+
+    assert builder.required_variables == ["text", "meta"]
+    assert "feedback" in builder.variables
+    assert "feedback" not in builder.required_variables
+
+
+def test_rendering_without_a_required_variable_raises():
+    """A missing variable has to be loud. Silently rendering it empty is what this replaces."""
+
+    class Strict(DummyPipeline):
+        REQUIRED_VARIABLES = ("lines",)
+        prompt_templates: ClassVar[dict[str, str]] = {"only": "Translate these: {{ lines }}"}
+
+    builder = Strict()._prompt_builder()
+
+    assert builder.run(template_variables={"lines": ["a"]})["prompt"]
+
+    with pytest.raises(ValueError, match="lines"):
+        builder.run(template_variables={})
+
+
+def test_a_pipeline_that_declares_nothing_keeps_every_variable_optional():
+    """The default has to stay permissive, or every existing pipeline would need a list before it worked."""
+
+    class Loose(DummyPipeline):
+        prompt_templates: ClassVar[dict[str, str]] = {"only": "Say something about {{ topic }}"}
+
+    builder = Loose()._prompt_builder()
+
+    # Haystack normalizes an unset list to empty, which is its "everything optional" state.
+    assert builder.required_variables == []
+    assert builder.run(template_variables={})["prompt"]

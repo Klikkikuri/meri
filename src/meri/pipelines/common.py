@@ -33,7 +33,16 @@ class StructuredPipeline:
     SETTINGS_MODEL: ClassVar[type[PipelineSettings]] = PipelineSettings
     """The model this pipeline's own entry is re-validated against. Subclasses widen it with their own fields."""
 
-    prompt_templates: dict[str, str] = {}
+    REQUIRED_VARIABLES: ClassVar[tuple[str, ...]] = ()
+    """
+    Prompt variables the template cannot do without.
+
+    Declared per pipeline rather than with `required_variables="*"`, because meri's templates are deliberately
+    built from optional blocks: `{% if feedback %}` must stay optional, or an article with no reader feedback
+    would fail. Name only what is genuinely mandatory.
+    """
+
+    prompt_templates: ClassVar[dict[str, str]] = {}
 
     def __init__(self):
         """
@@ -74,10 +83,15 @@ class StructuredPipeline:
         """
         prompt_template = "\n\n".join(self.prompt_templates.values())
 
-        return ChatPromptBuilder([
-            ChatMessage.from_system(prompt_template),
-            ChatMessage.from_user("Now, please generate the response."),
-        ])
+        return ChatPromptBuilder(
+            [
+                ChatMessage.from_system(prompt_template),
+                ChatMessage.from_user("Now, please generate the response."),
+            ],
+            # Haystack renders an undefined variable as empty, and `run` drops any it does not declare. Two
+            # silences on top of each other, so say which ones must actually arrive.
+            required_variables=list(self.REQUIRED_VARIABLES) or None,
+        )
 
     def _make_pipeline(self, llm: GeneratorSettings) -> Pipeline:
         """
