@@ -120,3 +120,15 @@ def test_detection_points_at_the_openai_compatible_endpoint(monkeypatch: pytest.
     detected = {llm.provider: llm for llm in Settings(llm=[]).llm}
 
     assert str(detected["ollama"].api_base_url) == "http://box:11434/v1"
+
+
+def test_detection_asks_the_native_api_at_the_same_root(monkeypatch: pytest.MonkeyPatch):
+    """An `/api`-suffixed host must not reach model detection unstripped, or it asks for `/api/api/ps`."""
+    asked = []
+    monkeypatch.setattr("meri.settings.llms._pull_default_ollama_model", lambda url: asked.append(url) or "llama3")
+    monkeypatch.setenv("OLLAMA_HOST", "http://box:11434/api/")
+
+    detected = {llm.provider: llm for llm in Settings(llm=[]).llm}
+
+    assert asked == ["http://box:11434"]
+    assert str(detected["ollama"].api_base_url) == "http://box:11434/v1"

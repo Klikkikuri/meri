@@ -229,26 +229,28 @@ def detect_generators(values: dict):
 
     if host := values.get("ollama_host"):
         # Which model is loaded is only visible on the native API, so detection asks there and configures `/v1`.
-        model = values.get("ollama_model") or _pull_default_ollama_model(host)
+        # Both read the same normalized root: an `/api`-suffixed host asked for `/api/api/ps` finds no model, and
+        # the Ollama LLM is dropped without a word.
+        root = _ollama_root(host)
+        model = values.get("ollama_model") or _pull_default_ollama_model(root)
         if model:
             settings.append(OllamaSettings(
                 name=f"{model} (Ollama)",
-                api_base_url=_ollama_openai_url(host),
+                api_base_url=f"{root}/v1",
                 model=model,
             ))
 
     return settings
 
 
-def _ollama_openai_url(host: str) -> str:
+def _ollama_root(host: str) -> str:
     """
-    Build the OpenAI-compatible base URL from an Ollama host.
+    Strip an Ollama host down to the root both of its APIs hang off.
 
     `OLLAMA_HOST` names the host, but a value carrying the native `/api` suffix is common enough to normalize
     rather than reject: detection is a convenience, and failing it would leave the operator with no LLM at all.
     """
-    base = host.rstrip("/").removesuffix("/api").rstrip("/")
-    return f"{base}/v1"
+    return host.rstrip("/").removesuffix("/api").rstrip("/")
 
 
 def _pull_default_ollama_model(api_base_url: str) -> str | None:
