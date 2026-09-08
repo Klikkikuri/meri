@@ -163,11 +163,14 @@ rahti:
 #     - type: csv
 #       path: "/app/instance/feedback.csv"
 #
-#   # Local Model2Vec directory, provisioned with `meri feedback download-model <dir>`. Shared by message
-#   # consolidation and the injection guard's centroid tier. Omit for the built-in mode: character-n-gram
-#   # consolidation and a blocklist-only injection guard. A path that is set but cannot load fails the run at
+#   # The Model2Vec model shared by message consolidation and the injection guard's centroid tier. A hub
+#   # identifier lives under the data directory, at `$MERI_DATA_DIR/embedding/<identifier>`, so this
+#   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
+#   # provisioned by other means. Either way `meri feedback download-model` fills it, with no arguments.
+#   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
+#   # consolidation and a blocklist-only injection guard. A model that is set but cannot load fails the run at
 #   # start, by design.
-#   embedding_model: "/app/instance/potion-multilingual-128M"
+#   embedding_model: "minishlab/potion-multilingual-128M"
 #
 #   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
 #   guardrails:

@@ -42,6 +42,7 @@ from .llms import (
     LLMSetting,
     detect_generators,
 )
+from .luotsi import DEFAULT_EMBEDDING_MODEL, model_dir
 from .newssources import NewsSource
 from .pipelines import PipelineSettings, UnknownLLMError
 from .rahti import RahtiFileSettings, RahtiSettings
@@ -157,6 +158,32 @@ class Settings(NiittiSettings):
         default=None,
         description="Luotsi reader feedback settings. Omit to run without reader feedback.",
     )
+
+    @field_validator("luotsi", mode="before")
+    @classmethod
+    def resolve_embedding_model(cls, value):
+        """
+        Turn `luotsi.embedding_model` into the directory Luotsi loads from.
+
+        Luotsi takes a directory and carries no default, so the model is named here: an unset key means
+        `DEFAULT_EMBEDDING_MODEL`, a hub identifier resolves under the data directory, and an explicit path is
+        left alone. Setting the key to null still selects the built-in mode, which is why an unset key and a
+        null one are told apart rather than both falling back to the default.
+        """
+        if value is None:
+            return value
+
+        # A configuration file gives a mapping; a caller constructing Settings in code gives the model.
+        if isinstance(value, LuotsiSettings):
+            if "embedding_model" in value.model_fields_set:
+                return value
+            return value.model_copy(update={"embedding_model": model_dir(DEFAULT_EMBEDDING_MODEL)})
+
+        if not isinstance(value, dict):
+            return value
+
+        model = value.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+        return {**value, "embedding_model": model_dir(str(model)) if model else None}
 
     @model_validator(mode="before")
     @classmethod

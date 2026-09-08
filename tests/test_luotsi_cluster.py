@@ -103,14 +103,24 @@ def test_ngram_cosine_is_one_for_identical_text():
 
 
 def test_from_settings_without_a_model_uses_the_builtin_mode():
-    clusterer = MessageClusterer.from_settings(LuotsiSettings())
+    clusterer = MessageClusterer.from_settings(LuotsiSettings())  # Luotsi carries no default model
 
     assert clusterer.embed is None
 
 
-def test_settings_reject_a_missing_model_path(tmp_path: Path):
-    with pytest.raises(ValueError, match="embedding_model"):
-        LuotsiSettings(embedding_model=tmp_path / "absent")
+def test_settings_accept_a_model_path_not_downloaded_yet(tmp_path: Path):
+    """`meri feedback download-model` creates this directory, so on a cold start nothing of it exists."""
+    target = tmp_path / "absent" / "model"
+
+    assert LuotsiSettings(embedding_model=target).embedding_model == target
+
+
+def test_settings_reject_a_model_path_that_is_a_file(tmp_path: Path):
+    not_a_directory = tmp_path / "model.bin"
+    not_a_directory.write_text("", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="not a directory"):
+        LuotsiSettings(embedding_model=not_a_directory)
 
 
 def test_load_embedder_propagates_a_load_failure(tmp_path: Path):

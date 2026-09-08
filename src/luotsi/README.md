@@ -32,8 +32,8 @@ exemplar files in `luotsi/guards/data/`, and needs both an embedding model and a
 so each deployment trains its own. Meri owns that command, because it is where the paths are configured:
 
 ```bash
-meri feedback download-model /app/instance/potion-multilingual-128M   # once, to provision the model
-meri feedback train-guard                                             # writes the configured `vectors` path
+meri feedback download-model    # once, into the directory Meri resolves `embedding_model` to
+meri feedback train-guard       # writes the configured `vectors` path
 ```
 
 Without a trained artifact the guard still runs, on the blocklist tier alone, and says so at startup. An artifact
