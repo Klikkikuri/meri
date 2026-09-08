@@ -6,7 +6,7 @@ any of it reaches a language model.
 """
 
 from .abc import Feedback, FeedbackItem, FeedbackSource, FeedbackType, Guardrail
-from .client import Luotsi
+from .client import Luotsi, provision
 from .settings import LuotsiSettings
 
 __all__ = [
@@ -17,4 +17,5 @@ __all__ = [
     "Guardrail",
     "Luotsi",
     "LuotsiSettings",
+    "provision",
 ]

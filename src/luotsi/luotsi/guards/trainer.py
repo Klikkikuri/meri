@@ -5,6 +5,7 @@ Turns labeled exemplar files into the centroid artifact the guard classifies aga
 can and cannot do — the report is what makes a blind spot visible before the guard ships.
 """
 
+import hashlib
 import logging
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
@@ -12,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from ..cluster import agglomerate, cosine
+from ..settings.guardrails import DEFAULT_CLUSTER_THRESHOLD
 from .labeled import BENIGN, LabeledLine
 from .vectors import Centroid, GuardVectors
 
@@ -20,8 +22,18 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CLUSTER_THRESHOLD = 0.85
-"""Similarity at which two exemplars of one label share a centroid."""
+__all__ = [
+    "AS_IS",
+    "BRITTLE_SHADOW",
+    "NARROW_SHADOW",
+    "ROBUSTNESS_WRAPPINGS",
+    "Misclassification",
+    "Shadow",
+    "TrainingReport",
+    "source_digest",
+    "train_centroids",
+    "training_report",
+]
 
 BRITTLE_SHADOW = 0.75
 """Above this, a benign centroid leaves its attack centroid less working range than the margin it must clear."""
@@ -132,27 +144,47 @@ class TrainingReport:
         return lines
 
 
+def source_digest(lines: Sequence[LabeledLine], cluster_threshold: float) -> str:
+    """
+    A fingerprint of everything that decides what the artifact contains.
+
+    Recorded in the artifact so a guard can tell, without embedding anything, whether its inputs have moved.
+    Content rather than file mtimes, so it is direction-independent: rolling a deployment BACK to an older
+    exemplar catalog is caught just as a forward edit is, where a timestamp comparison would see a newer
+    artifact and keep it.
+
+    :param lines: The parsed exemplars, in training order.
+    :param cluster_threshold: Threshold they would be clustered at — a different one is a different artifact.
+    :return: Hex digest.
+    """
+    digest = hashlib.sha256()
+    for line in lines:
+        digest.update(f"{line.label}\x00{line.text}\x00".encode())
+    digest.update(f"{cluster_threshold!r}".encode())
+    return digest.hexdigest()
+
+
 def train_centroids(
     lines: Sequence[LabeledLine],
     embed: "Embedder",
     model_name: str,
     cluster_threshold: float = DEFAULT_CLUSTER_THRESHOLD,
-    floor: float = 0.60,
-    margin: float = 0.10,
-) -> tuple[GuardVectors, TrainingReport]:
+) -> GuardVectors:
     """
     Train the centroid artifact from labeled exemplars.
 
     All languages train into ONE artifact: the embedding space is shared, so language lives in the data and the
     guard needs no language routing at run time.
 
+    This is the cheap half. Measured on the shipped catalog, it is ~0.2s against the ~26s of
+    :func:`training_report`, which is why a guard can afford to do this at startup and leave the report to
+    whoever asks for one.
+
     :param lines: Labeled exemplars, from every language file at once.
     :param embed: Embedding callable.
     :param model_name: Name of the embedding model, recorded in the artifact.
     :param cluster_threshold: Similarity at which two exemplars of one label share a centroid.
-    :param floor: Decision floor the self-check and the shadow scan use.
-    :param margin: Decision margin the self-check and the shadow scan use.
-    :return: The artifact and its training report.
+    :return: The artifact.
     """
     import numpy as np
 
@@ -163,10 +195,10 @@ def train_centroids(
         by_label[line.label].append(line)
 
     centroids: list[Centroid] = []
-    report = TrainingReport()
+    clusters: dict[str, list[int]] = {}
     for label, members in by_label.items():
         groups = agglomerate([vectors[member.text] for member in members], cluster_threshold, cosine)
-        report.clusters[label] = [len(group) for group in groups]
+        clusters[label] = [len(group) for group in groups]
 
         for group in groups:
             mean = np.mean([vectors[members[index].text] for index in group], axis=0)
@@ -180,16 +212,51 @@ def train_centroids(
                 )
             )
 
-    artifact = GuardVectors(
+    return GuardVectors(
         model_name=model_name,
         dim=len(centroids[0].vector) if centroids else 0,
         cluster_threshold=cluster_threshold,
+        source_digest=source_digest(lines, cluster_threshold),
         centroids=centroids,
     )
 
+
+def training_report(
+    artifact: GuardVectors,
+    lines: Sequence[LabeledLine],
+    embed: "Embedder",
+    floor: float = 0.60,
+    margin: float = 0.10,
+) -> TrainingReport:
+    """
+    Measure what a trained artifact can and cannot do.
+
+    Split from :func:`train_centroids` because it is expensive and it is for a person: the self-check
+    re-classifies every training line in three forms against every centroid, which is ~23s of the ~26s the two
+    once cost together. A guard training itself at startup has no reader for this, so it skips it; `meri
+    feedback train-guard` prints it, which is where a blind spot actually gets seen.
+
+    Re-embeds the lines rather than taking a mapping from training — 0.1s of the 26, and it keeps both
+    functions callable on their own.
+
+    :param artifact: The trained artifact to measure.
+    :param lines: The exemplars it was trained from.
+    :param embed: Embedding callable.
+    :param floor: Decision floor the self-check and the shadow scan use.
+    :param margin: Decision margin the self-check and the shadow scan use.
+    :return: The report.
+    """
+    import numpy as np
+
+    vectors = {line.text: np.asarray(embed(line.text), dtype=float) for line in lines}
+
+    report = TrainingReport()
+    for centroid in artifact.centroids:
+        report.clusters.setdefault(centroid.label, []).append(centroid.size)
+
     report.shadows = _find_shadows(artifact, floor, margin)
     report.misclassifications = _self_check(artifact, lines, vectors, embed, floor, margin)
-    return artifact, report
+    return report
 
 
 def _find_shadows(artifact: GuardVectors, floor: float, margin: float) -> list[Shadow]:

@@ -14,7 +14,8 @@ from luotsi.guards.labeled import (
     parse_files,
     write,
 )
-from luotsi.guards.trainer import train_centroids
+from luotsi.guards.provision import artifact_path, ensure_guard_vectors
+from luotsi.guards.trainer import source_digest, train_centroids, training_report
 from luotsi.guards.vectors import Centroid, GuardVectors
 from luotsi.settings.guardrails import InjectionConfig
 
@@ -59,17 +60,46 @@ def item(message: str) -> FeedbackItem:
     return FeedbackItem(original=feedback, processed=feedback)
 
 
+def train(lines: list[LabeledLine], cluster_threshold: float = 0.85, floor: float = 0.60, margin: float = 0.10):
+    """
+    Train and measure in one call, the way `train-guard` does.
+
+    The two halves are separate in the library because a guard training itself at startup wants only the first;
+    these tests are about what the pair produces, so they keep asking for both.
+    """
+    artifact = train_centroids(lines, stub_embed, model_name="stub", cluster_threshold=cluster_threshold)
+    return artifact, training_report(artifact, lines, stub_embed, floor=floor, margin=margin)
+
+
+STUB_LINES = [LabeledLine("injection", "attack attack"), LabeledLine("benign", "ordinary ordinary")]
+"""A catalog small enough to retrain inside a test, shaped for `stub_embed`'s three axes."""
+
+
 @pytest.fixture
-def stub_artifact(tmp_path: Path) -> Path:
-    """The stub artifact on disk, so the guard loads it the way it loads the packaged one."""
-    path = tmp_path / "vectors.stub.json"
-    path.write_text(ARTIFACT.model_dump_json(), encoding="utf-8")
+def stub_data(tmp_path: Path) -> Path:
+    """The exemplars `ARTIFACT` claims to have been trained from, so the guard sees it as current."""
+    path = tmp_path / "exemplars.stub.txt"
+    path.write_text(write(STUB_LINES), encoding="utf-8")
     return path
 
 
 @pytest.fixture
-def guard(stub_artifact: Path) -> InjectionGuard:
-    return InjectionGuard(InjectionConfig(vectors=stub_artifact), stub_embed)
+def stub_artifact(tmp_path: Path) -> Path:
+    """The stub artifact on disk, so the guard loads it the way it loads a real one."""
+    path = tmp_path / "vectors.stub.json"
+    current = ARTIFACT.model_copy(update={"source_digest": source_digest(STUB_LINES, 0.85)})
+    path.write_text(current.model_dump_json(), encoding="utf-8")
+    return path
+
+
+def stub_config(stub_data: Path, **kwargs) -> InjectionConfig:
+    """A guard configuration pointed at the small catalog, so nothing reaches for the packaged one."""
+    return InjectionConfig(data=[stub_data], **kwargs)
+
+
+@pytest.fixture
+def guard(stub_artifact: Path, stub_data: Path) -> InjectionGuard:
+    return InjectionGuard(stub_config(stub_data, vectors=stub_artifact), stub_embed, model_name="stub")
 
 
 # --- Centroid tier decisions -------------------------------------------------
@@ -121,25 +151,246 @@ def test_guard_sees_through_zero_width_padding(guard: InjectionGuard):
     assert guard.run([item("at\u200btack")]) == []
 
 
-def test_guard_without_configured_vectors_refuses_to_build():
-    """An embedding model alone is not enough: the guard needs an artifact someone trained."""
-    with pytest.raises(ValueError, match="train-guard"):
+def test_guard_without_anywhere_to_keep_its_artifact_refuses_to_build():
+    """It trains its own artifact, but it still needs to be told where to keep it."""
+    with pytest.raises(ValueError, match="nowhere to keep"):
         InjectionGuard(InjectionConfig(), stub_embed)
 
 
-def test_guard_fails_on_a_configured_artifact_that_is_missing(tmp_path: Path):
-    """A path that is set but unusable is a broken deployment, never a reason to degrade quietly."""
-    with pytest.raises(OSError):
-        InjectionGuard(InjectionConfig(vectors=tmp_path / "absent.json"), stub_embed)
+def test_guard_refuses_a_stale_artifact_rather_than_rebuilding_it(stub_artifact: Path, stub_data: Path):
+    """
+    The guard reads; it does not provision. What it keeps is the refusal, and it names the reason.
+
+    Nothing can classify against vectors that no longer match their inputs — the host is told to provision
+    instead of a constructor quietly writing to disk on its behalf.
+    """
+    stub_data.write_text(write([*STUB_LINES, LabeledLine("injection", "attack unrelated")]), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="exemplars or the clustering threshold have changed"):
+        InjectionGuard(stub_config(stub_data, vectors=stub_artifact), stub_embed, model_name="stub")
 
 
-def test_guard_warns_when_the_artifact_was_trained_on_another_model(
-    stub_artifact: Path, caplog: pytest.LogCaptureFixture
+@pytest.mark.parametrize(
+    "reason,artifact_update,model_name",
+    [
+        ("dimension", {"dim": 99}, "stub"),
+        ("configured model", {"model_name": "another-model"}, "stub"),
+    ],
+)
+def test_guard_refuses_every_kind_of_mismatch(
+    stub_artifact: Path, stub_data: Path, reason: str, artifact_update: dict, model_name: str
 ):
-    with caplog.at_level("WARNING", logger="luotsi.guards.injection"):
-        InjectionGuard(InjectionConfig(vectors=stub_artifact), stub_embed, model_name="a-different-model")
+    stale = GuardVectors.load(stub_artifact).model_copy(update=artifact_update)
+    stub_artifact.write_text(stale.model_dump_json(), encoding="utf-8")
 
-    assert "a-different-model" in caplog.text
+    with pytest.raises(ValueError, match=reason):
+        InjectionGuard(stub_config(stub_data, vectors=stub_artifact), stub_embed, model_name=model_name)
+
+
+def test_guard_refuses_a_non_classifying_artifact_it_did_not_train(tmp_path: Path):
+    """
+    Provisioning validates what it writes, but an artifact can also arrive from `train-guard` or a backup.
+
+    Such a file carries a digest matching its own exemplars, so it looks perfectly current. Checking only what
+    was trained in this process would wave a non-classifying catalog straight through and leave every
+    injection passing, silently, for as long as the file sits there.
+    """
+    data = tmp_path / "exemplars.txt"
+    data.write_text(write([LabeledLine("benign", "ordinary")]), encoding="utf-8")
+    path = tmp_path / "vectors.json"
+
+    trained = train_centroids(parse_files([data]), stub_embed, model_name="stub", cluster_threshold=0.85)
+    path.write_text(trained.dump(), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="cannot classify"):
+        InjectionGuard(InjectionConfig(data=[data], vectors=path), stub_embed, model_name="stub")
+
+
+def test_guard_never_writes(stub_data: Path, tmp_path: Path):
+    """The whole point of the split: constructing a guard touches no file it did not already find."""
+    path = tmp_path / "absent.json"
+
+    with pytest.raises(ValueError):
+        InjectionGuard(stub_config(stub_data, vectors=path), stub_embed, model_name="stub")
+
+    assert not path.exists()
+
+
+# --- Provisioning ------------------------------------------------------------
+
+
+def provision_to(path: Path, data: Path, model_name: str | None = "stub", **kwargs):
+    return ensure_guard_vectors(stub_config(data, **kwargs), stub_embed, model_name, path)
+
+
+def test_provisioning_trains_when_there_is_no_artifact_yet(stub_data: Path, tmp_path: Path):
+    path = tmp_path / "nested" / "vectors.json"
+
+    artifact, reason = provision_to(path, stub_data)
+
+    assert path.exists()
+    assert reason == "no usable artifact yet"
+    assert artifact.source_digest == source_digest(STUB_LINES, 0.85)
+
+
+def test_provisioning_leaves_a_current_artifact_alone(stub_artifact: Path, stub_data: Path):
+    """
+    Retraining on every start is the regression this could introduce, so assert it does not.
+
+    A counting embedder is the check: inspecting probes the dimension once, training embeds every exemplar.
+    """
+    calls: list[str] = []
+
+    def counting_embed(text: str):
+        calls.append(text)
+        return stub_embed(text)
+
+    _, reason = ensure_guard_vectors(stub_config(stub_data), counting_embed, "stub", stub_artifact)
+
+    assert reason is None
+    assert calls == ["dimension probe"]
+
+
+@pytest.mark.parametrize("reason", ["exemplars", "threshold", "model"])
+def test_provisioning_retrains_when_an_input_moves(stub_artifact: Path, stub_data: Path, reason: str):
+    """Any of the three things that decide what the artifact contains makes it stale."""
+    before = stub_artifact.read_text(encoding="utf-8")
+
+    if reason == "exemplars":
+        stub_data.write_text(write([*STUB_LINES, LabeledLine("injection", "attack unrelated")]), encoding="utf-8")
+
+    _, retrained = provision_to(
+        stub_artifact,
+        stub_data,
+        model_name="another-model" if reason == "model" else "stub",
+        **({"cluster_threshold": 0.5} if reason == "threshold" else {}),
+    )
+
+    assert retrained is not None
+    assert stub_artifact.read_text(encoding="utf-8") != before
+
+
+def test_provisioning_forces_a_retrain_of_a_current_artifact(stub_artifact: Path, stub_data: Path):
+    """`train-guard` reviews an artifact, so it rebuilds one even when nothing moved."""
+    _, reason = ensure_guard_vectors(stub_config(stub_data), stub_embed, "stub", stub_artifact, force=True)
+
+    assert reason == "forced"
+
+
+def test_provisioning_retrains_an_artifact_written_before_digests_existed(stub_artifact: Path, stub_data: Path):
+    """The migration case: every artifact in the wild has no digest, so each retrains exactly once."""
+    stub_artifact.write_text(ARTIFACT.model_dump_json(), encoding="utf-8")  # no source_digest
+
+    provision_to(stub_artifact, stub_data)
+
+    assert GuardVectors.load(stub_artifact).source_digest == source_digest(STUB_LINES, 0.85)
+
+
+def test_provisioning_retrains_over_a_torn_artifact(stub_artifact: Path, stub_data: Path):
+    """A file left half-written by an interrupted write must rebuild, not fail."""
+    stub_artifact.write_text('{"model_name": "stub", "dim": 3, "centr', encoding="utf-8")
+
+    artifact, _ = provision_to(stub_artifact, stub_data)
+
+    assert len(artifact.centroids) == 2
+
+
+def test_provisioning_writes_without_leaving_a_temporary_behind(stub_data: Path, tmp_path: Path):
+    """The temp name is unique per process, so nothing must survive a successful write."""
+    path = tmp_path / "vectors.json"
+
+    provision_to(path, stub_data)
+
+    assert path.exists()
+    assert [entry.name for entry in tmp_path.iterdir() if entry.name.endswith(".tmp")] == []
+
+
+def test_the_written_artifact_is_readable_by_others(stub_data: Path, tmp_path: Path):
+    """
+    `mkstemp` opens 0600 and `os.replace` carries the mode across.
+
+    Left alone that quietly narrows the artifact to one user, which breaks a deployment that changes `PUID` or
+    shares the volume — and it cannot repair itself, because the same narrowing applies to the rewrite.
+    """
+    path = tmp_path / "vectors.json"
+
+    provision_to(path, stub_data)
+
+    assert path.stat().st_mode & 0o044, f"artifact is {oct(path.stat().st_mode & 0o777)}, unreadable to others"
+
+
+def test_provisioning_fails_when_it_cannot_write(stub_data: Path, tmp_path: Path):
+    """A destination that is set but unusable is a broken deployment, never a reason to degrade quietly."""
+    locked = tmp_path / "locked"
+    locked.mkdir(mode=0o500)
+
+    with pytest.raises(OSError):
+        provision_to(locked / "vectors.json", stub_data)
+
+
+def test_provisioning_will_not_train_without_a_model_name(stub_data: Path, tmp_path: Path):
+    """The artifact records what it was trained with; without that it could never be checked again."""
+    with pytest.raises(ValueError, match="which model"):
+        provision_to(tmp_path / "v.json", stub_data, model_name=None)
+
+
+def test_provisioning_reports_a_missing_exemplar_file_by_path(tmp_path: Path):
+    absent = tmp_path / "gone.txt"
+
+    with pytest.raises(OSError, match="gone.txt"):
+        ensure_guard_vectors(InjectionConfig(data=[absent]), stub_embed, "stub", tmp_path / "v.json")
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        pytest.param([LabeledLine("benign", "ordinary")], id="benign-only"),
+        pytest.param([LabeledLine("injection", "attack")], id="attack-only"),
+        pytest.param([], id="empty"),
+    ],
+)
+def test_provisioning_refuses_a_catalog_that_cannot_classify(lines, tmp_path: Path):
+    """
+    A benign-only catalog trains clean — no misclassifications, no shadows — and then passes every attack.
+
+    `data` replaces the shipped catalog, so one misconfigured file would switch a security control off with
+    nothing to show for it. The mirror case silences readers instead: with no benign class nothing can veto.
+    """
+    data = tmp_path / "exemplars.txt"
+    data.write_text(write(lines), encoding="utf-8")
+    path = tmp_path / "vectors.json"
+
+    with pytest.raises(ValueError, match="cannot classify"):
+        ensure_guard_vectors(InjectionConfig(data=[data]), stub_embed, "stub", path)
+
+    assert not path.exists(), "a catalog that cannot classify must not be written"
+
+
+def test_artifact_path_prefers_the_guards_own_over_the_resolved_one(tmp_path: Path):
+    own, resolved = tmp_path / "own.json", tmp_path / "resolved.json"
+
+    assert artifact_path(InjectionConfig(vectors=own), resolved) == own
+    assert artifact_path(InjectionConfig(), resolved) == resolved
+
+    with pytest.raises(ValueError, match="nowhere to keep"):
+        artifact_path(InjectionConfig(), None)
+
+
+# --- The shipped catalog is the default --------------------------------------
+
+
+def test_the_default_exemplars_are_the_shipped_catalog():
+    """The one check that would catch the packaged data failing to ship in a built artifact."""
+    data = InjectionConfig().data
+
+    assert data, "no exemplar files resolved from the package"
+    assert all(path.exists() for path in data)
+    assert {path.name for path in data} == {"exemplars.en.txt", "exemplars.fi.txt"}
+
+
+def test_configured_exemplars_replace_the_shipped_ones(stub_data: Path):
+    """Replacing, not extending — the same rule `train-guard --data` follows."""
+    assert InjectionConfig(data=[stub_data]).data == [stub_data]
 
 
 # --- Labeled data ------------------------------------------------------------
@@ -190,7 +441,7 @@ TRAINING = [
 
 
 def test_trainer_clusters_by_label_and_keeps_singletons():
-    artifact, report = train_centroids(TRAINING, stub_embed, model_name="stub", cluster_threshold=0.99)
+    artifact, report = train(TRAINING, cluster_threshold=0.99)
 
     # "attack" and "attack attack" normalize to the same vector and merge; the other two stand alone.
     assert sorted(report.clusters["injection"], reverse=True) == [2, 1]
@@ -199,7 +450,7 @@ def test_trainer_clusters_by_label_and_keeps_singletons():
 
 
 def test_trainer_normalizes_centroids():
-    artifact, _ = train_centroids(TRAINING, stub_embed, model_name="stub", cluster_threshold=0.99)
+    artifact, _ = train(TRAINING, cluster_threshold=0.99)
 
     for entry in artifact.centroids:
         assert np.linalg.norm(entry.vector) == pytest.approx(1.0)
@@ -208,7 +459,7 @@ def test_trainer_normalizes_centroids():
 def test_trainer_reports_a_benign_centroid_shadowing_an_attack():
     training = [LabeledLine("injection", "attack"), LabeledLine("benign", "attack ordinary")]
 
-    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+    _, report = train(training)
 
     assert [shadow.benign for shadow in report.shadows] == ["attack ordinary"]
 
@@ -227,9 +478,7 @@ def test_trainer_ranks_shadows_so_the_tight_ones_are_readable():
     ]
 
     # A high cluster threshold keeps the two benign lines apart; at the default they merge into one centroid.
-    _, report = train_centroids(
-        training, stub_embed, model_name="stub", cluster_threshold=0.99, floor=0.60, margin=0.10
-    )
+    _, report = train(training, cluster_threshold=0.99)
     rendered = report.render()
 
     assert [round(shadow.similarity, 2) for shadow in report.shadows] == [0.89, 0.55]
@@ -247,7 +496,7 @@ def test_trainer_flags_a_line_that_only_classifies_in_the_form_it_was_trained_on
     monkeypatch.setattr(trainer, "ROBUSTNESS_WRAPPINGS", {"dilution": "{} ordinary"})
     training = [LabeledLine("injection", "attack"), LabeledLine("benign", "attack ordinary ordinary")]
 
-    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+    _, report = train(training)
 
     assert [(miss.text, miss.verdict, miss.variant) for miss in report.misclassifications] == [
         ("attack", "passed", "dilution")
@@ -260,14 +509,14 @@ def test_trainer_reports_a_line_once_naming_the_first_variant_that_broke_it(monk
     monkeypatch.setattr(trainer, "ROBUSTNESS_WRAPPINGS", {"one": "{} ordinary", "two": "{} ordinary ordinary"})
     training = [LabeledLine("injection", "attack"), LabeledLine("benign", "attack ordinary ordinary")]
 
-    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+    _, report = train(training)
 
     assert len(report.misclassifications) == 1
     assert report.misclassifications[0].variant == "one"
 
 
 def test_trainer_self_check_is_clean_on_consistent_data():
-    _, report = train_centroids(TRAINING, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+    _, report = train(TRAINING)
 
     assert report.misclassifications == []
 
@@ -276,13 +525,13 @@ def test_trainer_self_check_flags_a_mislabeled_line():
     """A benign line sitting on top of the attack region vetoes the real attacks, and the check must say so."""
     training = [*TRAINING, LabeledLine("benign", "attack attack attack")]
 
-    _, report = train_centroids(training, stub_embed, model_name="stub", floor=0.60, margin=0.10)
+    _, report = train(training)
 
     assert {(miss.label, miss.verdict) for miss in report.misclassifications} == {("injection", "passed")}
 
 
 def test_artifact_round_trips(tmp_path: Path):
-    artifact, _ = train_centroids(TRAINING, stub_embed, model_name="stub")
+    artifact, _ = train(TRAINING)
     path = tmp_path / "vectors.json"
     path.write_text(artifact.model_dump_json(), encoding="utf-8")
 

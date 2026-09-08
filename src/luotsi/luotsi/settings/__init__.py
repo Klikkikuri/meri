@@ -53,6 +53,21 @@ class LuotsiSettings(BaseModel):
         "their weaker built-in mode.",
     )
 
+    embedding_model_id: str | None = Field(
+        default=None,
+        description="Opaque identity of the embedding model, recorded in the injection guard's artifact and "
+        "compared against it. The host application supplies it — Luotsi never parses it — because only the "
+        "host knows what a model is called; in Meri it is the hub identifier. Defaults to the model "
+        "directory's name, which cannot tell two models of the same name apart.",
+    )
+
+    guard_vectors: Path | None = Field(
+        default=None,
+        description="Where the injection guard keeps its trained artifact, when no guard names one of its "
+        "own. The host application resolves it — in Meri it lands in the data directory — because Luotsi "
+        "knows no directory layout. None leaves the guard with nowhere to write, and it refuses to build.",
+    )
+
     clustering: ClusteringSettings = Field(
         default_factory=ClusteringSettings, description="Message consolidation tuning."
     )

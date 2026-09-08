@@ -150,9 +150,10 @@ rahti:
 
 # --- Luotsi (reader feedback) settings ---
 # Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
-# without reader feedback — and omit it ENTIRELY, because a `luotsi:` key with nothing under it still builds the
-# default guardrail chain, which contains the injection guard, which then fails the run at start for want of a
-# model and an artifact.
+# without reader feedback; a `luotsi:` key with nothing after it reads as null and does the same. An explicit
+# empty mapping (`luotsi: {}`) is the one that turns feedback ON with every default, which means the default
+# guardrail chain and so the injection guard. That needs an embedding model — the guard trains its own
+# artifact, but nothing can provision the model for it — so `meri feedback download-model` comes first.
 # luotsi:
 #   sources:
 #     - type: sheets
@@ -179,10 +180,19 @@ rahti:
 #     - type: sanitize            # strip invisible characters, collapse whitespace; keeps casing and accents
 #     - type: pii                 # redact emails, phone numbers, IP addresses and URLs
 #     - type: injection
-#       # The trained centroid artifact, and the guard's only tier. No artifact ships with Luotsi — it is bound to
-#       # the embedding model that produced it — so generate one with `meri feedback train-guard`, which writes to
-#       # exactly this path. Without it, and without `embedding_model`, the guard fails the run at start.
+#       # Where the trained centroid artifact is kept. No artifact ships with Luotsi — it is bound to the
+#       # embedding model that produced it — so `meri run` provisions one at start whenever the file is missing
+#       # or its inputs have moved, and `meri feedback train-guard` is how you REVIEW one rather than how you
+#       # get one. Those two commands write it; every other command reads it and fails loudly if it is stale.
+#       # Omit this and it lands in the data directory; set it to put it somewhere else.
 #       vectors: "/app/instance/guard-vectors.json"
+#       # Labeled exemplar files to train from. Omit for the curated catalog shipped with Luotsi, which is what
+#       # the guard's quality rests on. Setting this REPLACES that catalog rather than adding to it, exactly as
+#       # `train-guard --data` does — so list the shipped files too if you mean to extend them. A catalog with
+#       # no attack lines, or no benign ones, cannot classify and the guard refuses to start on it.
+#       data: ["/app/instance/our-own-exemplars.txt"]
+#       # Similarity at which two exemplars of one label collapse into a single centroid. Changing it retrains.
+#       cluster_threshold: 0.85
 #       # ONE decision, shared by every drop class the exemplar files carry — `injection`, `toxic` (a reader
 #       # pushing a hateful framing into the headline) and `spam` — because `classify` takes the nearest
 #       # non-benign centroid whatever its label. The rule is deliberately one-sided: drop only when the message

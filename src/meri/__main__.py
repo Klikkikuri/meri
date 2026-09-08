@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from importlib.util import find_spec
 
 from jinja2 import Template
-from luotsi import LuotsiSettings
+from luotsi import LuotsiSettings, provision
 from luotsi.cluster import MessageClusterer
 from luotsi.embeddings import load_embedder
 from opentelemetry import trace
@@ -137,9 +137,12 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
     # Load the embedding model before any fetching or LLM spend: a configured model that cannot load is a broken
-    # deployment, and it must say so at the start of the run rather than part way through it.
+    # deployment, and it must say so at the start of the run rather than part way through it. The injection
+    # guard's vectors are provisioned in the same breath and for the same reason — this is the one command that
+    # writes them, so the read-only ones can be trusted not to.
     if settings.luotsi and settings.luotsi.embedding_model:
         load_embedder(settings.luotsi.embedding_model)
+        provision(settings.luotsi)
 
     # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down. The
     # guardrail chain runs per article, inside the matcher, so a growing corpus costs only what this run reads.

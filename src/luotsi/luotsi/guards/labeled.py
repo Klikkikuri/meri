@@ -79,10 +79,19 @@ def parse(lines: Iterable[str]) -> list[LabeledLine]:
 
 
 def parse_files(paths: Iterable[Path]) -> list[LabeledLine]:
-    """Read several exemplar files into one list, in the order given."""
+    """
+    Read several exemplar files into one list, in the order given.
+
+    :raises ValueError: On a malformed line, naming the file it is in. Line numbers restart per file, so the
+        number alone is not enough to find it — and this now runs on the start-up path of every run.
+    """
     exemplars: list[LabeledLine] = []
     for path in paths:
-        lines = parse(path.read_text(encoding="utf-8").splitlines())
+        try:
+            lines = parse(path.read_text(encoding="utf-8").splitlines())
+        except ValueError as e:
+            raise ValueError(f"{path}: {e}") from e
+
         logger.info("Read %d exemplar(s) from %s", len(lines), path)
         exemplars.extend(lines)
     return exemplars

@@ -28,9 +28,19 @@ class Centroid(BaseModel):
 class GuardVectors(BaseModel):
     """A trained injection classifier."""
 
-    model_name: str = Field(description="Embedding model the vectors were trained with.")
+    model_name: str = Field(
+        description="Identity of the embedding model the vectors were trained with, as the host application "
+        "names it — a hub identifier rather than a bare directory name, so two same-named models are told "
+        "apart. Opaque: it is compared, never parsed."
+    )
     dim: int = Field(description="Embedding dimension. Checked against the live model at load.")
     cluster_threshold: float = Field(description="Similarity at which exemplars joined one cluster.")
+    source_digest: str = Field(
+        default="",
+        description="Fingerprint of the exemplars and threshold this was trained from, so a guard can tell "
+        "whether its inputs have moved. Empty in artifacts written before it existed, which reads as stale "
+        "and retrains once.",
+    )
     centroids: list[Centroid] = Field(description="The trained centroids, in training order.")
 
     def dump(self) -> str:
@@ -40,7 +50,7 @@ class GuardVectors(BaseModel):
         Compact enough to commit, and a diff still names the centroids that changed rather than the thousands of
         individual numbers inside them.
         """
-        header = {name: getattr(self, name) for name in ("model_name", "dim", "cluster_threshold")}
+        header = {name: getattr(self, name) for name in ("model_name", "dim", "cluster_threshold", "source_digest")}
         head = ",".join(f"{key!r}: {value!r}".replace("'", '"') for key, value in header.items())
         lines = ",\n  ".join(
             centroid.model_copy(update={"vector": [round(v, PRECISION) for v in centroid.vector]}).model_dump_json()
@@ -67,7 +77,7 @@ class GuardVectors(BaseModel):
         if dim is not None and dim != vectors.dim:
             raise ValueError(
                 f"Guard vectors in {path} have dimension {vectors.dim}, but the embedding model produces {dim}. "
-                f"Retrain them with `luotsi train-guard`."
+                f"Retrain them with `meri feedback train-guard`."
             )
 
         logger.info("Loaded %d guard centroid(s) trained on %s", len(vectors.centroids), vectors.model_name)

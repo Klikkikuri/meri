@@ -12,17 +12,18 @@ model it was trained with, so each deployment trains its own from the exemplar d
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
+from luotsi.client import model_identity
 from luotsi.cluster import MessageClusterer
 from luotsi.embeddings import download_model, load_embedder
 from luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
 from luotsi.guards.labeled import (
     LabeledLine,
-    packaged_exemplars,
     parse,
     parse_files,
     write,
 )
-from luotsi.guards.trainer import DEFAULT_CLUSTER_THRESHOLD, train_centroids
+from luotsi.guards.provision import ensure_guard_vectors
+from luotsi.guards.trainer import training_report
 from luotsi.guards.vectors import GuardVectors
 from luotsi.settings import InjectionConfig, LuotsiSettings
 from niitti import get_logger
@@ -40,7 +41,12 @@ else:
     # one command with a custom help still renders like every other.
     CommandBase = getattr(click, "RichCommand", click.Command)
 
-from ..settings.luotsi import DEFAULT_EMBEDDING_MODEL, hub_id_of, model_dir
+from ..settings.luotsi import (
+    DEFAULT_EMBEDDING_MODEL,
+    default_vectors,
+    hub_id_of,
+    model_dir,
+)
 from ..settings.settings import Settings
 
 logger = get_logger(__name__)
@@ -119,9 +125,14 @@ def _injection_config(settings: LuotsiSettings) -> InjectionConfig:
     )
 
 
-def _vectors_path(settings: LuotsiSettings) -> Path | None:
-    """The artifact path the configured injection guard reads, when one is configured."""
-    return _injection_config(settings).vectors
+def _vectors_path(settings: LuotsiSettings) -> Path:
+    """
+    The artifact path the deployment uses.
+
+    Mirrors the guard's own resolution — the injection guard's `vectors`, else the destination the settings
+    resolved — so these commands read and write exactly the file a run would.
+    """
+    return _injection_config(settings).vectors or settings.guard_vectors or default_vectors()
 
 
 class _Guard(NamedTuple):
@@ -147,10 +158,10 @@ def _load_guard(ctx: click.Context, vectors: Path | None, floor: float | None, m
     injection = _injection_config(settings)
 
     artifact_path = vectors or _vectors_path(settings)
-    if not artifact_path:
+    if not artifact_path.exists():
         raise click.ClickException(
-            "No artifact to read. Generate one with `meri feedback train-guard`, set `vectors` on the injection "
-            "guard in your `luotsi.guardrails` list, or pass --vectors."
+            f"No artifact at {artifact_path}. A run trains one at start; to get one now use `meri feedback "
+            f"train-guard`, or pass --vectors to read a different file."
         )
 
     embedder = load_embedder(model_path)
@@ -195,6 +206,9 @@ def download(ctx: click.Context, target_dir: Path | None, model: str | None) -> 
 
     if destination == _configured_model(ctx):
         click.echo(f"Saved to {destination}, which is where `luotsi.embedding_model` loads from.")
+        # Overwriting in place changes the weights but not the identifier or the dimension, so the injection
+        # guard's artifact still reads as current and would keep centroids built from the old model.
+        click.echo("If this replaced an existing model, run `meri feedback train-guard` to rebuild the guard.")
     else:
         click.echo(
             f"Saved to {destination}. Add to your configuration:\n\n  luotsi:\n    embedding_model: "
@@ -206,56 +220,63 @@ def download(ctx: click.Context, target_dir: Path | None, model: str | None) -> 
 @click.option(
     "--output",
     type=click.Path(dir_okay=False, path_type=Path),
-    help="Where to write the artifact. Defaults to the configured injection guard's `vectors` path.",
+    help="Where to write the artifact. Defaults to the path the guard itself reads.",
 )
 @click.option(
     "--data",
     "data_files",
     multiple=True,
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
-    help="Labeled exemplar file. Repeat to add languages. Defaults to the files shipped with Luotsi.",
+    help="Labeled exemplar file. Repeat to add languages. Defaults to the configured `data`, which is the "
+    "catalog shipped with Luotsi unless a deployment names its own.",
 )
 @click.option(
     "--cluster-threshold",
-    default=DEFAULT_CLUSTER_THRESHOLD,
-    show_default=True,
-    help="Similarity at which two exemplars of one label share a centroid.",
+    type=float,
+    help="Similarity at which two exemplars of one label share a centroid. Defaults to the configured "
+    "`cluster_threshold`.",
 )
 @click.pass_context
 def train_guard(
-    ctx: click.Context, output: Path | None, data_files: tuple[Path, ...], cluster_threshold: float
+    ctx: click.Context, output: Path | None, data_files: tuple[Path, ...], cluster_threshold: float | None
 ) -> None:
     """
-    Train the injection guard's centroid artifact.
+    Train the injection guard's centroid artifact, and report what it can and cannot do.
 
-    Deterministic. Re-run it whenever the exemplar data changes or a different embedding model is adopted; the
-    guard refuses to load an artifact trained at a different dimension.
+    A run trains this artifact for itself at start, whenever it is missing or its inputs have moved, so this
+    command is not how you GET one — it is how you REVIEW one. It prints the training report, which is the
+    expensive half and the half a person reads: the clusters, the benign centroids close enough to veto an
+    attack centroid, and the self-check.
+
+    Deterministic. Writing where the guard reads means a run will then find this artifact current and leave
+    it alone.
     """
     settings = _luotsi_settings(ctx)
     model_path = _embedding_model(settings)
 
     destination = output or _vectors_path(settings)
-    if not destination:
-        raise click.ClickException(
-            "Nowhere to write the artifact. Set `vectors` on the injection guard in your `luotsi.guardrails` "
-            "list, or pass --output."
-        )
 
-    injection = _injection_config(settings)
-    exemplars = parse_files(list(data_files) or packaged_exemplars())
-    click.echo(f"Training on {len(exemplars)} exemplar(s) with {model_path.name} ...")
-
-    artifact, report = train_centroids(
-        exemplars,
-        load_embedder(model_path),
-        model_name=model_path.name,
-        cluster_threshold=cluster_threshold,
-        floor=injection.floor,
-        margin=injection.margin,
+    # Overrides apply by building the configuration this command was asked for, so training goes through the
+    # one function that writes an artifact. Doing it by hand here is what let this command skip the
+    # cannot-classify check and write non-atomically over a file a running guard was reading.
+    injection = _injection_config(settings).model_copy(
+        update={
+            "data": list(data_files) or _injection_config(settings).data,
+            **({} if cluster_threshold is None else {"cluster_threshold": cluster_threshold}),
+        }
     )
+    exemplars = parse_files(injection.data)
+    # The same identity the run records, not the directory name: writing a different one here would have this
+    # command and every run permanently disagree about whose artifact this is.
+    identity = model_identity(settings)
+    click.echo(f"Training on {len(exemplars)} exemplar(s) with {identity} ...")
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(artifact.dump(), encoding="utf-8")
+    embed = load_embedder(model_path)
+    artifact, _ = ensure_guard_vectors(injection, embed, identity, destination, force=True)
+
+    # The report is the reason to run this by hand rather than let a run provision the same artifact: it is the
+    # expensive half, and it is the half a person reads.
+    report = training_report(artifact, exemplars, embed, floor=injection.floor, margin=injection.margin)
 
     click.echo(f"\nWrote {len(artifact.centroids)} centroid(s) to {destination}\n")
     click.echo(report.render())
@@ -366,7 +387,13 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
 
     signature = article.urls[0].signature
 
-    matcher = build_matcher(settings)
+    # This command reads; it does not provision. A guard whose vectors no longer match its exemplars refuses
+    # to build, and that refusal is the answer to "why is feedback not reaching the model" — so it is worth a
+    # sentence rather than a traceback.
+    try:
+        matcher = build_matcher(settings)
+    except ValueError as e:
+        raise click.ClickException(f"{e}\n\nA run provisions them; `meri feedback train-guard` does it now.") from e
 
     # Read before the aggregate is built: the matcher guards this signature's bucket on first match and
     # replaces it, so afterwards only the survivors are left to count.

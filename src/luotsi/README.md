@@ -49,23 +49,48 @@ advertising and zero-effort noise. `benign` is the veto. The three drop classes 
 takes the nearest non-benign centroid whatever its label, against one floor and one margin, so a new drop class
 widens the same surface rather than adding a tier of its own. The Finnish file is still `injection` and `benign`.
 
-**The trained artifact is not shipped with this package.** It is bound to the embedding model that produced it,
-so each deployment trains its own. Meri owns that command, because it is where the paths are configured:
+**The trained artifact is not shipped with this package.** It is bound to the embedding model that produced
+it, so each deployment builds its own. `luotsi.provision(settings)` does that — and `meri run` calls it at
+the start of every run, so a deployment that edits its exemplars or swaps its model gets a rebuilt artifact
+with no operator action:
 
 ```bash
 meri feedback download-model    # once, into the directory Meri resolves `embedding_model` to
-meri feedback train-guard       # writes the configured `vectors` path
 ```
 
-Without a model or an artifact the guard refuses to be built, and the run fails at start. There is no reduced
-mode to fall back to, so a deployment that cannot run the guard says so in its configuration: it lists
-`guardrails` explicitly and leaves `injection` out. That includes `embedding_model: null`. The default chain
-holds the guard, so the default chain needs both. A broken deployment must not degrade quietly.
+**Provisioning writes; guards only read.** That is the same division this package already makes for the
+embedding model — `download_model` fetches, `load_embedder` loads and fails if nothing is there — and it is
+what lets a host check without changing anything. A guard handed vectors whose exemplars, threshold,
+dimension or model no longer match does not quietly rebuild them: it refuses to be built and names the
+reason. So `meri run` and `meri feedback train-guard` write the artifact, and every other command reads it.
 
-The exemplar files DO ship: they are this package's domain knowledge and the tuning surface. Training is
-deterministic and prints a report — the clusters it found, the benign centroids sitting close enough to veto an
-attack centroid, and a self-check. Read the report before deploying an artifact; it is where a blind spot
-becomes visible.
+Staleness is decided by a digest of the exemplars recorded in the artifact, not by file timestamps, so
+rolling a deployment BACK to an older catalog rebuilds just as an edit forwards does. Building the centroids
+is the cheap half — about 0.2s on the shipped catalog — because the expensive self-check belongs to the
+report.
+
+The model is identified by whatever the host calls it — in Meri the hub identifier, so
+`minishlab/potion-multilingual-128M` and `otherorg/potion-multilingual-128M` are distinguishable where a bare
+directory name would not be. **One case this does not catch:** fetching a new revision of the same model into
+the same directory changes the weights but not the identifier or the dimension, so the artifact reads as
+current and the guard keeps centroids built from the old weights. `meri feedback download-model` overwrites
+in place, so after re-provisioning a model, retrain with `meri feedback train-guard`. Only fingerprinting
+what the model produces would close this automatically.
+
+Without a model, or with nowhere to keep the artifact, the guard refuses to be built and the run fails at
+start. There is no reduced mode to fall back to, so a deployment that cannot run the guard says so in its
+configuration: it lists `guardrails` explicitly and leaves `injection` out. That includes
+`embedding_model: null`. A broken deployment must not degrade quietly — which is also why a destination that
+cannot be written fails the run rather than being retrained around on every start.
+
+The exemplar files DO ship, and they are the default training data: they are this package's domain knowledge
+and the tuning surface. A deployment's `data` REPLACES them rather than adding to it, so a catalog that ends
+up with no attack class or no benign class cannot classify, and the guard refuses to start on it instead of
+passing everything or dropping everyone.
+
+Training is deterministic and `meri feedback train-guard` prints a report — the clusters it found, the benign
+centroids sitting close enough to veto an attack centroid, and a self-check. That report is the reason to run
+the command by hand: a run provisions the same artifact without it, because nobody reads a report at startup.
 
 Read the report's two halves for what they are:
 

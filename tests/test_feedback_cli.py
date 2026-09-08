@@ -13,7 +13,7 @@ from click.testing import CliRunner
 from luotsi.guards.vectors import GuardVectors
 
 from meri.cli.feedback import cli
-from meri.settings.luotsi import DEFAULT_EMBEDDING_MODEL
+from meri.settings.luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors
 from meri.settings.luotsi import model_dir as resolved_dir
 from meri.settings.settings import Settings
 
@@ -108,11 +108,17 @@ def test_train_guard_in_the_builtin_mode_names_the_provisioning_command(tmp_path
     assert "download-model" in result.output
 
 
-def test_train_guard_without_a_destination_says_where_to_set_one(model_dir: Path, embedder):
+def test_train_guard_falls_back_to_the_resolved_destination(model_dir: Path, embedder):
+    """
+    No guard names a `vectors` path here, so the command writes where a run would read.
+
+    It used to refuse for want of a destination; now the settings resolve one, and writing anywhere else
+    would leave the run to retrain over it at the next start.
+    """
     result = invoke(["train-guard"], {"embedding_model": str(model_dir)})
 
-    assert result.exit_code != 0
-    assert "--output" in result.output
+    assert result.exit_code == 0, result.output
+    assert default_vectors().exists()
 
 
 @pytest.fixture
@@ -484,3 +490,21 @@ def test_show_rejects_a_malformed_url(tmp_path: Path):
 
     assert result.exit_code != 0
     assert "Not a usable article URL" in result.output
+
+
+def test_train_guard_records_the_same_identity_a_run_would(tmp_path: Path, model_dir: Path, embedder):
+    """
+    If this command and the runtime disagree about whose artifact it is, they deadlock.
+
+    `train-guard` writes, the next run reads it, finds a model mismatch, retrains and writes back — and the
+    operator's reviewed artifact is gone. Both must record what `model_identity` says.
+    """
+    from luotsi.client import model_identity
+
+    destination = tmp_path / "vectors.json"
+    luotsi = {"embedding_model": str(model_dir), "guardrails": [{"type": "injection", "vectors": str(destination)}]}
+
+    result = invoke(["train-guard"], luotsi)
+
+    assert result.exit_code == 0, result.output
+    assert GuardVectors.load(destination).model_name == model_identity(settings_with(luotsi).luotsi)

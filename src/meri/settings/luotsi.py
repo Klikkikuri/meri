@@ -29,6 +29,19 @@ def embedding_dir() -> Path:
     return data_dir(APP_NAME) / EMBEDDING_SUBDIR
 
 
+def default_vectors() -> Path:
+    """
+    Where the injection guard keeps its trained artifact when no guard names a path of its own.
+
+    Luotsi trains the artifact itself but knows no directory layout, so the location is this application's
+    decision, like the model directory above. It lands in the data directory, which a container mounts as a
+    persistent volume, so a rebuilt image with new exemplars retrains once and keeps the result.
+
+    :return: `<data dir>/guard-vectors.json`. Neither it nor its parent need exist yet.
+    """
+    return data_dir(APP_NAME) / "guard-vectors.json"
+
+
 def is_hub_id(model: str) -> bool:
     """
     Whether a configured model names a hub model rather than a directory on this machine.

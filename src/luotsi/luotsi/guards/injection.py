@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from ..abc import FeedbackItem, Guardrail
 from ..settings.guardrails import InjectionConfig
 from .labeled import BENIGN
+from .provision import artifact_path, check_classifies, inspect
 from .sanitize import SanitizeGuard
 from .vectors import Centroid, GuardVectors
 
@@ -81,60 +82,57 @@ class InjectionGuard(Guardrail):
     Drops messages that try to instruct the model.
 
     One tier: nearest-centroid comparison against a trained attack catalog, so rewordings are caught as well as
-    the phrasings themselves. It needs both an embedding model and a trained artifact, and refuses to be built
+    the phrasings themselves. It needs an embedding model and a usable artifact, and refuses to be built
     without them — a guard that is configured but cannot classify is a broken deployment, not a degraded one. A
     deployment that runs without an embedding model leaves `injection` out of its `guardrails` list instead.
 
-    No artifact ships with this package: it is bound to one embedding model, so it is generated per deployment
-    with `meri feedback train-guard`.
+    It READS its artifact and never writes one. Building it belongs to
+    :func:`~luotsi.guards.provision.ensure_guard_vectors`, which a host calls deliberately — the same division
+    :func:`~luotsi.embeddings.download_model` and :func:`~luotsi.embeddings.load_embedder` already make for the
+    embedding model. What the guard keeps is the refusal: an artifact whose exemplars, threshold, dimension or
+    model no longer match is rejected by name rather than used, so nothing can classify against stale vectors.
     """
 
     name = "injection"
 
-    def __init__(self, config: InjectionConfig, embed: "Embedder | None" = None, model_name: str | None = None) -> None:
+    def __init__(
+        self,
+        config: InjectionConfig,
+        embed: "Embedder | None" = None,
+        model_name: str | None = None,
+        vectors: Path | None = None,
+    ) -> None:
         """
         :param config: Guard configuration.
         :param embed: Shared embedding callable.
-        :param model_name: Name of the configured embedding model, to check the artifact was trained with it.
-        :raises ValueError: When there is no embedding model or no configured artifact, or when the artifact is
-            unusable or does not match the live embedding model.
+        :param model_name: Name of the configured embedding model, compared against the artifact's.
+        :param vectors: Destination the host application resolved, for a guard that names none of its own.
+        :raises ValueError: When there is no embedding model, nowhere to read the artifact from, or the
+            artifact is stale or cannot classify.
         """
         if embed is None:
             raise ValueError(
                 "The injection guard needs an embedding model. Set `embedding_model`, or leave the guard out of "
                 "`guardrails`."
             )
-        if config.vectors is None:
-            raise ValueError(
-                "The injection guard needs a trained artifact. Generate one with `meri feedback train-guard` and "
-                "point `vectors` at it, or leave the guard out of `guardrails`."
-            )
 
         self.config = config
         self.embed = embed
-        self.vectors = self._load_vectors(config.vectors, embed, model_name)
+        self.model_name = model_name
 
-    @staticmethod
-    def _load_vectors(path: Path, embed: "Embedder", model_name: str | None) -> GuardVectors:
-        """
-        Load the configured artifact eagerly, and check it against the live model.
-
-        Loading here rather than on first use means a missing file or a model mismatch fails at start, before any
-        LLM spend. A path that is set but unusable is a broken deployment, never a reason to degrade quietly.
-
-        The dimension check is the hard guarantee. The name check catches the subtler case of a different model
-        of the same width, where every score would be quietly wrong rather than obviously broken.
-        """
-        artifact = GuardVectors.load(path, dim=len(embed("dimension probe")))
-
-        if model_name and artifact.model_name != model_name:
-            logger.warning(
-                "Guard vectors were trained on %r but the configured model is %r. Retrain them with "
-                "`meri feedback train-guard`.",
-                artifact.model_name,
-                model_name,
+        path = artifact_path(config, vectors)
+        found = inspect(config, embed, model_name, path)
+        if found.reason is not None or found.artifact is None:
+            raise ValueError(
+                f"The injection guard cannot use the vectors at {path}: {found.reason}. Provision them with "
+                f"`meri feedback train-guard`."
             )
-        return artifact
+
+        # Checked on the way in, not only on the way out of training: an artifact written by `train-guard`
+        # arrives with a digest that matches its exemplars, so it looks perfectly current. Validating only what
+        # this process trained would wave a non-classifying catalog straight through.
+        check_classifies(found.artifact, path)
+        self.vectors = found.artifact
 
     def run(self, items: list[FeedbackItem]) -> list[FeedbackItem]:
         """

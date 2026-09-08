@@ -11,6 +11,9 @@ from luotsi.guards import (
     TruncateGuard,
     build_guards,
 )
+from luotsi.guards.labeled import write
+from luotsi.guards.provision import ensure_guard_vectors
+from luotsi.guards.trainer import source_digest
 from luotsi.settings.guardrails import (
     InjectionConfig,
     LanguageConfig,
@@ -19,7 +22,7 @@ from luotsi.settings.guardrails import (
     TruncateConfig,
 )
 from luotsi.settings.source import Csv
-from test_luotsi_injection import ARTIFACT, stub_embed
+from test_luotsi_injection import ARTIFACT, STUB_LINES, stub_embed
 
 from luotsi import Feedback, FeedbackItem, FeedbackType, Luotsi, LuotsiSettings
 
@@ -28,10 +31,29 @@ FEEDBACK_CSV = Path(__file__).parent / "data" / "luotsi_feedback.csv"
 
 @pytest.fixture
 def stub_artifact(tmp_path: Path) -> Path:
-    """The stub embedder's artifact on disk, so a chain can hold a working injection guard."""
+    """
+    The stub embedder's artifact on disk, so a chain can hold a working injection guard.
+
+    Carries the digest of `STUB_LINES` so the guard sees it as current and does not retrain — these tests are
+    about the chain, not about training.
+    """
     path = tmp_path / "vectors.stub.json"
-    path.write_text(ARTIFACT.model_dump_json(), encoding="utf-8")
+    current = ARTIFACT.model_copy(update={"source_digest": source_digest(STUB_LINES, 0.85)})
+    path.write_text(current.model_dump_json(), encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def stub_data(tmp_path: Path) -> Path:
+    """The exemplars `stub_artifact` claims to come from."""
+    path = tmp_path / "exemplars.stub.txt"
+    path.write_text(write(STUB_LINES), encoding="utf-8")
+    return path
+
+
+def injection(stub_artifact: Path, stub_data: Path) -> InjectionConfig:
+    """An injection guard wired to the small stub catalog rather than the packaged one."""
+    return InjectionConfig(vectors=stub_artifact, data=[stub_data])
 
 
 def item(message: str, type: FeedbackType = FeedbackType.BAD) -> FeedbackItem:
@@ -76,12 +98,14 @@ def test_pii_redaction(message: str, expected: str):
     assert messages(guard.run([item(message)])) == [expected]
 
 
-def test_injection_keys_off_the_original_message(stub_artifact: Path):
+def test_injection_keys_off_the_original_message(stub_artifact: Path, stub_data: Path):
     """
     The chain order is configurable. Even behind a guard that already rewrote `processed`, the injection guard
     must still see the message the reader sent.
     """
-    chain = build_guards([TruncateConfig(max_message_length=3), InjectionConfig(vectors=stub_artifact)], stub_embed)
+    chain = build_guards(
+        [TruncateConfig(max_message_length=3), injection(stub_artifact, stub_data)], stub_embed
+    )
 
     surviving = [item("attack attack")]
     for guard in chain:
@@ -121,9 +145,9 @@ def test_language_passes_short_messages_as_unknown():
     assert LanguageGuard(LanguageConfig(allow_unknown=False)).run([item("testi")]) == []
 
 
-def test_default_chain_runs_the_guards_in_the_documented_order(stub_artifact: Path):
+def test_default_chain_runs_the_guards_in_the_documented_order(stub_artifact: Path, stub_data: Path):
     chain = [
-        config.model_copy(update={"vectors": stub_artifact}) if isinstance(config, InjectionConfig) else config
+        injection(stub_artifact, stub_data) if isinstance(config, InjectionConfig) else config
         for config in DEFAULT_CHAIN
     ]
 
@@ -137,9 +161,28 @@ def test_default_chain_runs_the_guards_in_the_documented_order(stub_artifact: Pa
 
 
 def test_default_chain_needs_a_configured_injection_guard():
-    """The default chain holds the injection guard, which has nothing to classify against unconfigured."""
+    """The default chain holds the injection guard, which has nothing to classify with unconfigured."""
     with pytest.raises(ValueError):
         build_guards(None)
+
+
+def test_default_chain_reaches_the_resolved_destination(tmp_path: Path):
+    """
+    `DEFAULT_CHAIN` holds a bare `InjectionConfig` that no configuration file can reach, so a host-resolved
+    destination is the only way its guard can be given an artifact at all.
+
+    Building comes first and refuses, because the chain has not been provisioned; once it has, the same call
+    succeeds. That order is the division itself — the guard reads, the host provisions.
+    """
+    path = tmp_path / "vectors.json"
+
+    with pytest.raises(ValueError, match="no usable artifact"):
+        build_guards(None, stub_embed, model_name="stub", vectors=path)
+
+    ensure_guard_vectors(InjectionConfig(), stub_embed, "stub", path)
+    chain = build_guards(None, stub_embed, model_name="stub", vectors=path)
+
+    assert [guard.name for guard in chain] == ["sanitize", "pii", "injection", "language", "truncate"]
 
 
 def test_build_guards_honours_an_explicit_list():

@@ -67,3 +67,48 @@ def test_hub_id_of_inverts_the_resolution():
 
 def test_hub_id_of_a_path_outside_the_data_directory_is_none(tmp_path: Path):
     assert hub_id_of(tmp_path) is None
+
+
+# --- The identity the guard's artifact records --------------------------------
+
+
+def test_a_hub_model_is_identified_by_its_qualified_id():
+    """
+    The bare directory name cannot tell two same-named models from different orgs apart.
+
+    Neither can the dimension, so a guard would score one model's centroids against the other's embeddings and
+    fail open — passing every injection, or silencing readers wholesale.
+    """
+    settings = luotsi_settings({"embedding_model": "minishlab/potion-multilingual-128M"})
+
+    assert settings.embedding_model_id == "minishlab/potion-multilingual-128M"
+    assert settings.embedding_model.name == "potion-multilingual-128M"  # what it used to record
+
+
+def test_two_orgs_sharing_a_model_name_are_told_apart():
+    ours = luotsi_settings({"embedding_model": "minishlab/potion-multilingual-128M"})
+    theirs = luotsi_settings({"embedding_model": "otherorg/potion-multilingual-128M"})
+
+    assert ours.embedding_model.name == theirs.embedding_model.name
+    assert ours.embedding_model_id != theirs.embedding_model_id
+
+
+def test_a_path_configured_model_is_identified_by_its_directory_name(tmp_path: Path):
+    """
+    Not the absolute path: that is machine-specific, so moving an identical model would read as a different
+    one and retrain for nothing.
+    """
+    model = tmp_path / "our-own-model"
+
+    assert luotsi_settings({"embedding_model": str(model)}).embedding_model_id == "our-own-model"
+
+
+def test_settings_built_in_code_get_an_identity_too():
+    settings = Settings.model_validate({"rahti": RAHTI, "luotsi": LuotsiSettings()})
+
+    assert settings.luotsi is not None
+    assert settings.luotsi.embedding_model_id == DEFAULT_EMBEDDING_MODEL
+
+
+def test_the_builtin_mode_has_no_model_to_identify():
+    assert luotsi_settings({"embedding_model": None}).embedding_model_id is None

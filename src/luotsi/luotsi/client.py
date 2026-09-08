@@ -5,15 +5,67 @@ Builds the configured feedback sources, collects their items and hands back one 
 """
 
 import logging
+from pathlib import Path
 
 from .abc import Feedback, FeedbackItem, FeedbackSource
 from .embeddings import load_embedder
 from .guards import build_guards
-from .settings import LuotsiSettings
+from .settings import InjectionConfig, LuotsiSettings
 from .settings.source import Csv, GoogleSheets
 from .sources import CsvFeedbackSource, SheetsFeedbackSource
 
 logger = logging.getLogger(__name__)
+
+
+def model_identity(settings: LuotsiSettings) -> str | None:
+    """
+    What to record in the guard's artifact as the model that produced it.
+
+    The host's `embedding_model_id` when it supplied one, otherwise the model directory's name.
+
+    That fallback is a known blind spot, and the reason the host is asked for something better: a bare
+    directory name cannot tell `minishlab/potion-multilingual-128M` from `otherorg/potion-multilingual-128M`,
+    and neither can the dimension check, so the guard would score one model's centroids against another's
+    embeddings and fail open. A qualified identifier closes that. Neither closes the remaining case — new
+    weights fetched into the SAME directory under the same identifier — which only fingerprinting what the
+    model produces would catch.
+    """
+    if settings.embedding_model_id:
+        return settings.embedding_model_id
+    return settings.embedding_model.name if settings.embedding_model else None
+
+
+def provision(settings: LuotsiSettings) -> Path | None:
+    """
+    Bring the artifacts this configuration needs up to date. WRITES; call it deliberately.
+
+    The counterpart to :func:`~luotsi.embeddings.download_model`: guards read what a host has provisioned, and
+    a host provisions at a point of its choosing — before any spend, once per run — rather than having a
+    constructor decide for it. A host that skips this does not get stale vectors; it gets a guard that refuses
+    to build and says why.
+
+    Does nothing when the chain runs no injection guard, or when there is no embedding model to train with.
+
+    :param settings: The feedback configuration.
+    :raises ValueError: When the exemplars cannot produce a classifier.
+    :raises OSError: When the artifact cannot be written.
+    :return: The artifact path, or None when there was nothing to provision.
+    """
+    from .guards import DEFAULT_CHAIN
+    from .guards.provision import artifact_path, ensure_guard_vectors
+
+    chain = settings.guardrails if settings.guardrails is not None else DEFAULT_CHAIN
+    config = next((guard for guard in chain if isinstance(guard, InjectionConfig)), None)
+    if config is None or settings.embedding_model is None:
+        return None
+
+    path = artifact_path(config, settings.guard_vectors)
+    _, reason = ensure_guard_vectors(
+        config, load_embedder(settings.embedding_model), model_identity(settings), path
+    )
+    if reason:
+        logger.info("Provisioned guard vectors at %s: %s", path, reason)
+    return path
 
 
 class Luotsi:
@@ -27,8 +79,10 @@ class Luotsi:
         self.sources = [self._build_source(config) for config in settings.sources]
         # A configured model is a hard requirement: load errors propagate rather than degrade the guard silently.
         embed = load_embedder(settings.embedding_model) if settings.embedding_model else None
-        model_name = settings.embedding_model.name if settings.embedding_model else None
-        self.guards = build_guards(settings.guardrails, embed=embed, model_name=model_name)
+        model_name = model_identity(settings)
+        self.guards = build_guards(
+            settings.guardrails, embed=embed, model_name=model_name, vectors=settings.guard_vectors
+        )
         logger.info(
             "Initialized Luotsi with %d feedback source(s) and %d guard(s)", len(self.sources), len(self.guards)
         )
