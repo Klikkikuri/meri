@@ -5,6 +5,7 @@ A small JSON file: one centroid per cluster of labeled exemplars. It is diffable
 see what the guard was taught before it ships.
 """
 
+import json
 import logging
 from pathlib import Path
 
@@ -51,7 +52,7 @@ class GuardVectors(BaseModel):
         individual numbers inside them.
         """
         header = {name: getattr(self, name) for name in ("model_name", "dim", "cluster_threshold", "source_digest")}
-        head = ",".join(f"{key!r}: {value!r}".replace("'", '"') for key, value in header.items())
+        head = ",".join(f"{json.dumps(key)}: {json.dumps(value)}" for key, value in header.items())
         lines = ",\n  ".join(
             centroid.model_copy(update={"vector": [round(v, PRECISION) for v in centroid.vector]}).model_dump_json()
             for centroid in self.centroids

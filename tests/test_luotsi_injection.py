@@ -224,6 +224,13 @@ def test_guard_never_writes(stub_data: Path, tmp_path: Path):
     assert not path.exists()
 
 
+def test_dump_round_trips_a_model_name_carrying_an_apostrophe():
+    """The header is JSON, not a Python repr: a quote in the name wrote a file nothing could read back."""
+    artifact = ARTIFACT.model_copy(update={"model_name": "someone's model"})
+
+    assert GuardVectors.model_validate_json(artifact.dump()).model_name == "someone's model"
+
+
 # --- Provisioning ------------------------------------------------------------
 
 
