@@ -1,10 +1,17 @@
 import os
 from abc import ABC
-from typing import Literal, Optional, Self, TypedDict
-from typing_extensions import Annotated
+from typing import Annotated, Literal, Self, TypedDict
 
 from niitti import get_logger
-from pydantic import AliasChoices, AnyHttpUrl, BeforeValidator, Field, SecretStr, TypeAdapter, model_validator
+from pydantic import (
+    AliasChoices,
+    AnyHttpUrl,
+    BeforeValidator,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = get_logger(__name__)
@@ -14,7 +21,6 @@ class MissingGeneratorError(ImportError):
     """
     Error raised when a generator class is missing.
     """
-    pass
 
 
 # URL type adapter to allow strings to be used as URLs, for OpenAI compatibility
@@ -71,7 +77,7 @@ class _OpenAISettingsBase(GeneratorSettings):
     model: str = Field(..., description="model.")
     api_key: SecretStr = Field(description="API key.")
     api_base_url: OpenAICompatibleUrl = Field("https://api.openai.com/v1", description="OpenAI API base URL.")
-    generation_kwargs: Optional[dict] = Field({
+    generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="generation arguments.")
 
@@ -109,8 +115,8 @@ class OllamaSettings(_OpenAISettingsBase):
     )
     # Ollama needs no credential, but the OpenAI client refuses to start without one.
     api_key: SecretStr = Field(default=SecretStr("ollama"), description="Unused by Ollama; a placeholder keeps the client happy.")
-    timeout: Optional[int] = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
-    generation_kwargs: Optional[dict] = Field({
+    timeout: int | None = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
+    generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
 
@@ -141,7 +147,7 @@ class GoogleGeminiSettings(_OpenAISettingsBase):
     api_key: SecretStr = Field(description="Google Gemini API key.", validation_alias=AliasChoices("gemini_api_key", "api_key"))
     api_base_url: OpenAICompatibleUrl = Field("https://generativelanguage.googleapis.com/v1beta/openai", description="Google Gemini API base URL.")
     model: str = Field('gemini-3.1-flash-lite', description="Google Gemini model. See: https://ai.google.dev/gemini-api/docs/models/gemini")
-    generation_kwargs: Optional[dict] = Field({
+    generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="Google Gemini generation arguments.")
     # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
@@ -159,10 +165,10 @@ class _OpenRouterReasoningEffort(TypedDict):
 
 class OpenRouterSettings(GeneratorSettings):
     provider: Literal["openrouter"] = "openrouter"
-    api_key: Optional[SecretStr] = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
+    api_key: SecretStr | None = Field(os.getenv("OPENROUTER_API_KEY", ""), description="OpenRouter API key.", alias="openrouter_api_key")
     model: str = Field('openai/gpt-oss-120b', description="OpenRouter model.")
     api_base_url: AnyHttpUrl = Field('https://openrouter.ai/api/v1', description="OpenRouter API base URL.")
-    generation_kwargs: Optional[dict] = Field({
+    generation_kwargs: dict | None = Field({
         "temperature": 0.0,
         "provider": _OpenRouterProviderSettings(
             sort="price",  # Prefer cheaper providers
@@ -242,7 +248,7 @@ def _ollama_openai_url(host: str) -> str:
     return f"{base}/v1"
 
 
-def _pull_default_ollama_model(api_base_url: str) -> Optional[str]:
+def _pull_default_ollama_model(api_base_url: str) -> str | None:
     """
     Pull the default model from the Ollama API.
 
