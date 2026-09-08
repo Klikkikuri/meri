@@ -132,8 +132,6 @@ ARG VIRTUAL_ENV
 
 WORKDIR /app
 
-VOLUME [ "/app/instance" ]
-
 # See the note in the development stage about the data directory.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -155,6 +153,15 @@ COPY --from=build /app /app
 
 # Create non-root user
 RUN useradd -m -u 1000 meri && mkdir -p /app/instance && chown -R meri:meri /app/instance
+
+# Declared AFTER the directory exists and belongs to `meri`: Docker seeds an anonymous volume from the image
+# content at this point, so a VOLUME declared earlier would have captured a root-owned empty directory and the
+# `chown` above would never reach the running container.
+#
+# A bind mount is a different matter and no `chown` here can help it: the host directory's ownership is what the
+# container sees. `./instance` on the host must belong to uid 1000, or `/app/instance` is read-only in practice
+# and the caches under it fail to write.
+VOLUME [ "/app/instance" ]
 
 USER meri
 
