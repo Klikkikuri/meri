@@ -34,8 +34,10 @@ from .bootstrap import setup
 from .cli.feedback import cli as feedback_cli
 from .cli.fetch import cli as fetch_cli
 from .cli.headlines import cli as headlines_cli
+from .article import Article
 from .feedback import (
     ArticleFeedback,
+    FeedbackMatcher,
     build_matcher,
     feedback_for_article,
     newest_actionable,
@@ -62,6 +64,32 @@ tracer = trace.get_tracer(__package__ or "__main__")
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
+
+
+def _warn_unacted_feedback(article: Article, reason: str, matcher: FeedbackMatcher, rahti: RahtiCleaner) -> None:
+    """
+    Say when an article being pruned carries reader feedback nothing will act on.
+
+    A pruned article never reaches the upsert loop, so its stored entry is never bumped and this same feedback
+    trips the regeneration gate again on every following run. That retry is deliberate — the prune is an
+    extraction failure, and bumping the entry would discard the feedback for good once extraction recovers —
+    but without this line the repeated fetch and extraction is invisible. It is a prompt to fix the extractor
+    or blacklist the URL.
+    """
+    newest = newest_actionable(matcher.find_by_article(article))
+    if not newest:
+        return
+
+    entry = rahti.find_by_article(article)
+    if entry and newest <= entry.updated:
+        return
+
+    logger.warning(
+        "Article carries unacted reader feedback but cannot be processed; will retry next run",
+        url=str(article.get_url()),
+        prune_reason=reason,
+        feedback_at=newest.isoformat(),
+    )
 
 
 @click.group()
@@ -176,6 +204,7 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
+                _warn_unacted_feedback(a.article, "unhandled_url", feedback_matcher, rahti)
             elif should_skip_processing(a.article):
                 matched_selector = matching_selector(a.article)
                 span.set_attribute("prune_reason", "keep_unprocessed")
@@ -190,6 +219,7 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                     url=str(a.article.get_url()),
                     text=a.article.text,
                 )
+                _warn_unacted_feedback(a.article, "no_text", feedback_matcher, rahti)
             else:
                 span.set_attribute("prune_reason", "keep")
                 processable_articles.append(a)

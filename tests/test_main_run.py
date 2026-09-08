@@ -133,7 +133,9 @@ ARTICLE_AT = datetime(2026, 7, 14, 8, 0, tzinfo=UTC)
 """The article's own time. Older than every entry time below, so only feedback can trigger a regeneration."""
 
 
-def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None, guard=None):
+def build_feedback_run(
+    monkeypatch, feedback, entry_updated, needs_updating=None, guard=None, has_text=True, has_handled_url=True
+):
     """
     Drive `run()` over one article with the given reader feedback, and report what reached each stage.
 
@@ -193,13 +195,13 @@ def build_feedback_run(monkeypatch, feedback, entry_updated, needs_updating=None
     monkeypatch.setattr("meri.__main__.RahtiCleaner", FakeCleaner)
     monkeypatch.setattr("meri.__main__.fetch_latest", lambda _sources: [discovered])
     monkeypatch.setattr("meri.__main__.fetch_full_articles", lambda articles: list(articles))
-    monkeypatch.setattr("meri.__main__.has_handled_url", lambda _article: True)
+    monkeypatch.setattr("meri.__main__.has_handled_url", lambda _article: has_handled_url)
     monkeypatch.setattr("meri.__main__.should_skip_processing", lambda _article: calls["skipped"])
     monkeypatch.setattr(
         "meri.__main__.matching_selector",
         lambda _article: SimpleNamespace(raw_expression="paywalled=true") if calls["skipped"] else None,
     )
-    monkeypatch.setattr("meri.__main__.has_text", lambda _article: True)
+    monkeypatch.setattr("meri.__main__.has_text", lambda _article: has_text)
     monkeypatch.setattr("meri.__main__.generate_titles", fake_generate_titles)
     # The real one stamps the entry from article time alone; that is exactly what the bump has to correct.
     monkeypatch.setattr(
@@ -328,7 +330,7 @@ def test_the_matched_signature_is_guarded_once(monkeypatch):
     The gate, the prompt and the bump all look this article up, and the chain must run for it exactly once.
 
     Guarding is per signature and memoized, so three lookups cost one pass — that is the whole point of the
-    change, and re-guarding would silently re-truncate already-truncated text.
+    change, and re-guarding would silently truncate already-truncated text.
     """
     entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
     feedback_at = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
@@ -355,3 +357,47 @@ def test_feedback_dropped_by_the_guards_triggers_no_regeneration(monkeypatch):
         run.callback(sample=False, max_workers=1)
 
     assert calls["generated"] is None
+
+
+def test_a_pruned_article_warns_about_feedback_nothing_will_act_on(monkeypatch, caplog):
+    """
+    An article that cannot be extracted never reaches the upsert loop, so its entry is never bumped and this
+    feedback trips the gate again next run. The retry is deliberate; bumping would discard the feedback for
+    good once extraction recovers. Only the silence is the problem, so assert the warning and the non-bump.
+    """
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    feedback_at = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+
+    ctx, calls, _ = build_feedback_run(
+        monkeypatch, lambda a: rated(a, feedback_at), entry_updated, has_text=False
+    )
+    with ctx, caplog.at_level(logging.WARNING):
+        run.callback(sample=False, max_workers=1)
+
+    assert "carries unacted reader feedback" in caplog.text
+    # Never upserted, so the stored entry keeps its own time and the feedback is retried rather than swallowed.
+    assert calls["upserted"] == []
+
+
+def test_a_pruned_article_without_feedback_warns_about_nothing(monkeypatch, caplog):
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+
+    ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, has_text=False)
+    with ctx, caplog.at_level(logging.WARNING):
+        run.callback(sample=False, max_workers=1)
+
+    assert "carries unacted reader feedback" not in caplog.text
+
+
+def test_feedback_older_than_the_entry_does_not_warn_on_a_pruned_article(monkeypatch, caplog):
+    """Already acted on: the entry was regenerated after this feedback arrived, so there is nothing to retry."""
+    entry_updated = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
+    feedback_at = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+
+    ctx, _calls, _ = build_feedback_run(
+        monkeypatch, lambda a: rated(a, feedback_at), entry_updated, has_text=False
+    )
+    with ctx, caplog.at_level(logging.WARNING):
+        run.callback(sample=False, max_workers=1)
+
+    assert "carries unacted reader feedback" not in caplog.text
