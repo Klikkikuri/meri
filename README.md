@@ -87,6 +87,7 @@ uv run pytest tests/             # run the test suite
 uv run meri run --sample         # full pipeline, limited to the 5 newest articles
 uv run meri run --max-workers 1  # serial, for debugging
 uv run meri test <article-url>   # extract + generate a headline for one URL, without writing to Rahti
+uv run meri fetch <article-url>  # extract one URL and print it as Markdown, without calling a model
 uv run meri list-sources
 uv run meri headlines --limit 10  # newest headlines from the sources, without extracting or generating
 uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
