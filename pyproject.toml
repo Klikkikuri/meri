@@ -18,6 +18,7 @@ dependencies = [
     "httpx>=0.28.1",
     "jinja2-time>=0.2.0",
     "langdetect>=1.0.9",
+    "luotsi[semantic]",
     "lxml[html-clean]>=5.3.0",
     "markdownify>=0.14.1",
     "niitti[all]",
@@ -72,7 +73,6 @@ dev-dependencies = [
     "rich>=13.9.4",
     "rich-click>=1.8.8",
     "pre-commit>=4.2.0",
-    "ollama-haystack>=2.4.1",
     "pyright>=1.1.411",
     "pytest>=9.1.1",
     "pandas>=3.0.5",
@@ -83,7 +83,7 @@ suola = [
     #{ path = "packages/suola/python" },
     #{ workspace = true }
 ]
-#luotsi = { path = "src/luotsi" }
+luotsi = { path = "src/luotsi", editable = true }
 niitti = { workspace = true }
 #suola = { workspace = true }
 #karikko = { workspace = true }
@@ -91,8 +91,8 @@ niitti = { workspace = true }
 
 [tool.uv.workspace]
 # `packages/sulku` is a submodule but deliberately NOT a member: meri only speaks to Sulku over HTTP
-# (`meri.sulku.service`), and membership would force one niitti resolution across both projects — sulku
-# carries its own `packages/niitti` checkout and is its own uv workspace.
+# (`meri.sulku.service`), and membership would force one niitti resolution across both projects — sulku is its
+# own uv workspace and pins niitti as a git dependency. `scripts/sync-niitti.sh` moves both to one revision.
 members = ["packages/niitti"]
 #members = ["packages/suola/python"]
 #members = ["src/*"]

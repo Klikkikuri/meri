@@ -69,11 +69,12 @@ AFTER_SUBMODULES=$(git submodule status --recursive 2>/dev/null || echo "")
 BUILD_FLAG=""
 if [ "$BEFORE_HASH" != "$REMOTE_HASH" ] || [ "$BEFORE_SUBMODULES" != "$AFTER_SUBMODULES" ]; then
     echo "Updates detected in main repo or submodules. Rebuilding containers..."
-    BUILD_FLAG="--build"
+    BUILD_FLAG="--build -V"
 else
     echo "Already up to date (commit: ${BEFORE_HASH:0:8})"
 fi
 
+# shellcheck disable=SC2086
 docker compose up $BUILD_FLAG "$COMPOSE_SERVICE"
 
 

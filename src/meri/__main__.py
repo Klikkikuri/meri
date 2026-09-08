@@ -3,6 +3,9 @@ from datetime import datetime, timezone
 from importlib.util import find_spec
 
 from jinja2 import Template
+from luotsi import LuotsiSettings, provision
+from luotsi.cluster import MessageClusterer
+from luotsi.embeddings import load_embedder
 from opentelemetry import trace
 from sentry_sdk import monitor
 from niitti import get_logger
@@ -28,6 +31,17 @@ from .lautta import (
     should_skip_processing,
 )
 from .bootstrap import setup
+from .cli.feedback import cli as feedback_cli
+from .cli.fetch import cli as fetch_cli
+from .cli.headlines import cli as headlines_cli
+from .article import Article
+from .feedback import (
+    ArticleFeedback,
+    FeedbackMatcher,
+    build_matcher,
+    feedback_for_article,
+    newest_actionable,
+)
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
 
@@ -50,6 +64,32 @@ tracer = trace.get_tracer(__package__ or "__main__")
 
 # Check if requests_cache is available, since it is not a hard dependency and not installed by default
 _requests_cache_available: bool = find_spec("requests_cache") is not None
+
+
+def _warn_unacted_feedback(article: Article, reason: str, matcher: FeedbackMatcher, rahti: RahtiCleaner) -> None:
+    """
+    Say when an article being pruned carries reader feedback nothing will act on.
+
+    A pruned article never reaches the upsert loop, so its stored entry is never bumped and this same feedback
+    trips the regeneration gate again on every following run. That retry is deliberate — the prune is an
+    extraction failure, and bumping the entry would discard the feedback for good once extraction recovers —
+    but without this line the repeated fetch and extraction is invisible. It is a prompt to fix the extractor
+    or blacklist the URL.
+    """
+    newest = newest_actionable(matcher.find_by_article(article))
+    if not newest:
+        return
+
+    entry = rahti.find_by_article(article)
+    if entry and newest <= entry.updated:
+        return
+
+    logger.warning(
+        "Article carries unacted reader feedback but cannot be processed; will retry next run",
+        url=str(article.get_url()),
+        prune_reason=reason,
+        feedback_at=newest.isoformat(),
+    )
 
 
 @click.group()
@@ -96,6 +136,18 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
 
     logger.debug("Fetched old Rahti data, contains %d entries", len(old_data.entries), extra={"sha": hash_of_stored_file})
 
+    # Load the embedding model before any fetching or LLM spend: a configured model that cannot load is a broken
+    # deployment, and it must say so at the start of the run rather than part way through it. The injection
+    # guard's vectors are provisioned in the same breath and for the same reason — this is the one command that
+    # writes them, so the read-only ones can be trusted not to.
+    if settings.luotsi and settings.luotsi.embedding_model:
+        load_embedder(settings.luotsi.embedding_model)
+        provision(settings.luotsi)
+
+    # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down. The
+    # guardrail chain runs per article, inside the matcher, so a growing corpus costs only what this run reads.
+    feedback_matcher = build_matcher(settings.luotsi)
+
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
 
@@ -118,7 +170,9 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     # Initial cleanup: filter out articles that do not need updating
     rahti = RahtiCleaner(old_data)
 
-    latest_articles = [a for a in latest_articles if rahti.needs_updating(a.article)]
+    latest_articles = [
+        a for a in latest_articles if rahti.needs_updating(a.article, feedback_matcher.find_by_article(a.article))
+    ]
 
     # Early stop if no articles need updating
     if not latest_articles:
@@ -138,6 +192,11 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     processable_articles = []
     title_slots: list[ArticleTitleData | int] = []
     old_titles = []
+    article_feedback: list[ArticleFeedback | None] = []
+    # Defaults stand in when feedback is disabled; the matcher is empty then, so neither is ever consulted.
+    luotsi_settings = settings.luotsi or LuotsiSettings()
+    clusterer = MessageClusterer.from_settings(luotsi_settings)
+    feedback_limit = luotsi_settings.max_messages_per_article
     for a in full_articles:
         # Classify as primary video content if video metadata is present without meaningful article text
         if ArticleLabels.HAS_VIDEO in a.article.labels and not has_text(a.article):
@@ -148,6 +207,7 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
             if not has_handled_url(a.article):
                 span.set_attribute("prune_reason", "unhandled_url")
                 logger.debug("Pruning article with unhandled URL: %r", a.article.get_url())
+                _warn_unacted_feedback(a.article, "unhandled_url", feedback_matcher, rahti)
             elif should_skip_processing(a.article):
                 matched_selector = matching_selector(a.article)
                 span.set_attribute("prune_reason", "keep_unprocessed")
@@ -162,10 +222,14 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                     url=str(a.article.get_url()),
                     text=a.article.text,
                 )
+                _warn_unacted_feedback(a.article, "no_text", feedback_matcher, rahti)
             else:
                 span.set_attribute("prune_reason", "keep")
                 processable_articles.append(a)
                 old_titles.append(rahti.find_by_article(a.article))
+                article_feedback.append(
+                    feedback_for_article(feedback_matcher, a.article, clusterer, feedback_limit)
+                )
                 title_slots.append(len(processable_articles) - 1)
 
     full_articles = processable_articles
@@ -188,7 +252,14 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
                         result.final_z_score,
                     )
 
-    generated_titles = generate_titles(full_articles, old_titles=old_titles)
+    logger.info(
+        "Matched reader feedback for %d (of %d) articles",
+        sum(1 for f in article_feedback if f),
+        len(full_articles),
+        extra={"unmatched_signatures": len(feedback_matcher.unmatched)},
+    )
+
+    generated_titles = generate_titles(full_articles, old_titles=old_titles, feedback=article_feedback)
     titles = [generated_titles[slot] if isinstance(slot, int) else slot for slot in title_slots]
 
     # Match articles to old Rahti entries
@@ -202,7 +273,24 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
             continue
 
         rahti_entry = convert_for_rahti(result.source, result.article, result.title)
+
+        # `convert_for_rahti` stamps the entry from article time alone, so without this bump the same feedback
+        # would trigger a regeneration on every following run. Skipped articles are bumped too, for the same
+        # reason. A failed generation is never upserted, so it is never bumped, and is retried next run.
+        newest = newest_actionable(feedback_matcher.find_by_article(result.article))
+        if newest and newest > rahti_entry.updated:
+            logger.debug("Reader feedback triggered regeneration", url=str(result.article.get_url()))
+            rahti_entry.updated = newest
+
         rahti.upsert(rahti_entry)
+
+    # Logged here rather than beside the match count above: the bump loop matches articles of its own, so the
+    # totals are only final once it has run.
+    logger.info(
+        "Guarded reader feedback for %d signature(s)",
+        feedback_matcher.guarded,
+        extra={"dropped": feedback_matcher.dropped},
+    )
 
     # Final pass - remove old entries that are no longer needed
     for e in rahti.rahti.entries:
@@ -287,6 +375,11 @@ def test(ctx: click.Context, url: str, with_paywalled: bool):
     predictor = TitlePredictor()
     result = predictor.run(article)
     pprint(result.model_dump())
+
+
+cli.add_command(feedback_cli)
+cli.add_command(fetch_cli)
+cli.add_command(headlines_cli)
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from typing import cast
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
+from luotsi.settings import LuotsiSettings
 from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
@@ -38,12 +39,12 @@ from .const import (
     PKG_NAME,
 )
 from .llms import (
-    GeneratorProviderError,
-    GeneratorSettings,
     LLMSetting,
     detect_generators,
 )
+from .luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors, hub_id_of, model_dir
 from .newssources import NewsSource
+from .pipelines import PipelineSettings, UnknownLLMError
 from .rahti import RahtiFileSettings, RahtiSettings
 from .sulku import SulkuSettings
 
@@ -58,15 +59,6 @@ _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 
 # Compiled Suola rules from the monorepo, built by `make rules` in the suola checkout.
 _suola_rules = Path("packages/suola/build/rules.json").resolve()
-
-
-def _iter_subclasses(base_cls):
-    """
-    Helper function to iterate over all subclasses of a base class, including indirect subclasses.
-    """
-    for sub_cls in base_cls.__subclasses__():
-        yield sub_cls
-        yield from _iter_subclasses(sub_cls)
 
 
 class SkipProcessingSettings(BaseModel):
@@ -114,7 +106,10 @@ class Settings(NiittiSettings):
     PROMPT_DIR: Path = Field(Path(user_config_dir(PKG_NAME), "prompts"), description="Directory to store prompt templates.")
 
     llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
-    pipelines: list[str] = Field([], description="List of pipeline definitions.")
+    pipelines: dict[str, PipelineSettings] = Field(
+        default_factory=dict,
+        description="Pipeline definitions, keyed by pipeline name. A pipeline with no entry uses the defaults.",
+    )
 
     sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
 
@@ -159,36 +154,114 @@ class Settings(NiittiSettings):
         description="Sulku AI-detection service settings.",
     )
 
+    luotsi: LuotsiSettings | None = Field(
+        default=None,
+        description="Luotsi reader feedback settings. Omit to run without reader feedback.",
+    )
+
+    @staticmethod
+    def _identity_of_model(resolved: Path | None) -> str | None:
+        """
+        What the guard's artifact records as the model that produced it.
+
+        The hub identifier when the model came from the hub, so `minishlab/potion-multilingual-128M` and
+        `otherorg/potion-multilingual-128M` are distinguishable — the bare directory name is not, and neither
+        is the dimension, so the guard would score one model's centroids against the other's embeddings.
+        A model provisioned by other means keeps its directory name rather than its absolute path, which would
+        be machine-specific and would make merely moving an identical model read as a different one.
+        """
+        return None if resolved is None else (hub_id_of(resolved) or resolved.name)
+
+    @field_validator("luotsi", mode="before")
+    @classmethod
+    def resolve_embedding_model(cls, value):
+        """
+        Turn `luotsi.embedding_model` into the directory Luotsi loads from.
+
+        Luotsi takes a directory and carries no default, so the model is named here: an unset key means
+        `DEFAULT_EMBEDDING_MODEL`, a hub identifier resolves under the data directory, and an explicit path is
+        left alone. Setting the key to null still selects the built-in mode, which is why an unset key and a
+        null one are told apart rather than both falling back to the default.
+        """
+        if value is None:
+            return value
+
+        # A configuration file gives a mapping; a caller constructing Settings in code gives the model.
+        if isinstance(value, LuotsiSettings):
+            update: dict[str, Path | str | None] = {}
+
+            resolved = value.embedding_model
+            if "embedding_model" not in value.model_fields_set:
+                resolved = model_dir(DEFAULT_EMBEDDING_MODEL)
+                update["embedding_model"] = resolved
+
+            # Not `model_fields_set`, unlike the model above: an explicit null is a MODE for `embedding_model`
+            # but means nothing for a destination, and honouring it here would leave a guard built in code with
+            # nowhere to read from — a difference the dict branch below does not make either.
+            if value.guard_vectors is None:
+                update["guard_vectors"] = default_vectors()
+
+            if value.embedding_model_id is None:
+                update["embedding_model_id"] = cls._identity_of_model(resolved)
+
+            return value.model_copy(update=update) if update else value
+
+        if not isinstance(value, dict):
+            return value
+
+        model = value.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
+        resolved = model_dir(str(model)) if model else None
+        return {
+            **value,
+            "embedding_model": resolved,
+            # `minishlab/potion-multilingual-128M` rather than the bare `potion-multilingual-128M`, which
+            # cannot tell two same-named models from different orgs apart. A model provisioned by other means
+            # has no hub identity, so it keeps the directory name — not the absolute path, which would be
+            # machine-specific and would make merely MOVING an identical model read as a different one.
+            "embedding_model_id": value.get("embedding_model_id") or cls._identity_of_model(resolved),
+            # Unlike the model, an explicit null is not a mode: the guard needs somewhere to write, and only
+            # a guard naming its own `vectors` overrides where.
+            "guard_vectors": value.get("guard_vectors") or default_vectors(),
+        }
+
     @model_validator(mode="before")
     @classmethod
     def parse_llm_settings(cls, values):
-        _logger = get_logger(__name__)
-        llm_list = values.get('llm', [])
+        """
+        Fill in `llm:` from the environment when the configuration names none.
 
-        # Find all subclasses of GeneratorSettings and map them by provider
-        provider_to_class = {}
-        for model_cls in _iter_subclasses(GeneratorSettings):
-            provider_field = model_cls.model_fields.get('provider')
-            if not provider_field:
-                continue
-            provider_to_class[provider_field.default] = model_cls
-        _logger.debug(f"Provider to class: {provider_to_class}")
+        The entries themselves need no help here: `LLMSetting` is a discriminated union, so pydantic maps
+        `provider:` to its settings class and reports an unknown one against the valid tags.
+        """
+        if not values.get("llm"):
+            values["llm"] = detect_generators(values)
 
-        # Load the settings using the provider class
-        settings_list = []
-        for llm in llm_list:
-            provider = llm['provider']
-            settings_class = provider_to_class.get(provider, None)
-            if not settings_class:
-                raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
-            settings_list.append(settings_class(**llm))
-
-        if len(settings_list) == 0:
-            settings_list += detect_generators(values)
-
-        _logger.debug("Validated LLM provider settings with %d provider", len(settings_list), extra={"settings": settings_list})
-        values['llm'] = settings_list
         return values
+
+    @model_validator(mode="after")
+    def _check_pipeline_llms(self) -> "Settings":
+        """
+        Check that every LLM a pipeline names is configured.
+
+        Must run after validation, not before: `parse_llm_settings` is a before-validator, and only afterwards
+        does `self.llm` hold objects with a `.name`. A bad name fails here, at `bootstrap.setup()`, rather than
+        at the first generation.
+        """
+        known = [llm.name for llm in self.llm]
+
+        duplicates = sorted({name for name in known if known.count(name) > 1})
+        if duplicates:
+            raise UnknownLLMError(f"Duplicate LLM name(s) in `llm:`: {', '.join(duplicates)}. Names are keys.")
+
+        for pipeline, definition in self.pipelines.items():
+            for name in definition.llm:
+                if name not in known:
+                    raise UnknownLLMError(
+                        f"Pipeline {pipeline!r} names LLM {name!r}, which `llm:` does not configure. "
+                        f"Configured: {', '.join(known) or '(none)'}."
+                    )
+
+        return self
 
     @model_validator(mode="after")
     def _compute_user_agent(self) -> "Settings":

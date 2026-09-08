@@ -1,78 +1,59 @@
 import inspect
-import re
-from enum import Enum
-from importlib.resources import files
-from pathlib import Path
+from typing import Any
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
-from platformdirs import user_data_dir
 from pydantic import AnyUrl, SecretStr
 
 from .settings import (
     Settings,
     settings,
 )
-from .settings.llms import GeneratorSettings
-
-PROMPT_TEMPLATE_VESTED_GROUPS = "vested_groups_inst.md.j2"
-PROMPT_TEMPLATE_NEWS_TYPE = "news_article_type.md.j2"
-PROMPT_TEMPLATE_ARTICLE_TITLE = "artcile_title_inst.md.j2"
-PROMPT_TEMPLATE_OUTPUT_FORMAT = "output_format_json.md.j2"
-PROMPT_TEMPLATE_ARTICLE = "article.md.j2"
-PROMPT_TEMPLATE_ARTICLE_UPDATED = "article_updated.md.j2"
-
-RE_JSON_BLOCK = re.compile(r"```json\n(.*?)\n```", re.MULTILINE | re.DOTALL)
-""" Regular expression to extract JSON block from the response. """
-
+from .settings.llms import GeneratorSettings, LLMSetting
 
 logger = get_logger(__name__)
 
 
-class UnknownPipelineType(ValueError):
+def resolve_llms(pipeline: str, settings: Settings = settings) -> list[LLMSetting]:
     """
-    Exception raised when an unknown pipeline type is encountered.
-    """
-    pass
+    Resolve the LLM chain a pipeline may use.
 
-class PipelineType(Enum):
-    """
-    Enum for pipeline types.
-    """
-    DEFAULT = "default"
+    The pipeline definition names LLMs by key into `llm:`, in the order to try them. A pipeline with no
+    definition, or one that names none, gets every configured LLM in configuration order.
 
-
-def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Settings = settings, **kwargs) -> object:
+    :param pipeline: Pipeline name, as declared by `PIPELINE_NAME`.
+    :param settings: Settings to resolve against.
+    :raises ValueError: When no LLM is configured at all.
+    :return: The chain, never empty.
     """
-    Get the generator based on the pipeline type and settings.
-
-    The generator is selected based on the provider specified in the settings.
-    """
-
     if len(settings.llm) == 0:
         raise ValueError("No LLM settings found in the configuration.")
 
-    pipeline_llm: GeneratorSettings
+    definition = settings.pipelines.get(pipeline)
+    if not definition or not definition.llm:
+        logger.debug("Pipeline %r has no LLM preference; using all configured LLMs.", pipeline)
+        return list(settings.llm)
 
-    # FIXME: Use the default LLM always
-    pipeline = PipelineType.DEFAULT
-
-    match pipeline:
-        case PipelineType.DEFAULT:
-            # Check if "default" is in the list of LLMs
-            # TODO: Implement pipeline selection
-
-            # Fall back to the first LLM in the list
-            pipeline_llm = settings.llm[0]
-            logger.debug("Using default LLM: %s", pipeline_llm.name)
-        case _:
-            raise UnknownPipelineType(f"Unknown pipeline type: {pipeline}")
+    by_name = {llm.name: llm for llm in settings.llm}
+    # Settings validation already rejected an unknown name, so every lookup here resolves.
+    chain = [by_name[name] for name in definition.llm]
+    logger.debug("Pipeline %r resolved to LLM chain: %s", pipeline, ", ".join(llm.name for llm in chain))
+    return chain
 
 
-    module, class_name = pipeline_llm._generator.rsplit(".", 1)
+def get_generator(llm: GeneratorSettings, **kwargs) -> Any:
+    """
+    Build the Haystack generator for one resolved LLM setting.
+
+    :param llm: The LLM to build a generator for.
+    :param kwargs: Merged into the generator's `generation_kwargs`.
+    :return: The generator instance. Typed loosely because the class is imported by name at runtime.
+    """
+
+    module, class_name = llm._generator.rsplit(".", 1)
     # Create the generator instance
     generator_class = getattr(__import__(module, fromlist=[class_name]), class_name)
-    generator_args = pipeline_llm.model_dump(exclude={"provider", "_generator", "name"})
+    generator_args = llm.model_dump(exclude={"provider", "_generator", "name"})
 
     # Convert SecretStr to string for Haystack compatibility
     for key, value in generator_args.items():
@@ -101,27 +82,3 @@ def get_generator(pipeline: PipelineType = PipelineType.DEFAULT, settings: Setti
     # Create the generator instance
     r = generator_class(**generator_args)
     return r
-
-
-def get_prompt_template(template_name: str) -> str:
-    """
-    Get the prompt text based on the template name.
-
-    Searches for the prompt template in the user data directory first, then in the package data directory.
-    """
-
-    PROMPT_ENCODING = "utf-8"
-
-    # Hack-ish approach; append md.j2 if necessary"
-    prompt_file_name = template_name
-    if not template_name.endswith(".md.j2"):
-        prompt_file_name += ".md.j2"
-    user_prompt_dir = Path(user_data_dir(__package__), "prompts")
-
-    user_prompt_file = user_prompt_dir / prompt_file_name
-    if user_prompt_file.exists():
-        return user_prompt_file.read_text(encoding=PROMPT_ENCODING)
-
-    # Check from package data directory
-    resource = f"prompts/{prompt_file_name}"
-    return files(__package__).joinpath(resource).read_text(encoding=PROMPT_ENCODING)

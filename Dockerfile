@@ -53,6 +53,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
     --mount=type=bind,source=pyproject.toml,target=pyproject.toml \
     --mount=type=bind,source=packages,target=packages \
+    --mount=type=bind,source=src,target=src \
     uv sync --frozen --no-install-project --no-dev --group otel
 
 
@@ -79,9 +80,14 @@ ENV UV_LINK_MODE=copy
 
 ENV SENTRY_ENVIRONMENT="development"
 
+# `/app/instance` is the only persistent location, so it IS the data directory: `MERI_DATA_DIR` names the
+# directory itself, without the `data/meri` tail an XDG root would add. Caches are left where they land —
+# nothing in them has to survive the container.
 ENV VIRTUAL_ENV=$VIRTUAL_ENV \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
-    XDG_CONFIG_HOME="/app/instance"
+    XDG_CONFIG_HOME="/app/instance" \
+    MERI_DATA_DIR="/app/instance" \
+    SULKU_DATA_DIR="/app/instance/sulku"
 
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
@@ -126,13 +132,13 @@ ARG VIRTUAL_ENV
 
 WORKDIR /app
 
-VOLUME [ "/app/instance" ]
-
+# See the note in the development stage about the data directory.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     VIRTUAL_ENV=${VIRTUAL_ENV} \
     PATH="${VIRTUAL_ENV}/bin/:${PATH}" \
-    XDG_CONFIG_HOME="/app/instance"
+    XDG_CONFIG_HOME="/app/instance" \
+    MERI_DATA_DIR="/app/instance"
 
 # Disable telemetry
 ENV HAYSTACK_TELEMETRY_ENABLED="False" \
@@ -146,7 +152,16 @@ COPY --from=build ${VIRTUAL_ENV} ${VIRTUAL_ENV}
 COPY --from=build /app /app
 
 # Create non-root user
-RUN useradd -m -u 1000 meri && mkdir /app/instance && chown -R meri:meri /app/instance
+RUN useradd -m -u 1000 meri && mkdir -p /app/instance && chown -R meri:meri /app/instance
+
+# Declared AFTER the directory exists and belongs to `meri`: Docker seeds an anonymous volume from the image
+# content at this point, so a VOLUME declared earlier would have captured a root-owned empty directory and the
+# `chown` above would never reach the running container.
+#
+# A bind mount is a different matter and no `chown` here can help it: the host directory's ownership is what the
+# container sees. `./instance` on the host must belong to uid 1000, or `/app/instance` is read-only in practice
+# and the caches under it fail to write.
+VOLUME [ "/app/instance" ]
 
 USER meri
 

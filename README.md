@@ -20,13 +20,18 @@ Note that `suola` is installed from a released wheel (see `[tool.uv.sources]` in
 
 Of those submodules only `packages/niitti` is a **uv workspace member**. `packages/sulku` is deliberately not
 one: meri talks to Sulku over HTTP (`meri.sulku.service`), never by importing it, and Sulku is its own uv
-workspace with its own `packages/niitti` checkout. Making it a member would force a single niitti resolution
-across both projects, which is why the two repositories used to fight over the niitti source.
+workspace. Membership would force a single niitti resolution across both projects, which is why the two
+repositories used to fight over the niitti source.
 
-The practical consequence is that `--recursive` checks Niitti out **twice** — at `packages/niitti` and at
-`packages/sulku/packages/niitti`. This is expected. A Niitti change therefore has to be committed once and then
-have its pointer bumped in both repositories; the `check-niitti-sync` pre-commit hook fails the commit if the
-two checkouts drift apart.
+Niitti is held in two places, and they can hold different revisions:
+
+- `packages/niitti`, the submodule that meri builds against as an editable workspace member.
+- `packages/sulku/pyproject.toml`, where Sulku pins a git revision of Niitti. Sulku consumes Niitti and does not
+  develop it, so it needs a version, not a checkout.
+
+To put both on the same Niitti revision, run `scripts/sync-niitti.sh [<ref>]` (default `origin/main`). It moves
+the submodule, rewrites Sulku's pin, and relocks Sulku. It changes files only — read the diff and commit the two
+repositories yourself.
 
 Since suola v0.5.0 the module parses **compiled JSON rules only**; `packages/suola/rules.yaml` is build-time
 source that `make rules` compiles into `packages/suola/build/rules.json`. That compiled file is the default for
@@ -82,7 +87,10 @@ uv run pytest tests/             # run the test suite
 uv run meri run --sample         # full pipeline, limited to the 5 newest articles
 uv run meri run --max-workers 1  # serial, for debugging
 uv run meri test <article-url>   # extract + generate a headline for one URL, without writing to Rahti
+uv run meri fetch <article-url>  # extract one URL and print it as Markdown, without calling a model
 uv run meri list-sources
+uv run meri headlines --limit 10  # newest headlines from the sources, without extracting or generating
+uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
 ```
 
 ## Architecture
@@ -108,9 +116,15 @@ auto-discovered: every concrete `Outlet` subclass defining `valid_url` is collec
 `weight` order, with `generic.py` as the low-weight fallback.
 
 LLM pipelines derive from `pipelines/common.StructuredPipeline`, which builds a two-component Haystack pipeline
-(prompt builder → generator). The generator class is resolved from the `provider` in the `llm` config, and the
-pipeline's Pydantic `output_model` is passed as the provider's native structured-output format. Prompts are Jinja
-`.md.j2` templates in `src/meri/prompts/`, overridable from the user data directory.
+(prompt builder → generator) per LLM. The generator class is resolved from the `provider` in the `llm` config,
+and the pipeline's Pydantic `output_model` is passed as the provider's native structured-output format. Prompts
+are Jinja `.md.j2` templates in `src/meri/prompts/`, overridable from the user data directory.
+
+Which LLMs a pipeline may use is configured under `pipelines:`, keyed by the pipeline's `PIPELINE_NAME`. An entry
+names LLMs from the `llm:` list as a fallback chain; a pipeline with no entry gets every configured LLM. Its
+`max_retries` is a total attempt budget spent round-robin over that chain, so a provider that is down costs one
+attempt rather than the whole budget. A name that matches no `llm:` entry fails at startup. Pipeline-specific
+options live in the same entry and are validated by the pipeline that owns them. See `config.example.yaml`.
 
 Label selectors (`src/meri/labels.py`) use a Kubernetes-style syntax over an article's labels — selectors in a
 list OR together, comma-separated requirements within one selector AND together. See `skip_processing` in
@@ -139,10 +153,21 @@ LLM:s can be configured in the `config.yaml` file in `llm` -section. If no speci
 
 - `DEBUG`: If set to `true`, debug mode is enabled.
 - `KLIKKIKURI_CONFIG_FILE`: Path to the configuration file. Default is user `$XDG_CONFIG_DIR/meri/config.yaml`
+- `MERI_DATA_DIR`: The directory of everything Meri writes and keeps — downloaded embedding models, prompt
+  overrides. It names the directory itself, not a root to append `meri` to. The images set it to
+  `/app/instance`, the only persistent location in the container; unset, it falls back to `$XDG_DATA_HOME/meri`.
+- `MERI_CACHE_DIR`: The same for what Meri can fetch again, such as the scrape cache. The images set nothing,
+  so it lands in the user cache directory and no volume has to carry it.
+- `SULKU_DATA_DIR`: Where Sulku keeps its data. The development image sets it to `/app/instance/sulku`, the
+  directory the Sulku service container has mounted at `/app/data`, so both see one set of models.
+- `XDG_CONFIG_HOME`: Root of the configuration directory. The images set it to `/app/instance`, so
+  `/app/instance/config.yaml` is read. Nothing written under `MERI_DATA_DIR` is named `config.yaml`, so the two
+  can share the directory.
 
 If LLM's are not explicitly configured in the `config.yaml` file, the following environment variables are used to autodetect the LLM:
 
 - `OPENAI_API_KEY`: OpenAI API key (e.g. `sk-...`)
 - `GEMINI_API_KEY`: Google [Gemini API key.](https://aistudio.google.com/app/apikey?authuser=1)
-- `OLLAMA_HOST`: ollama host. (e.g. `http://localhost:11434`)
+- `OLLAMA_HOST`: ollama host. (e.g. `http://localhost:11434`). Meri speaks to Ollama through its
+  OpenAI-compatible API, and appends `/v1` to this host.
 - `OLLAMA_MODEL`: ollama model name (e.g. `deepseek-r1:8b`). If not set, the first model listed by ollama is used.

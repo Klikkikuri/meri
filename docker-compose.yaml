@@ -26,14 +26,25 @@ services:
       context: ./packages/sulku
       dockerfile: Dockerfile
       target: production
+    # No `--reload` here: this file is what `cron.sh` deploys, and `meri` depends on this service, so a reloader
+    # added here runs in production. Sulku does not lock `watchfiles`, so uvicorn falls back to stat polling and
+    # walks every file under /app — the bind mount and the .venv volume included. Add it in a local
+    # `docker-compose.override.yaml` to develop against a live reload.
+    command: sulku serve --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     volumes:
       - ./packages/sulku:/app:rw,cached
       - ./instance/sulku:/app/data:rw,cached
       - /app/.venv
+    environment:
+      - SULKU_DATA_DIR=/app/data
     networks:
       - meri
+    # Dependency changes need `docker compose up --build -V sulku` (from the host; the devcontainer has no docker
+    # CLI). `-V` is the whole point: /app/.venv is an anonymous volume, and a plain recreate re-attaches the old
+    # one over the rebuilt image, so the new dependencies never arrive. `docker compose watch` cannot renew it,
+    # which is why there are no `action: rebuild` rules here — they would report success and change nothing.
 
   development:
     extends:

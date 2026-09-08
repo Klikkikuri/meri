@@ -12,6 +12,7 @@ from meri.abc import (
     ClickbaitScale,
 )
 from meri.article import Article
+from meri.feedback import ArticleFeedback, TitleVotes
 from meri.lautta import (
     DiscoveredArticle,
     RahtiCleaner,
@@ -133,3 +134,33 @@ def test_ground_truth_pipeline_execution(mock_title_response: ArticleTitleRespon
             )
 
             assert "[🤖 bot]: Updated list with" in commit_msg
+
+
+def test_feedback_reaches_only_the_article_that_has_it(mock_title_response: ArticleTitleResponse):
+    """
+    `generate_titles` threads feedback positionally: the article without feedback must get no `feedback` kwarg.
+    """
+    discovered = [
+        DiscoveredArticle(source=source, article=article)
+        for _, source, articles, _ in load_all_source_data()
+        for article in articles
+    ]
+    assert len(discovered) >= 2
+
+    rated = ArticleFeedback(
+        titles=[TitleVotes("Aiempi otsikko", good=1, bad=2, suggestions=0)],
+        items=[],
+    )
+
+    calls: list[dict] = []
+
+    def record(self, article, *args, **kwargs):
+        calls.append(kwargs)
+        return mock_title_response
+
+    with patch("meri.lautta.settings.skip_processing", SkipProcessingSettings(labels=[])), patch(
+        "meri.pipelines.title.TitlePredictor.run", record
+    ):
+        generate_titles(discovered, feedback=[rated, None])
+
+    assert [call.get("feedback") for call in calls] == [rated, None]

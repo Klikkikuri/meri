@@ -1,17 +1,16 @@
 from copy import deepcopy
 from datetime import timedelta
 from functools import lru_cache
-from pathlib import Path
 from re import Pattern
 import re
 
 
+from niitti.paths import cache_dir
 from pydantic import AnyHttpUrl
 from structlog import get_logger
 
 from meri.settings import settings
 from meri.settings.newssources import NewsSource
-from platformdirs import user_cache_dir
 
 from .extractor import Outlet
 from .discovery import SourceDiscoverer, registry, merge_article_lists
@@ -90,7 +89,7 @@ def try_setup_requests_cache():
         return
 
     # Setup the cache
-    cache_path = Path(user_cache_dir(__package__), "requests-cache")
+    cache_path = cache_dir(__package__ or "meri") / "requests-cache"
 
     requests_cache.install_cache(
         cache_name=str(cache_path),

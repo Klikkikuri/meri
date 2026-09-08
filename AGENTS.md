@@ -69,9 +69,12 @@ The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `
 - Prompts are Jinja `.md.j2` templates in `src/meri/prompts/`, and `get_prompt_template` prefers a copy in the
   user data dir over the packaged one. Change prompts there rather than inlining text into a pipeline class.
 - Do NOT add `sulku` back to `[tool.uv.workspace]`. Meri uses Sulku over HTTP only, and workspace membership
-  forces one niitti resolution across both projects — Sulku is its own uv workspace with its own
-  `packages/niitti`. `uv run pytest` is scoped to `tests/` for the same reason: `packages/` holds separate
-  projects with their own dependencies.
+  forces one niitti resolution across both projects — Sulku is its own uv workspace and pins niitti as a git
+  dependency in its `pyproject.toml`. `uv run pytest` is scoped to `tests/` for the same reason: `packages/`
+  holds separate projects with their own dependencies.
+- Niitti lives in two places: the `packages/niitti` submodule that meri builds against, and Sulku's pinned git
+  revision. They may differ. Run `scripts/sync-niitti.sh [<ref>]` to move both to one revision; it edits files
+  only and leaves the two commits to you.
 
 ## Conventions
 

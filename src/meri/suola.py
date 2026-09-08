@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 from niitti import get_logger
-from platformdirs import user_cache_dir
+from niitti.paths import cache_dir
 from pydantic import AnyHttpUrl, HttpUrl
 from suola import Suola
 
@@ -115,7 +115,7 @@ def resolve_rules(location: str | Path | None) -> Path | None:
 
 def _rules_cache() -> Path:
     """Local copy of the downloaded rules. Suola needs a file on disk, as the Wasm runtime preopens its parent."""
-    return Path(user_cache_dir(__package__), "rules.json")
+    return cache_dir(__package__ or "meri") / "rules.json"
 
 
 def _fetch_rules(url: str) -> Path | None:

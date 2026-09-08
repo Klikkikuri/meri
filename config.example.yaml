@@ -148,6 +148,73 @@ rahti:
     name: "[🤖 bot] Klikkikuri harbormaster"
     email: "klikkikuri+satamamestari@protonmail.com"
 
+# --- Luotsi (reader feedback) settings ---
+# Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
+# without reader feedback; a `luotsi:` key with nothing after it reads as null and does the same. An explicit
+# empty mapping (`luotsi: {}`) is the one that turns feedback ON with every default, which means the default
+# guardrail chain and so the injection guard. That needs an embedding model — the guard trains its own
+# artifact, but nothing can provision the model for it — so `meri feedback download-model` comes first.
+# luotsi:
+#   sources:
+#     - type: sheets
+#       spreadsheet_id: "1AbC..."       # the responses sheet of the feedback form
+#       worksheet: "Form Responses 1"   # optional; the first sheet is used when omitted
+#       # The form timestamp column carries no timezone and its layout follows the spreadsheet locale.
+#       # Verify both against the real sheet before production.
+#       timezone: "Europe/Helsinki"
+#       timestamp_format: "%m/%d/%Y %H:%M:%S"
+#     - type: csv
+#       path: "/app/instance/feedback.csv"
+#
+#   # The Model2Vec model shared by message consolidation and the injection guard's centroid tier. A hub
+#   # identifier lives under the data directory, at `$MERI_DATA_DIR/embedding/<identifier>`, so this
+#   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
+#   # provisioned by other means. Either way `meri feedback download-model` fills it, with no arguments.
+#   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
+#   # consolidation and NO injection guard — that mode must also leave `injection` out of `guardrails` below,
+#   # because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
+#   embedding_model: "minishlab/potion-multilingual-128M"
+#
+#   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
+#   guardrails:
+#     - type: sanitize            # strip invisible characters, collapse whitespace; keeps casing and accents
+#     - type: pii                 # redact emails, phone numbers, IP addresses and URLs
+#     - type: injection
+#       # Where the trained centroid artifact is kept. No artifact ships with Luotsi — it is bound to the
+#       # embedding model that produced it — so `meri run` provisions one at start whenever the file is missing
+#       # or its inputs have moved, and `meri feedback train-guard` is how you REVIEW one rather than how you
+#       # get one. Those two commands write it; every other command reads it and fails loudly if it is stale.
+#       # Omit this and it lands in the data directory; set it to put it somewhere else.
+#       vectors: "/app/instance/guard-vectors.json"
+#       # Labeled exemplar files to train from. Omit for the curated catalog shipped with Luotsi, which is what
+#       # the guard's quality rests on. Setting this REPLACES that catalog rather than adding to it, exactly as
+#       # `train-guard --data` does — so list the shipped files too if you mean to extend them. A catalog with
+#       # no attack lines, or no benign ones, cannot classify and the guard refuses to start on it.
+#       data: ["/app/instance/our-own-exemplars.txt"]
+#       # Similarity at which two exemplars of one label collapse into a single centroid. Changing it retrains.
+#       cluster_threshold: 0.85
+#       # ONE decision, shared by every drop class the exemplar files carry — `injection`, `toxic` (a reader
+#       # pushing a hateful framing into the headline) and `spam` — because `classify` takes the nearest
+#       # non-benign centroid whatever its label. The rule is deliberately one-sided: drop only when the message
+#       # is near-certainly an attack (floor) AND no benign exemplar sits nearly as close (margin), so doubt goes
+#       # to the reader. Raising the floor lets more attacks through, lowering it silences more real readers, and
+#       # the trade is not visible from one setting — measure with `meri feedback probe <file> --sweep` first.
+#       floor: 0.60               # minimum similarity to a drop centroid before a drop is possible
+#       margin: 0.10              # how far it must exceed the closest benign centroid to actually drop
+#     - type: language
+#       languages: ["fi", "en"]
+#       allow_unknown: true       # short messages are often undetectable; dropping them loses real feedback
+#     - type: truncate
+#       max_message_length: 500
+#
+#   # Most message GROUPS (after consolidation) to put in one article's prompt.
+#   max_messages_per_article: 3
+#
+#   clustering:
+#     # Cosine similarity at which two messages are treated as the same complaint. It measures different things
+#     # per mode — character-3-gram overlap without a model, embedding distance with one — so tune it per mode.
+#     similarity_threshold: 0.8
+
 # --- LLM (Language Model) settings ---
 llm:
 
@@ -187,10 +254,39 @@ llm:
     generation_kwargs:
       temperature: 0.0
 
+  # Ollama is served through its OpenAI-compatible API. The URL must end in `/v1`, NOT the native `/api`:
+  # structured output only works on the OpenAI-compatible endpoint. A `/api` URL is rejected at startup.
   - name: "Ollama Llama2"
     provider: ollama
-    url: "http://ollama:11434/api"
+    url: "http://ollama:11434/v1"
     model: "llama2"
     timeout: 30
     generation_kwargs:
       temperature: 0.0
+
+# --- Pipeline definitions ---
+# Which LLMs each pipeline may use, and how hard it tries. Every key is optional: a pipeline with no entry here
+# gets every LLM in `llm:` above, in that order, with the defaults shown below.
+pipelines:
+
+  # `llm:` names entries from the `llm:` list above, in the order to try them. An unknown name fails at startup.
+  # Leave it out, or leave it empty, to allow every configured LLM.
+  #
+  # `max_retries` is a TOTAL attempt budget, spent round-robin over that list: attempt 1 goes to the first name,
+  # attempt 2 to the second, attempt 3 back to the first. So a provider that is down costs one attempt instead
+  # of the whole budget. With a single LLM it is the plain retry count it has always been.
+  title:
+    llm:
+      - "Google Gemini"
+      - "OpenRouter GPT-OSS-120b"
+    max_retries: 3       # At least 1. Zero attempts is not a configuration, it is a stopped pipeline.
+    initial_delay: 1.0   # Seconds to wait before the second attempt. 0 retries immediately.
+    backoff_factor: 2.0  # Multiplier applied to that delay after each failure. At least 1.0, which holds it steady.
+
+  # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
+  # A maintainer tool, run by hand a few times a year. It is never used in a deployment.
+  feedback_translate:
+    llm:
+      - "OpenAI GPT-4o-mini"
+    # Lines per request. Small batches keep a model from losing the line-to-line correspondence.
+    batch_size: 20
