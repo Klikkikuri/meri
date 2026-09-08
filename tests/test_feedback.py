@@ -423,3 +423,63 @@ def test_prompt_permits_revising_the_level_but_not_on_votes_alone():
     assert "original_title_clickbaitiness" in prompt
     assert "NEVER revise it on vote counts alone" in prompt
     assert "the ARTICLE TEXT bears it out" in prompt
+
+
+def approved(title: str, count: int = 1) -> MessageGroup:
+    """A group of purely positive comments about one generated title."""
+    return MessageGroup(
+        representative=Feedback(
+            type=FeedbackType.GOOD, message="loistava otsikko, kiitos", url_sign="s", converted_title=title
+        ),
+        count=count,
+        types={FeedbackType.GOOD},
+    )
+
+
+def test_prompt_replaces_praise_text_with_the_title_it_approved():
+    """Praise reports that a wording worked, so the wording is the useful part of it, not the compliment."""
+    feedback = ArticleFeedback(titles=[TitleVotes("Otsikko", 3, 0, 0)], items=[approved("Otsikko", count=3)])
+
+    prompt = render_feedback_prompt(feedback)
+
+    assert "<approved_title>Otsikko</approved_title>" in prompt
+    assert "loistava otsikko" not in prompt
+    assert "<reported_times>3</reported_times>" in prompt
+
+
+def test_prompt_keeps_the_text_when_a_group_is_not_purely_positive():
+    """A reader who approves AND suggests is asking for something, and the ask is in the words."""
+    group = MessageGroup(
+        representative=Feedback(
+            type=FeedbackType.GOOD, message="good but the year is missing", url_sign="s", converted_title="Otsikko"
+        ),
+        count=2,
+        types={FeedbackType.GOOD, FeedbackType.SUGGESTION},
+    )
+
+    prompt = render_feedback_prompt(ArticleFeedback(titles=[TitleVotes("Otsikko", 2, 0, 1)], items=[group]))
+
+    assert "good but the year is missing" in prompt
+    assert "<approved_title>" not in prompt
+
+
+def test_prompt_handles_an_approved_title_that_was_never_recorded():
+    feedback = ArticleFeedback(titles=[TitleVotes(None, 1, 0, 0)], items=[approved(None)])  # type: ignore[arg-type]
+
+    assert "<approved_title>(title not recorded)</approved_title>" in render_feedback_prompt(feedback)
+
+
+def test_prompt_says_the_feedback_comes_from_several_conflicting_people():
+    """
+    Without this the model reads the block as one voice and tries to satisfy every line at once.
+
+    Readers write independently and cannot see each other, so contradiction is the normal case rather than a
+    fault in the data, and `reported_times` is the only figure that means a view is actually shared.
+    """
+    prompt = render_feedback_prompt(ArticleFeedback(titles=[TitleVotes("Otsikko", 1, 1, 0)], items=[]))
+
+    assert "several different people, not one voice" in prompt
+    assert "Conflict here is normal" in prompt
+    assert "Do not try to satisfy every comment" in prompt
+    assert "One well-argued objection can outweigh several vague approvals" in prompt
+    assert "`reported_times` is the only number that says a view is shared" in prompt
