@@ -30,16 +30,20 @@ if ! sha="$(git -C "$NIITTI" rev-parse --verify --quiet "${ref}^{commit}")"; the
     exit 1
 fi
 
+pin_pattern='(niitti = \{ git = "[^"]+", rev = ")[0-9a-f]{40}(" \})'
+
+# Check the pin before anything moves. Refusing halfway would leave the submodule on the new revision and Sulku
+# on the old one — the exact drift this script exists to remove.
+if [ -f "$SULKU_PYPROJECT" ] && ! grep -Eq "$pin_pattern" "$SULKU_PYPROJECT"; then
+    echo "error: no pinned Niitti revision found in $SULKU_PYPROJECT. Correct the pin by hand." >&2
+    exit 1
+fi
+
 # A submodule is a detached checkout of one commit. Use a branch in the submodule only to develop Niitti itself.
 git -C "$NIITTI" checkout --quiet --detach "$sha"
 echo "$NIITTI -> $sha"
 
 if [ -f "$SULKU_PYPROJECT" ]; then
-    pin_pattern='(niitti = \{ git = "[^"]+", rev = ")[0-9a-f]{40}(" \})'
-    if ! grep -Eq "$pin_pattern" "$SULKU_PYPROJECT"; then
-        echo "error: no pinned Niitti revision found in $SULKU_PYPROJECT. Correct the pin by hand." >&2
-        exit 1
-    fi
     sed -i -E "s|$pin_pattern|\1$sha\2|" "$SULKU_PYPROJECT"
 
     # `uv lock` records the same commit in Sulku's lock file. Sulku is its own uv workspace.
