@@ -170,3 +170,36 @@ def test_client_skips_a_guard_that_fails_mid_run(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(client.guards[0], "run", lambda items: (_ for _ in ()).throw(RuntimeError("boom")))
 
     assert len(client.get_feedback()) == 8
+
+
+def test_collect_returns_feedback_the_chain_would_drop():
+    """`collect` is the raw half: it fetches and nothing else, so a caller can guard it later, in pieces."""
+    client = Luotsi(LuotsiSettings(sources=[Csv(path=str(FEEDBACK_CSV))], guardrails=[LanguageConfig()]))
+
+    collected = {feedback.url_sign for feedback in client.collect()}
+
+    assert "abc123spanish" in collected
+    assert "abc123spanish" not in {feedback.url_sign for feedback in client.get_feedback()}
+
+
+def test_guarding_a_subset_matches_guarding_the_whole_corpus():
+    """
+    The property lazy guarding rests on.
+
+    Every guard is per-item, so splitting the corpus into per-article batches must not change a verdict or a
+    rewrite. If a guard ever gains cross-item state, this is what catches it.
+    """
+    client = Luotsi(
+        LuotsiSettings(
+            sources=[Csv(path=str(FEEDBACK_CSV))],
+            guardrails=[SanitizeConfig(), PiiConfig(), LanguageConfig(), TruncateConfig()],
+        )
+    )
+    corpus = client.collect()
+
+    whole = client.guard(corpus)
+    piecemeal = [item for feedback in corpus for item in client.guard([feedback])]
+
+    assert [(item.url_sign, item.message) for item in whole] == [
+        (item.url_sign, item.message) for item in piecemeal
+    ]

@@ -18,6 +18,18 @@ settings = LuotsiSettings(sources=[{"type": "csv", "path": "/app/instance/feedba
 feedback = Luotsi(settings).get_feedback()
 ```
 
+`get_feedback()` is the one-shot form: fetch everything, guard everything. A caller that only needs part of
+the corpus uses the two halves instead, and guards batch by batch as it goes:
+
+```python
+client = Luotsi(settings)
+corpus = client.collect()                  # raw, straight from the sources
+kept = client.guard(corpus[:10])           # the chain, over as much or as little as you like
+```
+
+Every guard is per-item, so guarding a subset gives those items the same verdict as guarding the whole
+corpus.
+
 Luotsi is a library with no command line of its own. The maintainer commands live in Meri, under
 `meri feedback`, so that paths are read from configuration rather than retyped.
 

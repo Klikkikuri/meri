@@ -42,13 +42,13 @@ class Luotsi:
             case GoogleSheets():
                 return SheetsFeedbackSource(config)
 
-    def get_feedback(self) -> list[Feedback]:
+    def collect(self) -> list[Feedback]:
         """
-        Collect feedback from every source and run it through the guardrail chain.
+        Fetch feedback from every source, unguarded.
 
-        One failing source does not stop the others, and one guard failing mid-run does not discard the batch.
+        One failing source does not stop the others.
 
-        :return: Sanitized feedback items.
+        :return: Raw feedback items, exactly as the sources produced them.
         """
         feedbacks: list[Feedback] = []
         for source in self.sources:
@@ -57,12 +57,38 @@ class Luotsi:
             except Exception as e:  # noqa: BLE001
                 logger.error("Error fetching feedback from %s: %s", type(source).__name__, e)
 
-        items = [FeedbackItem(original=feedback, processed=feedback) for feedback in feedbacks]
+        return feedbacks
+
+    def guard(self, feedback: list[Feedback]) -> list[Feedback]:
+        """
+        Run the guardrail chain over one batch.
+
+        Every guard is per-item and holds no cross-item state, so guarding a subset gives those items the same
+        verdict as guarding the whole corpus. A caller may therefore guard lazily, batch by batch, rather than
+        all at once. The one exception is a guard that raises: it is skipped for the batch it was handed, so a
+        fault narrows to that batch instead of the corpus.
+
+        Does not raise: one guard failing does not discard the batch.
+
+        :param feedback: Items to sanitize.
+        :return: The items that survived, in their processed form.
+        """
+        items = [FeedbackItem(original=item, processed=item) for item in feedback]
         for guard in self.guards:
             try:
                 items = guard.run(items)
             except Exception as e:  # noqa: BLE001
                 logger.error("Guard %r failed and was skipped: %s", guard.name, e)
 
-        logger.info("Fetched %d feedback item(s), %d survived the guardrail chain", len(feedbacks), len(items))
         return [item.processed for item in items]
+
+    def get_feedback(self) -> list[Feedback]:
+        """
+        Collect feedback from every source and run it through the guardrail chain.
+
+        The one-shot form. A caller that only needs part of the corpus guards lazily instead, with
+        :meth:`collect` and :meth:`guard`.
+
+        :return: Sanitized feedback items.
+        """
+        return self.guard(self.collect())
