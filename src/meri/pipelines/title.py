@@ -31,8 +31,8 @@ class TitlePredictor(StructuredPipeline):
     REQUIRED_VARIABLES = ("text", "meta")
 
     prompt_templates: ClassVar[dict[str, str]] = {
-        "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
         "article_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_TITLE),
+        "article": get_prompt_template(PROMPT_TEMPLATE_ARTICLE),
         "previous_title": get_prompt_template(PROMPT_TEMPLATE_ARTICLE_UPDATED),
         "feedback": get_prompt_template(PROMPT_TEMPLATE_FEEDBACK),
     }
