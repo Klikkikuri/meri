@@ -9,7 +9,7 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(dirname "$(readlink -f "$0")")}"
 COMPOSE_SERVICE="${COMPOSE_SERVICE:-meri}"
 LOCK_FILE="${LOCK_FILE:-/tmp/meri-cron.lock}"
-LOCK_TIMEOUT=300  # 5 minutes
+LOCK_TIMEOUT=7100  # 5 minutes
 
 # Cleanup function
 cleanup() {
