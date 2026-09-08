@@ -26,9 +26,11 @@ services:
       context: ./packages/sulku
       dockerfile: Dockerfile
       target: production
-    # Auto-reload on source changes: the package is bind-mounted at /app, so
-    # uvicorn's reloader picks up edits without a container restart.
-    command: sulku serve --host 0.0.0.0 --port 8000 --reload
+    # No `--reload` here: this file is what `cron.sh` deploys, and `meri` depends on this service, so a reloader
+    # added here runs in production. Sulku does not lock `watchfiles`, so uvicorn falls back to stat polling and
+    # walks every file under /app — the bind mount and the .venv volume included. Add it in a local
+    # `docker-compose.override.yaml` to develop against a live reload.
+    command: sulku serve --host 0.0.0.0 --port 8000
     ports:
       - "8000:8000"
     volumes:
