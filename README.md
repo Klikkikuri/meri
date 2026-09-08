@@ -155,5 +155,6 @@ If LLM's are not explicitly configured in the `config.yaml` file, the following 
 
 - `OPENAI_API_KEY`: OpenAI API key (e.g. `sk-...`)
 - `GEMINI_API_KEY`: Google [Gemini API key.](https://aistudio.google.com/app/apikey?authuser=1)
-- `OLLAMA_HOST`: ollama host. (e.g. `http://localhost:11434`)
+- `OLLAMA_HOST`: ollama host. (e.g. `http://localhost:11434`). Meri speaks to Ollama through its
+  OpenAI-compatible API, and appends `/v1` to this host.
 - `OLLAMA_MODEL`: ollama model name (e.g. `deepseek-r1:8b`). If not set, the first model listed by ollama is used.

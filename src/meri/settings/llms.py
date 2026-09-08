@@ -88,17 +88,46 @@ class OpenAISettings(_OpenAISettingsBase):
     provider: Literal["openai"] = "openai"
 
 
-class OllamaSettings(GeneratorSettings):
+class OllamaSettings(_OpenAISettingsBase):
+    """
+    Ollama settings, served through Ollama's OpenAI-compatible API.
+
+    The native endpoint takes `response_format` as a constructor argument and accepts only `"json"` or a schema
+    dict, so structured output was silently dropped. The OpenAI-compatible endpoint at `/v1` takes a Pydantic
+    model like every other provider, which is why Ollama is one of these rather than its own integration.
+
+    ..seealso:: https://ollama.com/blog/openai-compatibility
+    """
     provider: Literal["ollama"] = "ollama"
     model: str = Field(..., description="Ollama model.")
 
-    url: AnyHttpUrl = Field('http://ollama:11434/api', description="Ollama API base URL.")
+    # `url:` is how this was spelled before the move to the OpenAI-compatible endpoint. Keep reading it.
+    api_base_url: OpenAICompatibleUrl = Field(
+        default='http://ollama:11434/v1',
+        description="Ollama OpenAI-compatible API base URL. Note the `/v1` suffix; the native `/api` endpoint is not this.",
+        validation_alias=_openai_url_alias,
+    )
+    # Ollama needs no credential, but the OpenAI client refuses to start without one.
+    api_key: SecretStr = Field(default=SecretStr("ollama"), description="Unused by Ollama; a placeholder keeps the client happy.")
     timeout: Optional[int] = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
     generation_kwargs: Optional[dict] = Field({
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
 
-    _generator: str = "haystack_integrations.components.generators.ollama.OllamaChatGenerator"
+    @model_validator(mode="after")
+    def _reject_the_native_endpoint(self) -> Self:
+        """
+        Refuse a URL that points at the native API.
+
+        A configuration written for the old integration ends in `/api`, which answers nothing an OpenAI client
+        asks for. Say so here rather than letting the first generation fail with a 404.
+        """
+        if str(self.api_base_url).rstrip("/").endswith("/api"):
+            raise ValueError(
+                f"Ollama is served through its OpenAI-compatible API. Change {self.api_base_url} to end in "
+                "'/v1' instead of '/api'."
+            )
+        return self
 
 
 class GoogleGeminiSettings(_OpenAISettingsBase):
@@ -189,22 +218,28 @@ def detect_generators(values: dict):
             api_key=api_key,
         ))
 
-    if api_base_url := values.get("ollama_host"):
-        # Try to detect the model from the environment variable first
-        model = values.get("ollama_model") or _pull_default_ollama_model(api_base_url)
+    if host := values.get("ollama_host"):
+        # Which model is loaded is only visible on the native API, so detection asks there and configures `/v1`.
+        model = values.get("ollama_model") or _pull_default_ollama_model(host)
         if model:
-            try:
-                name = f"{model} (Ollama)"
-                settings.append(OllamaSettings(
-                    name=name,
-                    url=api_base_url,
-                    model=model,
-                ))
-            except MissingGeneratorError as e:
-                logger.error("Found OLLAMA_HOST but ollama generator not found: %s", e)
-                logger.info("Please install the required generator class `ollama-haystack`")
+            settings.append(OllamaSettings(
+                name=f"{model} (Ollama)",
+                api_base_url=_ollama_openai_url(host),
+                model=model,
+            ))
 
     return settings
+
+
+def _ollama_openai_url(host: str) -> str:
+    """
+    Build the OpenAI-compatible base URL from an Ollama host.
+
+    `OLLAMA_HOST` names the host, but a value carrying the native `/api` suffix is common enough to normalize
+    rather than reject: detection is a convenience, and failing it would leave the operator with no LLM at all.
+    """
+    base = host.rstrip("/").removesuffix("/api").rstrip("/")
+    return f"{base}/v1"
 
 
 def _pull_default_ollama_model(api_base_url: str) -> Optional[str]:

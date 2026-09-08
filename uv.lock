@@ -1343,7 +1343,6 @@ dev = [
     { name = "ipywidgets" },
     { name = "isort" },
     { name = "nbconvert" },
-    { name = "ollama-haystack" },
     { name = "pandas" },
     { name = "pre-commit" },
     { name = "pyright" },
@@ -1417,7 +1416,6 @@ dev = [
     { name = "ipywidgets", specifier = ">=8.1.5" },
     { name = "isort", specifier = ">=5.13.2" },
     { name = "nbconvert", specifier = ">=7.17.1" },
-    { name = "ollama-haystack", specifier = ">=2.4.1" },
     { name = "pandas", specifier = ">=3.0.5" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pyright", specifier = ">=1.1.411" },
@@ -1725,33 +1723,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/94/a8/f98e50356cf167df656c526c2dfeec2d7dde182f2a3da4b458a5938e2776/numpy-2.5.1-cp314-cp314t-win32.whl", hash = "sha256:6eab239876581b2b3c5a242281b6007bbdbcd1c7085d7709bb57c5929b11e6bf", size = 6263298 },
     { url = "https://files.pythonhosted.org/packages/72/ac/96ae880cdecad0b3275d9359fcec72667b49a4863c9f12942e43679dda02/numpy-2.5.1-cp314-cp314t-win_amd64.whl", hash = "sha256:83ce9c80d5b521b0d77ddcbe5447c218d247929b6cc056ca5351342accfff0af", size = 12748623 },
     { url = "https://files.pythonhosted.org/packages/a1/5a/4d2b1601df3602dba7a14f3348ba9bfe94a18adb428e693df6154c293831/numpy-2.5.1-cp314-cp314t-win_arm64.whl", hash = "sha256:5a6db61f9aaa57e369905c67d852045d3c4f7126405b29d09b19dec118e9c9cb", size = 10697674 },
-]
-
-[[package]]
-name = "ollama"
-version = "0.4.8"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "httpx" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/e2/64/709dc99030f8f46ec552f0a7da73bbdcc2da58666abfec4742ccdb2e800e/ollama-0.4.8.tar.gz", hash = "sha256:1121439d49b96fa8339842965d0616eba5deb9f8c790786cdf4c0b3df4833802", size = 12972 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/3f/164de150e983b3a16e8bf3d4355625e51a357e7b3b1deebe9cc1f7cb9af8/ollama-0.4.8-py3-none-any.whl", hash = "sha256:04312af2c5e72449aaebac4a2776f52ef010877c554103419d3f36066fe8af4c", size = 13325 },
-]
-
-[[package]]
-name = "ollama-haystack"
-version = "2.4.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "haystack-ai" },
-    { name = "ollama" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d8/1c/39991c6d581df63b6bc66202e8680d8e37cdfddd91dc2af61e6741a83039/ollama_haystack-2.4.1.tar.gz", hash = "sha256:d06921a59f4897c4090d6c46941f409225aed1cd016d7afeb4cf376d30e527de", size = 21783 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/8c/c7/e7e3e073721be1cc175f8c172e860e5b48df5d48171b0c497e9848866051/ollama_haystack-2.4.1-py3-none-any.whl", hash = "sha256:c10abb40a194b497c975c0a57e5a5dca47358ffe8555568d14119eea831da0ad", size = 16954 },
 ]
 
 [[package]]

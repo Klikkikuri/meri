@@ -234,9 +234,11 @@ llm:
     generation_kwargs:
       temperature: 0.0
 
+  # Ollama is served through its OpenAI-compatible API. The URL must end in `/v1`, NOT the native `/api`:
+  # structured output only works on the OpenAI-compatible endpoint. A `/api` URL is rejected at startup.
   - name: "Ollama Llama2"
     provider: ollama
-    url: "http://ollama:11434/api"
+    url: "http://ollama:11434/v1"
     model: "llama2"
     timeout: 30
     generation_kwargs:
