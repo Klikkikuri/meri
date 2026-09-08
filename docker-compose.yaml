@@ -35,7 +35,7 @@ services:
       - ./packages/sulku:/app:rw,cached
       - ./instance/sulku:/app/data:rw,cached
       - /app/.venv
-    env:
+    environment:
       - SULKU_DATA_DIR=/app/data
     networks:
       - meri
