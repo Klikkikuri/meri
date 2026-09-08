@@ -150,7 +150,9 @@ rahti:
 
 # --- Luotsi (reader feedback) settings ---
 # Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
-# without reader feedback.
+# without reader feedback — and omit it ENTIRELY, because a `luotsi:` key with nothing under it still builds the
+# default guardrail chain, which contains the injection guard, which then fails the run at start for want of a
+# model and an artifact.
 # luotsi:
 #   sources:
 #     - type: sheets
@@ -181,7 +183,13 @@ rahti:
 #       # the embedding model that produced it — so generate one with `meri feedback train-guard`, which writes to
 #       # exactly this path. Without it, and without `embedding_model`, the guard fails the run at start.
 #       vectors: "/app/instance/guard-vectors.json"
-#       floor: 0.60               # minimum similarity to an injection centroid before a drop is possible
+#       # ONE decision, shared by every drop class the exemplar files carry — `injection`, `toxic` (a reader
+#       # pushing a hateful framing into the headline) and `spam` — because `classify` takes the nearest
+#       # non-benign centroid whatever its label. The rule is deliberately one-sided: drop only when the message
+#       # is near-certainly an attack (floor) AND no benign exemplar sits nearly as close (margin), so doubt goes
+#       # to the reader. Raising the floor lets more attacks through, lowering it silences more real readers, and
+#       # the trade is not visible from one setting — measure with `meri feedback probe <file> --sweep` first.
+#       floor: 0.60               # minimum similarity to a drop centroid before a drop is possible
 #       margin: 0.10              # how far it must exceed the closest benign centroid to actually drop
 #     - type: language
 #       languages: ["fi", "en"]
