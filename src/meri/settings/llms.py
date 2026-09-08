@@ -110,11 +110,14 @@ class OllamaSettings(_OpenAISettingsBase):
     # `url:` is how this was spelled before the move to the OpenAI-compatible endpoint. Keep reading it.
     api_base_url: OpenAICompatibleUrl = Field(
         default='http://ollama:11434/v1',
-        description="Ollama OpenAI-compatible API base URL. Note the `/v1` suffix; the native `/api` endpoint is not this.",
+        description="Ollama OpenAI-compatible API base URL. Note the `/v1` suffix; `/api` is the native one.",
         validation_alias=_openai_url_alias,
     )
     # Ollama needs no credential, but the OpenAI client refuses to start without one.
-    api_key: SecretStr = Field(default=SecretStr("ollama"), description="Unused by Ollama; a placeholder keeps the client happy.")
+    api_key: SecretStr = Field(
+        default=SecretStr("ollama"),
+        description="Unused by Ollama; a placeholder keeps the OpenAI client happy.",
+    )
     timeout: int | None = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
     generation_kwargs: dict | None = Field({
         "temperature": 0.0,
