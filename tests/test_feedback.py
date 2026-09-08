@@ -485,6 +485,24 @@ def test_a_row_without_a_level_does_not_erase_a_known_one(_hash, clusterer: Mess
     assert result.titles[0].level is ClickbaitScale.EXTREME
 
 
+@hash_urls
+def test_the_level_does_not_depend_on_the_row_order(_hash, clusterer: MessageClusterer):
+    """The same rows in another order are the same feedback, and a source promises no order at all."""
+    sign = "sig::https://example.com/article-1"
+    rows = [
+        make_feedback(sign, submitted_at=NOON, clickbait_level="Extremely Clickbaity"),
+        make_feedback(sign, submitted_at=NOON.replace(hour=14), clickbait_level=None),
+    ]
+    article = make_article("https://example.com/article-1")
+
+    forwards = feedback_for_article(FeedbackMatcher(rows), article, clusterer, 3)
+    backwards = feedback_for_article(FeedbackMatcher(list(reversed(rows))), article, clusterer, 3)
+
+    assert forwards is not None and backwards is not None
+    assert forwards.titles[0].level is ClickbaitScale.EXTREME
+    assert backwards.titles[0].level is ClickbaitScale.EXTREME
+
+
 def test_prompt_shows_the_level_the_title_was_published_at():
     """Readers never see the rating, so the prompt is where the vote and the rating are put side by side."""
     feedback = ArticleFeedback(

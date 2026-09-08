@@ -61,6 +61,9 @@ _LEVELS: dict[str, ClickbaitScale] = {
 _LEVELS["notclickbaity"] = ClickbaitScale.NONE
 """The reader widget's wording for the bottom of the scale, which is not the enum's own."""
 
+_SEVERITY: dict[ClickbaitScale, int] = {level: rank for rank, level in enumerate(ClickbaitScale)}
+"""Declaration order of the scale, which runs from least to most clickbaity."""
+
 
 def _parse_level(raw: str | None) -> ClickbaitScale | None:
     """
@@ -225,17 +228,24 @@ def _tally_titles(feedback: list[Feedback]) -> list[TitleVotes]:
     """
     tallies: dict[str | None, Counter[FeedbackType]] = defaultdict(Counter)
     newest: dict[str | None, datetime] = {}
-    levels: dict[str | None, ClickbaitScale | None] = {}
+    levels: dict[str | None, ClickbaitScale] = {}
+    ranks: dict[str | None, tuple[datetime, int]] = {}
 
     for item in feedback:
         tallies[item.converted_title][item.type] += 1
 
-        # The level a title was published at can change between regenerations while the title itself does not,
-        # so the newest row wins: it is the rating the most recent readers were reacting to.
         when = item.submitted_at or OLDEST
-        if when >= newest.get(item.converted_title, OLDEST) or item.converted_title not in levels:
-            levels[item.converted_title] = _parse_level(item.clickbait_level) or levels.get(item.converted_title)
         newest[item.converted_title] = max(newest.get(item.converted_title, OLDEST), when)
+
+        # The level a title was published at can change between regenerations while the title itself does not,
+        # so the newest row that names one wins: it is the rating the most recent readers were reacting to. A row
+        # naming none cannot erase it, and two rows stamped alike break the tie on severity — otherwise the same
+        # feedback renders with or without a level depending only on the order the source returned it in.
+        if level := _parse_level(item.clickbait_level):
+            rank = (when, _SEVERITY[level])
+            if rank > ranks.get(item.converted_title, (OLDEST, -1)):
+                ranks[item.converted_title] = rank
+                levels[item.converted_title] = level
 
     return [
         TitleVotes(
