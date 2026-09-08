@@ -8,13 +8,16 @@ Order of precedence:
     1. Environment variables
     2. `.env` file
     3. Secrets directory (e.g. `/run/secrets`).
-    4. YAML configuration file, with standard locations:
+    4. YAML configuration files, each one's top-level keys replacing those of the ones before it:
+        - Bundled defaults: `packages/rahti/config.yaml`
         - Devcontainer user settings: `/app/config.yaml`
         - Instance folder settings: `/app/instance/config.yaml`
         - Docker settings: `/config/config.yaml`
         - Local settings: `./config.yaml`
         - System wide settings ($XDG_CONFIG_DIRS / site_config_dir)
         - User defined settings ($XDG_CONFIG_HOME / user_config_dir)
+
+    The merge is shallow: a file that defines `llm:` replaces the whole list, it does not extend it.
 
 """
 from importlib.util import find_spec
@@ -28,6 +31,7 @@ from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
 from niitti.settings.settings import Settings as NiittiSettings
+from niitti.settings.settings import lint_yaml_settings_files
 from niitti.settings.telemetry import TelemetrySettings
 from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -59,6 +63,9 @@ _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 
 # Compiled Suola rules from the monorepo, built by `make rules` in the suola checkout.
 _suola_rules = Path("packages/suola/build/rules.json").resolve()
+
+# Default sources, LLMs and blacklist shipped with the Rahti submodule. Lowest-precedence config file.
+_BUNDLED_CONFIG = Path("packages/rahti/config.yaml").resolve()
 
 
 class SkipProcessingSettings(BaseModel):
@@ -118,6 +125,18 @@ class Settings(NiittiSettings):
         description="Location of the compiled Suola JSON rules: an `http(s)://` URL, a `file://` URL or a "
         "filesystem path. If empty, the rules built into the Suola module are used.",
     )
+
+    @classmethod
+    def get_default_config_locations(cls) -> list[Path]:
+        """
+        Prepend the Rahti submodule's bundled defaults to niitti's standard search path.
+
+        Order is ascending precedence — `YamlConfigSettingsSource` shallow-merges the list with
+        `dict.update`, so the last file to define a top-level key wins outright. The bundled
+        config therefore goes first: it supplies the default sources and LLMs, and everything an
+        operator writes in `instance/config.yaml` (or any later location) replaces it.
+        """
+        return lint_yaml_settings_files([_BUNDLED_CONFIG]) + super().get_default_config_locations()
 
     @field_validator("suola_rules")
     @classmethod
