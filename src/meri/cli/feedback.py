@@ -10,10 +10,10 @@ model it was trained with, so each deployment trains its own from the exemplar d
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from luotsi.embeddings import download_model, load_embedder
-from luotsi.guards.evaluate import embed_lines, evaluate, sweep
+from luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
 from luotsi.guards.labeled import (
     LabeledLine,
     packaged_exemplars,
@@ -33,6 +33,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from click import Command as CommandBase
+    from luotsi.embeddings import Embedder
 else:
     # `cli.command()` builds RichCommands when rich_click is installed; subclass whichever is in play, so the
     # one command with a custom help still renders like every other.
@@ -120,6 +121,45 @@ def _injection_config(settings: LuotsiSettings) -> InjectionConfig:
 def _vectors_path(settings: LuotsiSettings) -> Path | None:
     """The artifact path the configured injection guard reads, when one is configured."""
     return _injection_config(settings).vectors
+
+
+class _Guard(NamedTuple):
+    """Everything the read-only guard commands need, resolved and loaded."""
+
+    embed: "Embedder"
+    artifact: GuardVectors
+    floor: float
+    margin: float
+    path: Path
+
+
+def _load_guard(ctx: click.Context, vectors: Path | None, floor: float | None, margin: float | None) -> _Guard:
+    """
+    Load the configured model and artifact, with the thresholds the deployment runs at.
+
+    Shared by `probe` and `check`, which differ only in what they classify. Loading the artifact against the
+    live model's dimension is the same check the guard makes at startup, so a mismatched artifact fails here
+    too rather than producing quietly meaningless scores.
+    """
+    settings = _luotsi_settings(ctx)
+    model_path = _embedding_model(settings)
+    injection = _injection_config(settings)
+
+    artifact_path = vectors or _vectors_path(settings)
+    if not artifact_path:
+        raise click.ClickException(
+            "No artifact to read. Generate one with `meri feedback train-guard`, set `vectors` on the injection "
+            "guard in your `luotsi.guardrails` list, or pass --vectors."
+        )
+
+    embedder = load_embedder(model_path)
+    return _Guard(
+        embed=embedder,
+        artifact=GuardVectors.load(artifact_path, dim=len(embedder("dimension probe"))),
+        floor=injection.floor if floor is None else floor,
+        margin=injection.margin if margin is None else margin,
+        path=artifact_path,
+    )
 
 
 @click.group("feedback")
@@ -254,31 +294,40 @@ def probe(
 
     DATA_FILES are labeled exemplar files, in the same format `train-guard` reads.
     """
-    settings = _luotsi_settings(ctx)
-    model_path = _embedding_model(settings)
-    injection = _injection_config(settings)
-
-    artifact_path = vectors or _vectors_path(settings)
-    if not artifact_path:
-        raise click.ClickException(
-            "No artifact to probe. Set `vectors` on the injection guard in your `luotsi.guardrails` list, or "
-            "pass --vectors."
-        )
-
-    floor = injection.floor if floor is None else floor
-    margin = injection.margin if margin is None else margin
+    guard = _load_guard(ctx, vectors, floor, margin)
 
     lines = parse_files(list(data_files))
-    embedder = load_embedder(model_path)
-    artifact = GuardVectors.load(artifact_path, dim=len(embedder("dimension probe")))
-    click.echo(f"Probing {len(lines)} line(s) against {artifact_path} ...\n")
+    click.echo(f"Probing {len(lines)} line(s) against {guard.path} ...\n")
 
-    embedded = embed_lines(lines, embedder)
-    click.echo(evaluate(embedded, artifact, floor, margin).render(show_lines=not quiet))
+    embedded = embed_lines(lines, guard.embed)
+    click.echo(evaluate(embedded, guard.artifact, guard.floor, guard.margin).render(show_lines=not quiet))
 
     if with_sweep:
         click.echo()
-        click.echo(sweep(embedded, artifact, floor, margin).render())
+        click.echo(sweep(embedded, guard.artifact, guard.floor, guard.margin).render())
+
+
+@cli.command("check")
+@click.argument("text")
+@click.option(
+    "--vectors",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Artifact to classify against. Defaults to the configured injection guard's `vectors` path.",
+)
+@click.option("--floor", type=float, help="Override the configured decision floor.")
+@click.option("--margin", type=float, help="Override the configured decision margin.")
+@click.pass_context
+def check(ctx: click.Context, text: str, vectors: Path | None, floor: float | None, margin: float | None) -> None:
+    """
+    Say whether one message would be dropped, and why.
+
+    TEXT is classified exactly as a reader's comment would be — sanitized, embedded, and put through the same
+    decision — so this answers what the deployment would really do with it. The two centroids the decision
+    turned on are printed with it, because "dropped" on its own does not say whether the message was near an
+    attack or merely far from everything benign.
+    """
+    guard = _load_guard(ctx, vectors, floor, margin)
+    click.echo(explain(text, guard.embed, guard.artifact, guard.floor, guard.margin).render())
 
 
 @cli.command("translate-exemplars")

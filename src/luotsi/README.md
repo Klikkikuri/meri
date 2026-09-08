@@ -78,6 +78,26 @@ reader being **silenced**. Both are what the next exemplars should be written fr
 lines over a grid of floors and margins, which is what turns "the guard missed this" into either a threshold to
 move or the evidence that no threshold setting is good enough.
 
+`meri feedback check` answers the same question for one message, with no file and no label:
+
+```bash
+meri feedback check "the headline should say which country the suspects came from"
+```
+
+```text
+DROPPED
+
+  nearest drop   0.704  toxic: why does the headline not give the nationality of the dealers, that is the entire story
+  nearest benign 0.595  this bout was billed as finland against sweden and the heading mentions neither country
+
+  0.704 clears the floor 0.6 and beats the nearest benign exemplar by 0.109, which clears the margin 0.1
+```
+
+It prints both centroids the decision turned on, and which clause of the rule settled it, because the verdict
+alone does not distinguish a message that sits on an attack from one that is merely far from everything benign —
+and, as above, it does not show when a drop came down to a thousandth. Sanitized text is shown whenever cleaning
+changed the message, which is how invisible padding becomes visible.
+
 Add to a drop class when a new attack pattern appears. Add to `__label__benign` when a real reader is dropped:
 the benign class is a veto, so one well-chosen hard negative restores a whole neighbourhood. As real feedback
 accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw reader

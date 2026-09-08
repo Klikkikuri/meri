@@ -15,7 +15,7 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from .injection import classify
+from .injection import classify, nearest
 from .labeled import BENIGN, LabeledLine
 from .sanitize import SanitizeGuard
 from .vectors import GuardVectors
@@ -110,6 +110,86 @@ class Sweep:
             cells = "".join(f"{rates[label]:>15.0%} " for label in self.labels)
             lines.append(f"  {floor:.2f}   {margin:.2f}   {cells}{marker}")
         return "\n".join(lines)
+
+
+@dataclass
+class Explanation:
+    """Why the guard did what it did with one message."""
+
+    text: str
+    """The message as the guard saw it, after sanitizing."""
+
+    cleaned: bool
+    """Whether sanitizing changed the message. Invisible padding is the usual cause, and it is worth knowing."""
+
+    dropped: bool
+    attack_similarity: float
+    attack_label: str | None
+    attack_representative: str | None
+    benign_similarity: float
+    benign_representative: str | None
+    floor: float
+    margin: float
+
+    @property
+    def reason(self) -> str:
+        """The clause of the rule that settled it, which is the part a maintainer is actually asking about."""
+        gap = self.attack_similarity - self.benign_similarity
+        if self.attack_similarity < self.floor:
+            return f"nothing it resembles is near enough: {self.attack_similarity:.3f} is below the floor {self.floor}"
+        if gap < self.margin:
+            return (
+                f"vetoed: it beats the nearest benign exemplar by only {gap:.3f}, less than the margin "
+                f"{self.margin}, so doubt goes to the reader"
+            )
+        return (
+            f"{self.attack_similarity:.3f} clears the floor {self.floor} and beats the nearest benign exemplar "
+            f"by {gap:.3f}, which clears the margin {self.margin}"
+        )
+
+    def render(self) -> str:
+        """Format the explanation for the command line."""
+        lines = ["DROPPED" if self.dropped else "KEPT", ""]
+        if self.cleaned:
+            lines += [f"  sanitized to   {self.text!r}", ""]
+        lines += [
+            f"  nearest drop   {self.attack_similarity:.3f}  {self.attack_label}: {self.attack_representative}",
+            f"  nearest benign {self.benign_similarity:.3f}  {self.benign_representative}",
+            "",
+            f"  {self.reason}",
+        ]
+        return "\n".join(lines)
+
+
+def explain(
+    message: str, embed: "Embedder", artifact: GuardVectors, floor: float, margin: float
+) -> Explanation:
+    """
+    Classify one arbitrary message and say why.
+
+    The verdict comes from :func:`~.injection.classify` and the numbers from :func:`~.injection.nearest`, so
+    what is explained is the decision itself and not a second implementation of the rule.
+
+    :param message: Raw text, as a reader would submit it.
+    :return: The verdict, the two centroids it turned on, and the clause of the rule that settled it.
+    """
+    cleaned = SanitizeGuard.clean(message)
+    vector = embed(cleaned)
+    attack, benign = nearest(vector, artifact)
+    dropped, _ = classify(vector, artifact, floor, margin)
+
+    return Explanation(
+        text=cleaned,
+        cleaned=cleaned != message,
+        dropped=dropped,
+        attack_similarity=attack.similarity,
+        attack_label=attack.centroid.label if attack.centroid else None,
+        attack_representative=attack.representative,
+        benign_similarity=benign.similarity,
+        benign_representative=benign.representative,
+        floor=floor,
+        margin=margin,
+    )
 
 
 def embed_lines(lines: Iterable[LabeledLine], embed: "Embedder") -> list[tuple[LabeledLine, "Vector"]]:

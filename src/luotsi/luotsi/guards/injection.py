@@ -7,13 +7,13 @@ Drops feedback that tries to instruct the language model instead of commenting o
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 from ..abc import FeedbackItem, Guardrail
 from ..settings.guardrails import InjectionConfig
 from .labeled import BENIGN
 from .sanitize import SanitizeGuard
-from .vectors import GuardVectors
+from .vectors import Centroid, GuardVectors
 
 if TYPE_CHECKING:
     from ..embeddings import Embedder, Vector
@@ -21,30 +21,58 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class Match(NamedTuple):
+    """The closest centroid of one side of the decision, and how close it is."""
+
+    similarity: float
+    centroid: Centroid | None
+
+    @property
+    def representative(self) -> str | None:
+        """The exemplar text naming the centroid, for reports and logs."""
+        return self.centroid.representative if self.centroid else None
+
+
+def nearest(vector: "Vector", artifact: GuardVectors) -> tuple[Match, Match]:
+    """
+    The closest drop centroid and the closest benign centroid to one embedded message.
+
+    Split out of :func:`classify` so that a caller explaining a decision reads the same numbers the decision was
+    made from, rather than recomputing them and risking a second, divergent implementation of the rule.
+
+    :return: The nearest non-benign centroid, then the nearest benign one.
+    """
+    import numpy as np
+
+    def closest(wanted_benign: bool) -> Match:
+        scored = [
+            Match(float(np.dot(vector, centroid.vector)), centroid)
+            for centroid in artifact.centroids
+            if (centroid.label == BENIGN) is wanted_benign
+        ]
+        # Keyed on the similarity alone: tuple ordering would fall through to comparing centroids on a tie.
+        return max(scored, key=lambda match: match.similarity, default=Match(0.0, None))
+
+    return closest(wanted_benign=False), closest(wanted_benign=True)
+
+
 def classify(vector: "Vector", artifact: GuardVectors, floor: float, margin: float) -> tuple[bool, str | None]:
     """
-    Decide whether one embedded message is an injection attempt.
+    Decide whether one embedded message is an attack.
 
-    The injection class is a curated, closed catalog, so nearness to it is evidence. The benign class is
+    Every drop class is a curated, closed catalog, so nearness to one is evidence. The benign class is
     open-world — no data set can enumerate what readers legitimately say — so distance from it is never evidence
     of an attack. The rule is therefore one-sided: drop only when the message is near-certainly an attack (the
     floor) AND no benign exemplar sits nearly as close (the margin). Doubt goes to the reader.
 
     :return: Whether to drop, and the benign representative that vetoed a drop, if one did.
     """
-    import numpy as np
+    attack, veto = nearest(vector, artifact)
 
-    def closest(label_match) -> tuple[float, str | None]:
-        scored = [(float(np.dot(vector, c.vector)), c.representative) for c in artifact.centroids if label_match(c)]
-        return max(scored, default=(0.0, None))
-
-    attack, _ = closest(lambda c: c.label != BENIGN)
-    veto, veto_by = closest(lambda c: c.label == BENIGN)
-
-    if attack < floor:
+    if attack.similarity < floor:
         return False, None
-    if attack - veto < margin:
-        return False, veto_by
+    if attack.similarity - veto.similarity < margin:
+        return False, veto.representative
     return True, None
 
 

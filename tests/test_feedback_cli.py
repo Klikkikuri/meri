@@ -290,3 +290,86 @@ def test_probe_without_an_artifact_says_where_to_get_one(tmp_path: Path, model_d
 
     assert result.exit_code != 0
     assert "--vectors" in result.output
+
+
+# --- check ---------------------------------------------------------------------
+
+
+def test_check_reports_a_drop_and_the_centroid_it_turned_on(model_dir: Path, artifact: Path, embedder):
+    result = invoke(
+        ["check", "attack", "--vectors", str(artifact)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("DROPPED")
+    assert "nearest drop   1.000  injection: attack" in result.output
+
+
+def test_check_reports_a_kept_message_and_which_clause_saved_it(model_dir: Path, artifact: Path, embedder):
+    """
+    "Kept" alone does not say why.
+
+    This message is close enough to the attack centroid to clear the floor, and survives only because a benign
+    exemplar sits closer still — which is a different thing to be told than "far from everything".
+    """
+    result = invoke(
+        ["check", "ordinary", "--vectors", str(artifact)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("KEPT")
+    assert "vetoed" in result.output
+    assert "nearest benign 1.000  ordinary" in result.output
+
+
+def test_check_names_the_veto_when_the_margin_is_what_saved_the_message(model_dir: Path, artifact: Path, embedder):
+    """The other way a message survives: near an attack, but a benign exemplar sits nearly as close."""
+    result = invoke(
+        ["check", "attack", "--vectors", str(artifact), "--margin", "0.99"],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("KEPT")
+    assert "vetoed" in result.output
+
+
+def test_check_shows_the_sanitized_text_when_cleaning_changed_it(model_dir: Path, artifact: Path, embedder):
+    """Invisible padding is the usual cause, and a maintainer needs to see that it was stripped."""
+    result = invoke(
+        ["check", "at\u200btack", "--vectors", str(artifact)],
+        {"embedding_model": str(model_dir)},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "sanitized to   'attack'" in result.output
+    assert result.output.startswith("DROPPED")
+
+
+def test_check_honours_the_configured_thresholds(model_dir: Path, artifact: Path, embedder):
+    """
+    The point of the command is to answer what THIS deployment does, so it reads the deployment's thresholds.
+
+    At the default floor this message is vetoed; at the configured one nothing is near enough to consider. The
+    two verdicts agree, so only the reason shows that the configured value was the one used.
+    """
+    result = invoke(
+        ["check", "ordinary", "--vectors", str(artifact)],
+        {
+            "embedding_model": str(model_dir),
+            "guardrails": [{"type": "injection", "vectors": str(artifact), "floor": 0.99, "margin": 0.10}],
+        },
+    )
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith("KEPT")
+    assert "below the floor 0.99" in result.output
+
+
+def test_check_without_an_artifact_says_where_to_get_one(model_dir: Path, embedder):
+    result = invoke(["check", "attack"], {"embedding_model": str(model_dir)})
+
+    assert result.exit_code != 0
+    assert "train-guard" in result.output
