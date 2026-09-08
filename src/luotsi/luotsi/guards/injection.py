@@ -7,7 +7,6 @@ Drops feedback that tries to instruct the language model instead of commenting o
 
 import logging
 import unicodedata
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..abc import FeedbackItem, Guardrail
@@ -20,9 +19,6 @@ if TYPE_CHECKING:
     from ..embeddings import Embedder, Vector
 
 logger = logging.getLogger(__name__)
-
-PACKAGED_VECTORS = Path(__file__).parent / "data" / "vectors.potion-multilingual-128M.json"
-"""Artifact shipped with the package, so the default configuration works without anyone running training."""
 
 INDICATORS: tuple[str, ...] = (
     "ignore previous instructions",
@@ -96,39 +92,53 @@ class InjectionGuard(Guardrail):
     """
     Drops messages that try to instruct the model.
 
-    Two tiers. The blocklist catches known phrases verbatim and always runs. The centroid tier — active only when
-    an embedding model is configured — also catches rewordings of the trained attack catalog.
+    Two tiers. The blocklist catches known phrases verbatim and always runs. The centroid tier also catches
+    rewordings of the trained attack catalog, and needs both an embedding model and a trained artifact. No
+    artifact ships with this package: it is bound to one embedding model, so it is generated per deployment with
+    `meri feedback train-guard`.
     """
 
     name = "injection"
 
-    def __init__(self, config: InjectionConfig, embed: "Embedder | None" = None) -> None:
+    def __init__(self, config: InjectionConfig, embed: "Embedder | None" = None, model_name: str | None = None) -> None:
         """
         :param config: Guard configuration.
         :param embed: Shared embedding callable. Without one, only the blocklist tier runs.
-        :raises ValueError: When the trained artifact does not match the live embedding model.
+        :param model_name: Name of the configured embedding model, to check the artifact was trained with it.
+        :raises ValueError: When the configured artifact is missing or does not match the live embedding model.
         """
         self.config = config
         self.blocklist = tuple(blocklist_key(phrase) for phrase in (*INDICATORS, *config.blocklist))
         self.embed = embed
-        self.vectors = self._load_vectors(config, embed) if embed else None
+        self.vectors = self._load_vectors(config, embed, model_name) if embed and config.vectors else None
 
-        if not embed:
-            logger.warning("%s: no embedding model configured, running the blocklist tier only", self.name)
+        if not self.vectors:
+            logger.warning(
+                "%s: running the blocklist tier only. The centroid tier needs an embedding model and a trained "
+                "artifact; generate one with `meri feedback train-guard`.",
+                self.name,
+            )
 
     @staticmethod
-    def _load_vectors(config: InjectionConfig, embed: "Embedder") -> GuardVectors:
+    def _load_vectors(config: InjectionConfig, embed: "Embedder", model_name: str | None) -> GuardVectors:
         """
-        Load the trained artifact eagerly, and check it against the live model.
+        Load the configured artifact eagerly, and check it against the live model.
 
-        Loading here rather than on first use means a mismatch fails at start, before any LLM spend.
+        Loading here rather than on first use means a missing file or a model mismatch fails at start, before any
+        LLM spend. A path that is set but unusable is a broken deployment, never a reason to degrade quietly.
+
+        The dimension check is the hard guarantee. The name check catches the subtler case of a different model
+        of the same width, where every score would be quietly wrong rather than obviously broken.
         """
-        path = config.vectors or PACKAGED_VECTORS
-        artifact = GuardVectors.load(path, dim=len(embed("dimension probe")))
+        assert config.vectors is not None
+        artifact = GuardVectors.load(config.vectors, dim=len(embed("dimension probe")))
 
-        if artifact.model_name not in str(path):
+        if model_name and artifact.model_name != model_name:
             logger.warning(
-                "Guard vectors were trained on %s — verify it matches the configured model", artifact.model_name
+                "Guard vectors were trained on %r but the configured model is %r. Retrain them with "
+                "`meri feedback train-guard`.",
+                artifact.model_name,
+                model_name,
             )
         return artifact
 

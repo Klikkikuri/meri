@@ -163,9 +163,10 @@ rahti:
 #     - type: csv
 #       path: "/app/instance/feedback.csv"
 #
-#   # Local Model2Vec directory, provisioned with `luotsi download-model`. Shared by message consolidation and the
-#   # injection guard's centroid tier. Omit for the built-in mode: character-n-gram consolidation and a
-#   # blocklist-only injection guard. A path that is set but cannot load fails the run at start, by design.
+#   # Local Model2Vec directory, provisioned with `meri feedback download-model <dir>`. Shared by message
+#   # consolidation and the injection guard's centroid tier. Omit for the built-in mode: character-n-gram
+#   # consolidation and a blocklist-only injection guard. A path that is set but cannot load fails the run at
+#   # start, by design.
 #   embedding_model: "/app/instance/potion-multilingual-128M"
 #
 #   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
@@ -174,7 +175,10 @@ rahti:
 #     - type: pii                 # redact emails, phone numbers, IP addresses and URLs
 #     - type: injection
 #       # blocklist: ["extra literal phrase"]   # added to the built-in indicators
-#       # vectors: "/app/instance/vectors.json" # overrides the artifact packaged with Luotsi
+#       # The trained centroid artifact. No artifact ships with Luotsi — it is bound to the embedding model that
+#       # produced it — so generate one with `meri feedback train-guard`, which writes to exactly this path.
+#       # Without it the guard runs its blocklist tier only, and says so at startup.
+#       vectors: "/app/instance/guard-vectors.json"
 #       floor: 0.60               # minimum similarity to an injection centroid before a drop is possible
 #       margin: 0.10              # how far it must exceed the closest benign centroid to actually drop
 #     - type: language

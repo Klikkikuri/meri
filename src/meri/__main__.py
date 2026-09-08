@@ -31,6 +31,7 @@ from .lautta import (
     should_skip_processing,
 )
 from .bootstrap import setup
+from .feedback_cli import cli as feedback_cli
 from .feedback import (
     ArticleFeedback,
     FeedbackMatcher,
@@ -331,6 +332,9 @@ def test(ctx: click.Context, url: str, with_paywalled: bool):
     predictor = TitlePredictor()
     result = predictor.run(article)
     pprint(result.model_dump())
+
+
+cli.add_command(feedback_cli)
 
 
 if __name__ == "__main__":

@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "click>=8.1.8",
     "langdetect>=1.0.9",
     "pydantic>=2.10.5",
     "requests>=2.32.3",
@@ -20,9 +19,6 @@ dependencies = [
 semantic = [
     "model2vec>=0.6.0",
 ]
-
-[project.scripts]
-luotsi = "luotsi.__main__:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["luotsi"]

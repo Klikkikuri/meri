@@ -19,6 +19,9 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
+DATA_DIR = Path(__file__).parent / "data"
+"""Where the curated exemplar files live."""
+
 LABEL_PREFIX = "__label__"
 
 BENIGN = "benign"
@@ -26,6 +29,16 @@ BENIGN = "benign"
 
 INJECTION = "injection"
 """The drop class this guard ships with."""
+
+
+def packaged_exemplars() -> list[Path]:
+    """
+    The curated exemplar files shipped with Luotsi, one per language.
+
+    The exemplars ship because they are this package's domain knowledge and the tuning surface. The vectors
+    trained FROM them do not: an artifact is bound to one embedding model, so each deployment trains its own.
+    """
+    return sorted(DATA_DIR.glob("exemplars.*.txt"))
 
 
 @dataclass(frozen=True)

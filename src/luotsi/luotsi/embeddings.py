@@ -24,6 +24,28 @@ logger = logging.getLogger(__name__)
 
 INSTALL_HINT = "Install the semantic extra to use an embedding model: pip install 'luotsi[semantic]'"
 
+DEFAULT_MODEL = "minishlab/potion-multilingual-128M"
+"""101 languages in one 256-dimension vector space, so Finnish and English feedback share a metric."""
+
+
+def download_model(target_dir: Path, model: str = DEFAULT_MODEL) -> None:
+    """
+    Fetch a Model2Vec model from the hub and save it locally.
+
+    Provisioning the model this way keeps hub access out of the runtime container.
+
+    :param target_dir: Where to save the model.
+    :param model: Hub identifier of the model to fetch.
+    :raises ImportError: When the `semantic` extra is not installed.
+    """
+    try:
+        from model2vec import StaticModel
+    except ImportError as e:
+        raise ImportError(INSTALL_HINT) from e
+
+    logger.info("Downloading %s", model)
+    StaticModel.from_pretrained(model).save_pretrained(str(target_dir))
+
 
 @cache
 def load_embedder(path: Path) -> "Embedder":

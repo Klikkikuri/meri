@@ -27,7 +27,8 @@ class Luotsi:
         self.sources = [self._build_source(config) for config in settings.sources]
         # A configured model is a hard requirement: load errors propagate rather than degrade the guard silently.
         embed = load_embedder(settings.embedding_model) if settings.embedding_model else None
-        self.guards = build_guards(settings.guardrails, embed=embed)
+        model_name = settings.embedding_model.name if settings.embedding_model else None
+        self.guards = build_guards(settings.guardrails, embed=embed, model_name=model_name)
         logger.info(
             "Initialized Luotsi with %d feedback source(s) and %d guard(s)", len(self.sources), len(self.guards)
         )

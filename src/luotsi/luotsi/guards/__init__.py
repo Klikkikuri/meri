@@ -54,12 +54,14 @@ copy of the message, and truncation runs last so the cap applies to the final te
 def build_guards(
     configs: list[GuardrailConfig] | None,
     embed: "Embedder | None" = None,
+    model_name: str | None = None,
 ) -> list[Guardrail]:
     """
     Build the guardrail chain.
 
     :param configs: Guard configurations, in the order they run. ``None`` selects :data:`DEFAULT_CHAIN`.
     :param embed: Shared embedding callable. Guards with a semantic tier stay on their literal tier without it.
+    :param model_name: Name of the configured embedding model, for guards that load a model-bound artifact.
     :return: The constructed guards.
     """
     guards: list[Guardrail] = []
@@ -70,7 +72,7 @@ def build_guards(
             case PiiConfig():
                 guards.append(PiiRedactionGuard(config))
             case InjectionConfig():
-                guards.append(InjectionGuard(config, embed))
+                guards.append(InjectionGuard(config, embed, model_name))
             case LanguageConfig():
                 guards.append(LanguageGuard(config))
             case TruncateConfig():

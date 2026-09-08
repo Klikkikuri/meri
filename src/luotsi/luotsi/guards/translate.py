@@ -17,6 +17,9 @@ from .labeled import LABEL_PREFIX, LabeledLine, parse, write
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+DEFAULT_MODEL = "gpt-4o-mini"
+
 BATCH_SIZE = 20
 """Lines per request. Small batches keep a model from losing the line-to-line correspondence."""
 
@@ -31,7 +34,12 @@ Rules:
 - Output only the translated lines. No commentary, no numbering, no code fences."""
 
 
-def translate(exemplars: list[LabeledLine], language: str, endpoint: str, model: str) -> list[LabeledLine]:
+def translate(
+    exemplars: list[LabeledLine],
+    language: str,
+    endpoint: str = DEFAULT_ENDPOINT,
+    model: str = DEFAULT_MODEL,
+) -> list[LabeledLine]:
     """
     Translate labeled exemplars, keeping their labels and their order.
 
