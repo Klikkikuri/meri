@@ -13,6 +13,7 @@ prompt, and nowhere else. It is never logged and never persisted to Rahti — on
 moves.
 """
 
+import re
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from typing import NamedTuple
@@ -22,6 +23,7 @@ from niitti import get_logger
 
 from luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
 
+from .abc import ClickbaitScale
 from .article import Article
 
 logger = get_logger(__name__)
@@ -40,6 +42,39 @@ class TitleVotes(NamedTuple):
     good: int
     bad: int
     suggestions: int
+    level: ClickbaitScale | None = None
+    """
+    Clickbaitiness the ORIGINAL headline was rated at when this title was published.
+
+    Readers rate a title without being told why it was rewritten, so the level is the missing half of what they
+    are reacting to: "three negatives at Moderately Clickbaity" is evidence about the rating, not just the
+    wording. Defaults to None for a title whose rows carry no level, or one this scale does not know.
+    """
+
+
+_LEVELS: dict[str, ClickbaitScale] = {
+    re.sub(r"[^a-z0-9]", "", level.value.lower()): level for level in ClickbaitScale
+}
+"""Scale values, folded so spacing and casing in a spreadsheet cell do not matter."""
+
+_LEVELS["notclickbaity"] = ClickbaitScale.NONE
+"""The reader widget's wording for the bottom of the scale, which is not the enum's own."""
+
+
+def _parse_level(raw: str | None) -> ClickbaitScale | None:
+    """
+    Read a `clickbaitLevel` cell as a scale value.
+
+    The column is free text written by the widget, not by this code, so an unknown value is dropped rather than
+    guessed at: a wrong level in the prompt is worse than no level.
+    """
+    if not raw:
+        return None
+
+    level = _LEVELS.get(re.sub(r"[^a-z0-9]", "", raw.lower()))
+    if level is None:
+        logger.debug("Unknown clickbait level in feedback", level=raw)
+    return level
 
 
 class ArticleFeedback(NamedTuple):
@@ -159,10 +194,17 @@ def _tally_titles(feedback: list[Feedback]) -> list[TitleVotes]:
     """
     tallies: dict[str | None, Counter[FeedbackType]] = defaultdict(Counter)
     newest: dict[str | None, datetime] = {}
+    levels: dict[str | None, ClickbaitScale | None] = {}
 
     for item in feedback:
         tallies[item.converted_title][item.type] += 1
-        newest[item.converted_title] = max(newest.get(item.converted_title, OLDEST), item.submitted_at or OLDEST)
+
+        # The level a title was published at can change between regenerations while the title itself does not,
+        # so the newest row wins: it is the rating the most recent readers were reacting to.
+        when = item.submitted_at or OLDEST
+        if when >= newest.get(item.converted_title, OLDEST) or item.converted_title not in levels:
+            levels[item.converted_title] = _parse_level(item.clickbait_level) or levels.get(item.converted_title)
+        newest[item.converted_title] = max(newest.get(item.converted_title, OLDEST), when)
 
     return [
         TitleVotes(
@@ -170,6 +212,7 @@ def _tally_titles(feedback: list[Feedback]) -> list[TitleVotes]:
             good=tallies[title][FeedbackType.GOOD],
             bad=tallies[title][FeedbackType.BAD],
             suggestions=tallies[title][FeedbackType.SUGGESTION],
+            level=levels.get(title),
         )
         for title in sorted(tallies, key=lambda title: newest[title], reverse=True)
     ]

@@ -30,8 +30,16 @@ def make_feedback(
     type: FeedbackType = FeedbackType.GOOD,
     title: str | None = "Generated title",
     submitted_at: datetime | None = NOON,
+    clickbait_level: str | None = None,
 ) -> Feedback:
-    return Feedback(type=type, message=message, url_sign=url_sign, converted_title=title, submitted_at=submitted_at)
+    return Feedback(
+        type=type,
+        message=message,
+        url_sign=url_sign,
+        converted_title=title,
+        submitted_at=submitted_at,
+        clickbait_level=clickbait_level,
+    )
 
 
 def make_article(*hrefs: str) -> Article:
@@ -183,8 +191,8 @@ def test_scoreboard_groups_votes_by_generated_title(_hash, clusterer: MessageClu
 
     assert result is not None
     # Newest-voted title first, and positive votes are tallied even though they never trigger a regeneration.
-    assert result.titles[0] == ("Second try", 1, 0, 1)
-    assert result.titles[1] == ("First try", 1, 1, 0)
+    assert result.titles[0] == ("Second try", 1, 0, 1, None)
+    assert result.titles[1] == ("First try", 1, 1, 0, None)
 
 
 @hash_urls
@@ -321,3 +329,97 @@ def test_prompt_escapes_reader_text_and_shows_the_report_count():
     assert "<b>" not in prompt
     assert "Otsikko on huono" in prompt
     assert "<reported_times>7</reported_times>" in prompt
+
+
+# --- The clickbaitiness readers were reacting to --------------------------------
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("Moderately Clickbaity", ClickbaitScale.MODERATE),
+        # The widget writes its own wording for the bottom of the scale, not the enum's.
+        ("Not Clickbaity", ClickbaitScale.NONE),
+        ("Not Clickbait at all", ClickbaitScale.NONE),
+        ("  very   clickbaity  ", ClickbaitScale.HIGH),
+        # A level this scale does not know is dropped: a wrong level in the prompt is worse than no level.
+        ("Somewhat spicy", None),
+        ("", None),
+        (None, None),
+    ],
+)
+@hash_urls
+def test_level_is_read_from_the_widgets_wording(_hash, clusterer: MessageClusterer, raw, expected):
+    article = make_article("https://example.com/article-1")
+    feedback = [make_feedback("sig::https://example.com/article-1", clickbait_level=raw)]
+
+    result = feedback_for_article(FeedbackMatcher(feedback), article, clusterer, limit=3)
+
+    assert result is not None
+    assert result.titles[0].level is expected
+
+
+@hash_urls
+def test_the_newest_row_decides_the_level(_hash, clusterer: MessageClusterer):
+    """A title can be republished at a new rating, so the level readers last reacted to is the current one."""
+    sign = "sig::https://example.com/article-1"
+    feedback = [
+        make_feedback(sign, submitted_at=NOON, clickbait_level="Very Clickbaity"),
+        make_feedback(sign, submitted_at=NOON.replace(hour=14), clickbait_level="Slightly Clickbaity"),
+    ]
+
+    result = feedback_for_article(FeedbackMatcher(feedback), make_article("https://example.com/article-1"), clusterer, 3)
+
+    assert result is not None
+    assert result.titles[0].level is ClickbaitScale.LOW
+
+
+@hash_urls
+def test_a_row_without_a_level_does_not_erase_a_known_one(_hash, clusterer: MessageClusterer):
+    """Only some rows carry the column, so a blank must not overwrite what an earlier row established."""
+    sign = "sig::https://example.com/article-1"
+    feedback = [
+        make_feedback(sign, submitted_at=NOON, clickbait_level="Extremely Clickbaity"),
+        make_feedback(sign, submitted_at=NOON.replace(hour=14), clickbait_level=None),
+    ]
+
+    result = feedback_for_article(FeedbackMatcher(feedback), make_article("https://example.com/article-1"), clusterer, 3)
+
+    assert result is not None
+    assert result.titles[0].level is ClickbaitScale.EXTREME
+
+
+def test_prompt_shows_the_level_the_title_was_published_at():
+    """Readers never see the rating, so the prompt is where the vote and the rating are put side by side."""
+    feedback = ArticleFeedback(
+        titles=[TitleVotes("Otsikko", good=0, bad=3, suggestions=0, level=ClickbaitScale.MODERATE)],
+        items=[],
+    )
+
+    prompt = render_feedback_prompt(feedback)
+
+    assert '- "Otsikko" (original rated Moderately Clickbaity): 0 positive, 3 negative, 0 suggestion(s)' in prompt
+
+
+def test_prompt_omits_the_level_when_it_is_unknown():
+    """Older rows carry no level, and an absent rating must not read as a rating of nothing."""
+    feedback = ArticleFeedback(titles=[TitleVotes("Otsikko", 0, 3, 0)], items=[])
+
+    prompt = render_feedback_prompt(feedback)
+
+    assert '- "Otsikko": 0 positive, 3 negative, 0 suggestion(s)' in prompt
+    assert "original rated" not in prompt
+
+
+def test_prompt_permits_revising_the_level_but_not_on_votes_alone():
+    """
+    The level is the one thing feedback may change, and it is the one unguarded channel.
+
+    Luotsi's guards classify text; a vote carries none, so nothing stops a campaign of negatives. The prompt is
+    the only place that can refuse to let counts move the rating, so assert the refusal is actually in it.
+    """
+    prompt = render_feedback_prompt(ArticleFeedback(titles=[TitleVotes("Otsikko", 0, 3, 0)], items=[]))
+
+    assert "original_title_clickbaitiness" in prompt
+    assert "NEVER revise it on vote counts alone" in prompt
+    assert "the ARTICLE TEXT bears it out" in prompt

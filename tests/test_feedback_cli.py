@@ -424,7 +424,9 @@ def test_show_renders_the_prompt_block(tmp_path: Path):
 
     assert result.exit_code == 0, result.output
     assert "<reader_feedback>" in result.output
-    assert '"Title A": 1 positive, 1 negative, 0 suggestion(s)' in result.output
+    # The CSV writes the widget's wording, "Not Clickbaity", which is not a ClickbaitScale value; seeing
+    # the scale's own name here proves the alias resolved.
+    assert '"Title A" (original rated Not Clickbait at all): 1 positive, 1 negative, 0 suggestion(s)' in result.output
     assert "still too long" in result.output
 
 
