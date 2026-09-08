@@ -32,6 +32,7 @@ from .lautta import (
 )
 from .bootstrap import setup
 from .cli.feedback import cli as feedback_cli
+from .cli.headlines import cli as headlines_cli
 from .feedback import (
     ArticleFeedback,
     FeedbackMatcher,
@@ -335,6 +336,7 @@ def test(ctx: click.Context, url: str, with_paywalled: bool):
 
 
 cli.add_command(feedback_cli)
+cli.add_command(headlines_cli)
 
 
 if __name__ == "__main__":

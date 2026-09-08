@@ -88,6 +88,8 @@ uv run meri run --sample         # full pipeline, limited to the 5 newest articl
 uv run meri run --max-workers 1  # serial, for debugging
 uv run meri test <article-url>   # extract + generate a headline for one URL, without writing to Rahti
 uv run meri list-sources
+uv run meri headlines --limit 10  # newest headlines from the sources, without extracting or generating
+uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
 ```
 
 ## Architecture
