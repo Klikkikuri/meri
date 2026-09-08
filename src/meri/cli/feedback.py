@@ -23,7 +23,7 @@ try:
 except ImportError:
     import click  # type: ignore[no-redef]
 
-from .settings.settings import Settings
+from ..settings.settings import Settings
 
 logger = get_logger(__name__)
 

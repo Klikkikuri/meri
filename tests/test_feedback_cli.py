@@ -12,7 +12,7 @@ import pytest
 from click.testing import CliRunner
 from luotsi.guards.vectors import GuardVectors
 
-from meri.feedback_cli import cli
+from meri.cli.feedback import cli
 from meri.settings.settings import Settings
 
 RAHTI = {"url": "file:///app/instance/rahti/data.json"}
@@ -37,7 +37,7 @@ def model_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def embedder(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setattr("meri.feedback_cli.load_embedder", lambda _path: stub_embed)
+    monkeypatch.setattr("meri.cli.feedback.load_embedder", lambda _path: stub_embed)
 
 
 def settings_with(luotsi: dict | None) -> Settings:
@@ -111,7 +111,7 @@ def test_train_guard_without_a_destination_says_where_to_set_one(model_dir: Path
 def test_download_model_delegates_and_prints_the_config_line(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     """TARGET_DIR is an argument, not a setting: this runs before the model can be configured."""
     calls = []
-    monkeypatch.setattr("meri.feedback_cli.download_model", lambda target, model: calls.append((target, model)))
+    monkeypatch.setattr("meri.cli.feedback.download_model", lambda target, model: calls.append((target, model)))
 
     target = tmp_path / "model"
     result = CliRunner().invoke(cli, ["download-model", str(target)], obj={"settings": settings_with(None)})
@@ -125,7 +125,7 @@ def test_translate_exemplars_writes_the_translation(tmp_path: Path, monkeypatch:
     from luotsi.guards.labeled import LabeledLine
 
     monkeypatch.setattr(
-        "meri.feedback_cli.translate", lambda lines, lang, **kw: [LabeledLine(line.label, "käännös") for line in lines]
+        "meri.cli.feedback.translate", lambda lines, lang, **kw: [LabeledLine(line.label, "käännös") for line in lines]
     )
     source = tmp_path / "src.txt"
     source.write_text("__label__benign good headline\n", encoding="utf-8")

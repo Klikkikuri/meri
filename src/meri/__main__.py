@@ -31,7 +31,7 @@ from .lautta import (
     should_skip_processing,
 )
 from .bootstrap import setup
-from .feedback_cli import cli as feedback_cli
+from .cli.feedback import cli as feedback_cli
 from .feedback import (
     ArticleFeedback,
     FeedbackMatcher,
