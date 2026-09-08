@@ -10,13 +10,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 logger = get_logger(__name__)
 
 
-class GeneratorProviderError(ValueError):
-    """
-    Error raised when an unknown provider is specified.
-    """
-    pass
-
-
 class MissingGeneratorError(ImportError):
     """
     Error raised when a generator class is missing.

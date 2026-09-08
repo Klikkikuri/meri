@@ -39,8 +39,6 @@ from .const import (
     PKG_NAME,
 )
 from .llms import (
-    GeneratorProviderError,
-    GeneratorSettings,
     LLMSetting,
     detect_generators,
 )
@@ -59,15 +57,6 @@ _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 
 # Compiled Suola rules from the monorepo, built by `make rules` in the suola checkout.
 _suola_rules = Path("packages/suola/build/rules.json").resolve()
-
-
-def _iter_subclasses(base_cls):
-    """
-    Helper function to iterate over all subclasses of a base class, including indirect subclasses.
-    """
-    for sub_cls in base_cls.__subclasses__():
-        yield sub_cls
-        yield from _iter_subclasses(sub_cls)
 
 
 class SkipProcessingSettings(BaseModel):
@@ -168,32 +157,15 @@ class Settings(NiittiSettings):
     @model_validator(mode="before")
     @classmethod
     def parse_llm_settings(cls, values):
-        _logger = get_logger(__name__)
-        llm_list = values.get('llm', [])
+        """
+        Fill in `llm:` from the environment when the configuration names none.
 
-        # Find all subclasses of GeneratorSettings and map them by provider
-        provider_to_class = {}
-        for model_cls in _iter_subclasses(GeneratorSettings):
-            provider_field = model_cls.model_fields.get('provider')
-            if not provider_field:
-                continue
-            provider_to_class[provider_field.default] = model_cls
-        _logger.debug(f"Provider to class: {provider_to_class}")
+        The entries themselves need no help here: `LLMSetting` is a discriminated union, so pydantic maps
+        `provider:` to its settings class and reports an unknown one against the valid tags.
+        """
+        if not values.get("llm"):
+            values["llm"] = detect_generators(values)
 
-        # Load the settings using the provider class
-        settings_list = []
-        for llm in llm_list:
-            provider = llm['provider']
-            settings_class = provider_to_class.get(provider, None)
-            if not settings_class:
-                raise GeneratorProviderError(f"Unknown provider: {provider!r}. Available providers: {provider_to_class.keys()}")
-            settings_list.append(settings_class(**llm))
-
-        if len(settings_list) == 0:
-            settings_list += detect_generators(values)
-
-        _logger.debug("Validated LLM provider settings with %d provider", len(settings_list), extra={"settings": settings_list})
-        values['llm'] = settings_list
         return values
 
     @model_validator(mode="after")
