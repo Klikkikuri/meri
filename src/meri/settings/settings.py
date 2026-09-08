@@ -43,6 +43,7 @@ from .llms import (
     detect_generators,
 )
 from .newssources import NewsSource
+from .pipelines import PipelineSettings, UnknownLLMError
 from .rahti import RahtiFileSettings, RahtiSettings
 from .sulku import SulkuSettings
 
@@ -104,7 +105,10 @@ class Settings(NiittiSettings):
     PROMPT_DIR: Path = Field(Path(user_config_dir(PKG_NAME), "prompts"), description="Directory to store prompt templates.")
 
     llm: list[LLMSetting] = Field(default_factory=list, description="List of language models to use.")
-    pipelines: list[str] = Field([], description="List of pipeline definitions.")
+    pipelines: dict[str, PipelineSettings] = Field(
+        default_factory=dict,
+        description="Pipeline definitions, keyed by pipeline name. A pipeline with no entry uses the defaults.",
+    )
 
     sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
 
@@ -167,6 +171,31 @@ class Settings(NiittiSettings):
             values["llm"] = detect_generators(values)
 
         return values
+
+    @model_validator(mode="after")
+    def _check_pipeline_llms(self) -> "Settings":
+        """
+        Check that every LLM a pipeline names is configured.
+
+        Must run after validation, not before: `parse_llm_settings` is a before-validator, and only afterwards
+        does `self.llm` hold objects with a `.name`. A bad name fails here, at `bootstrap.setup()`, rather than
+        at the first generation.
+        """
+        known = [llm.name for llm in self.llm]
+
+        duplicates = sorted({name for name in known if known.count(name) > 1})
+        if duplicates:
+            raise UnknownLLMError(f"Duplicate LLM name(s) in `llm:`: {', '.join(duplicates)}. Names are keys.")
+
+        for pipeline, definition in self.pipelines.items():
+            for name in definition.llm:
+                if name not in known:
+                    raise UnknownLLMError(
+                        f"Pipeline {pipeline!r} names LLM {name!r}, which `llm:` does not configure. "
+                        f"Configured: {', '.join(known) or '(none)'}."
+                    )
+
+        return self
 
     @model_validator(mode="after")
     def _compute_user_agent(self) -> "Settings":
