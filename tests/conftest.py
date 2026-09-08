@@ -5,6 +5,7 @@ Global pytest fixtures for meri test suite.
 import pytest
 
 from meri.bootstrap import setup
+from meri.settings.settings import Settings
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +15,11 @@ def app_context(request, monkeypatch, tmp_path):
     """
     # Use the rules built into the Suola module, so signatures are deterministic and no test hits the network.
     monkeypatch.setenv("SUOLA_RULES", "")
+
+    # Settings discovery reads `/app/instance/config.yaml` among other fixed locations, so without this a test
+    # asserting that something is NOT configured passes or fails depending on the developer's own config file.
+    # A test states its whole configuration inline; nothing on this machine may leak into it.
+    monkeypatch.setattr(Settings, "get_default_config_locations", classmethod(lambda cls: []))
 
     # The container points `MERI_DATA_DIR` at `/app/instance`, which is a bind mount of the working copy. Clear it
     # along with the XDG roots, so a test that writes stays out of the working copy.
