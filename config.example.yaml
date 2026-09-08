@@ -279,9 +279,9 @@ pipelines:
     llm:
       - "Google Gemini"
       - "OpenRouter GPT-OSS-120b"
-    max_retries: 3
-    initial_delay: 1.0   # Seconds to wait before the second attempt.
-    backoff_factor: 2.0  # Multiplier applied to that delay after each failure.
+    max_retries: 3       # At least 1. Zero attempts is not a configuration, it is a stopped pipeline.
+    initial_delay: 1.0   # Seconds to wait before the second attempt. 0 retries immediately.
+    backoff_factor: 2.0  # Multiplier applied to that delay after each failure. At least 1.0, which holds it steady.
 
   # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
   # A maintainer tool, run by hand a few times a year. It is never used in a deployment.

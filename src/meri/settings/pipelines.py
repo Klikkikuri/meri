@@ -28,6 +28,14 @@ class PipelineSettings(BaseModel):
         default_factory=list,
         description="Names from `llm:`, tried in order. Empty means every configured LLM, in configuration order.",
     )
-    max_retries: int = Field(default=3, description="Total attempts, spent round-robin over the LLM chain.")
-    initial_delay: float = Field(default=1.0, description="Delay in seconds before the second attempt.")
-    backoff_factor: float = Field(default=2.0, description="Multiplier applied to the delay after each attempt.")
+    # Bounded here rather than at the retry loop: a delay is spent only after a generation has already failed,
+    # so an out-of-range value would lie dormant until the first LLM error and then surface as a `time.sleep`
+    # complaint naming nothing an operator configured.
+    max_retries: int = Field(default=3, ge=1, description="Total attempts, spent round-robin over the LLM chain.")
+    initial_delay: float = Field(default=1.0, ge=0.0, description="Delay in seconds before the second attempt.")
+    backoff_factor: float = Field(
+        default=2.0,
+        ge=1.0,
+        description="Multiplier applied to the delay after each attempt. 1.0 keeps the delay constant; less than "
+        "that is not backoff, and reads as a typo for the multiplier.",
+    )

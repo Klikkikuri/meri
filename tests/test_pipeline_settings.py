@@ -31,6 +31,35 @@ def test_a_definition_is_read_into_its_settings_model():
     assert definition.backoff_factor == 2.0
 
 
+@pytest.mark.parametrize(
+    "knob,value",
+    [
+        ("max_retries", 0),
+        ("max_retries", -1),
+        ("initial_delay", -1.0),
+        ("backoff_factor", 0.5),
+        ("backoff_factor", -2.0),
+    ],
+)
+def test_a_retry_knob_out_of_range_is_rejected_at_settings_load(knob, value):
+    """
+    A delay is spent only after a generation has failed, so a bad one waits for an outage to show itself.
+
+    Left unbounded it reaches `time.sleep` and fails there, naming a number the operator never wrote. The
+    configuration is what is wrong, so the configuration is where it has to fail.
+    """
+    with pytest.raises(ValidationError):
+        Settings(llm=[PRIMARY], pipelines={"title": {knob: value}})
+
+
+def test_a_constant_delay_is_a_valid_backoff():
+    """1.0 is not backoff, but it is a deliberate choice: retry at a fixed interval."""
+    settings = Settings(llm=[PRIMARY], pipelines={"title": {"backoff_factor": 1.0, "initial_delay": 0.0}})
+
+    assert settings.pipelines["title"].backoff_factor == 1.0
+    assert settings.pipelines["title"].initial_delay == 0.0
+
+
 def test_an_unknown_llm_name_is_rejected_naming_the_offender_and_the_valid_ones():
     """The message has to carry both halves, or the operator cannot tell what to write instead."""
     # Pydantic wraps a validator's ValueError, so UnknownLLMError reaches the operator inside a ValidationError.
