@@ -286,10 +286,7 @@ def test_feedback_survives_the_prompt_variable_filter():
     """
     from meri.pipelines.title import TitlePredictor
 
-    predictor = TitlePredictor()
-    predictor._build_pipeline()
-
-    assert "feedback" in predictor._prompt.variables
+    assert "feedback" in TitlePredictor()._prompt_builder().variables
 
 
 def test_prompt_is_empty_without_feedback():

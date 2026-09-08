@@ -1,4 +1,5 @@
 import inspect
+from typing import Any
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
@@ -8,12 +9,12 @@ from .settings import (
     Settings,
     settings,
 )
-from .settings.llms import GeneratorSettings
+from .settings.llms import GeneratorSettings, LLMSetting
 
 logger = get_logger(__name__)
 
 
-def resolve_llms(pipeline: str, settings: Settings = settings) -> list[GeneratorSettings]:
+def resolve_llms(pipeline: str, settings: Settings = settings) -> list[LLMSetting]:
     """
     Resolve the LLM chain a pipeline may use.
 
@@ -40,13 +41,13 @@ def resolve_llms(pipeline: str, settings: Settings = settings) -> list[Generator
     return chain
 
 
-def get_generator(llm: GeneratorSettings, **kwargs) -> object:
+def get_generator(llm: GeneratorSettings, **kwargs) -> Any:
     """
     Build the Haystack generator for one resolved LLM setting.
 
     :param llm: The LLM to build a generator for.
     :param kwargs: Merged into the generator's `generation_kwargs`.
-    :return: The generator instance.
+    :return: The generator instance. Typed loosely because the class is imported by name at runtime.
     """
 
     module, class_name = llm._generator.rsplit(".", 1)
