@@ -113,9 +113,15 @@ auto-discovered: every concrete `Outlet` subclass defining `valid_url` is collec
 `weight` order, with `generic.py` as the low-weight fallback.
 
 LLM pipelines derive from `pipelines/common.StructuredPipeline`, which builds a two-component Haystack pipeline
-(prompt builder → generator). The generator class is resolved from the `provider` in the `llm` config, and the
-pipeline's Pydantic `output_model` is passed as the provider's native structured-output format. Prompts are Jinja
-`.md.j2` templates in `src/meri/prompts/`, overridable from the user data directory.
+(prompt builder → generator) per LLM. The generator class is resolved from the `provider` in the `llm` config,
+and the pipeline's Pydantic `output_model` is passed as the provider's native structured-output format. Prompts
+are Jinja `.md.j2` templates in `src/meri/prompts/`, overridable from the user data directory.
+
+Which LLMs a pipeline may use is configured under `pipelines:`, keyed by the pipeline's `PIPELINE_NAME`. An entry
+names LLMs from the `llm:` list as a fallback chain; a pipeline with no entry gets every configured LLM. Its
+`max_retries` is a total attempt budget spent round-robin over that chain, so a provider that is down costs one
+attempt rather than the whole budget. A name that matches no `llm:` entry fails at startup. Pipeline-specific
+options live in the same entry and are validated by the pipeline that owns them. See `config.example.yaml`.
 
 Label selectors (`src/meri/labels.py`) use a Kubernetes-style syntax over an article's labels — selectors in a
 list OR together, comma-separated requirements within one selector AND together. See `skip_processing` in

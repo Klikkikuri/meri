@@ -18,6 +18,10 @@ feedback = Luotsi(settings).get_feedback()
 Luotsi is a library with no command line of its own. The maintainer commands live in Meri, under
 `meri feedback`, so that paths are read from configuration rather than retyped.
 
+Luotsi never imports Meri and carries no LLM client. That is now a property of the code rather than a rule to
+remember: nothing in this package talks to a language model. The one command that needs one, exemplar
+translation, runs as a Meri pipeline.
+
 ## The injection guard
 
 The guard has two tiers. The blocklist matches a short list of literal phrases that carry no reading other than
@@ -45,8 +49,17 @@ dropped: the benign class is a veto, so one well-chosen hard negative restores a
 feedback accrues, PII-scrubbed reader messages make better hard negatives than authored ones. Never commit raw
 reader messages.
 
-`meri feedback translate-exemplars` grows the data into a new language. It is a maintainer tool: run it, read the
-result, commit it. Deployments never translate.
+`meri feedback translate-exemplars` grows the data into a new language:
+
+```bash
+meri feedback translate-exemplars exemplars.en.txt exemplars.sv.txt --to Swedish
+```
+
+It runs as Meri's `feedback_translate` pipeline, so the model and its credentials come from Meri's `llm:` and
+`pipelines:` configuration. The label of each line is shown to the model as ground truth for what the line is,
+because an attack translated into polite prose is a weaker exemplar; the label itself is re-attached from the
+source, never read back from the answer. It is a maintainer tool: run it, read the result, commit it.
+Deployments never translate.
 
 ## Personal data
 

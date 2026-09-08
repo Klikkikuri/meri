@@ -243,3 +243,30 @@ llm:
     timeout: 30
     generation_kwargs:
       temperature: 0.0
+
+# --- Pipeline definitions ---
+# Which LLMs each pipeline may use, and how hard it tries. Every key is optional: a pipeline with no entry here
+# gets every LLM in `llm:` above, in that order, with the defaults shown below.
+pipelines:
+
+  # `llm:` names entries from the `llm:` list above, in the order to try them. An unknown name fails at startup.
+  # Leave it out, or leave it empty, to allow every configured LLM.
+  #
+  # `max_retries` is a TOTAL attempt budget, spent round-robin over that list: attempt 1 goes to the first name,
+  # attempt 2 to the second, attempt 3 back to the first. So a provider that is down costs one attempt instead
+  # of the whole budget. With a single LLM it is the plain retry count it has always been.
+  title:
+    llm:
+      - "Google Gemini"
+      - "OpenRouter GPT-OSS-120b"
+    max_retries: 3
+    initial_delay: 1.0   # Seconds to wait before the second attempt.
+    backoff_factor: 2.0  # Multiplier applied to that delay after each failure.
+
+  # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
+  # A maintainer tool, run by hand a few times a year. It is never used in a deployment.
+  feedback_translate:
+    llm:
+      - "OpenAI GPT-4o-mini"
+    # Lines per request. Small batches keep a model from losing the line-to-line correspondence.
+    batch_size: 20
