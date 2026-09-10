@@ -175,3 +175,6 @@ teemu/
 # Local History for devcontainer
 .devcontainer/bash_history
 .venv/
+
+# Written by cron.sh after each successful image build
+.cron-build-state
