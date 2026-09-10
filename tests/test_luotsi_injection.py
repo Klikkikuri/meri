@@ -21,7 +21,7 @@ from meri.luotsi.guards.trainer import source_digest, train_centroids, training_
 from meri.luotsi.guards.vectors import Centroid, GuardVectors
 from meri.luotsi.settings.guardrails import InjectionConfig
 
-DATA = Path(__file__).parents[1] / "src" / "luotsi" / "luotsi" / "guards" / "data"
+DATA = Path(__file__).parents[1] / "src" / "meri" / "luotsi" / "guards" / "data"
 
 # Three orthogonal axes stand in for an embedding space: "attack", "ordinary" and "unrelated".
 AXES = {"attack": [1.0, 0.0, 0.0], "ordinary": [0.0, 1.0, 0.0], "unrelated": [0.0, 0.0, 1.0]}
