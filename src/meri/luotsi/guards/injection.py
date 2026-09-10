@@ -95,8 +95,8 @@ class InjectionGuard(Guardrail):
     deployment that runs without an embedding model leaves `injection` out of its `guardrails` list instead.
 
     It READS its artifact and never writes one. Building it belongs to
-    :func:`~luotsi.guards.provision.ensure_guard_vectors`, which a host calls deliberately — the same division
-    :func:`~luotsi.embeddings.download_model` and :func:`~luotsi.embeddings.load_embedder` already make for the
+    :func:`~meri.luotsi.guards.provision.ensure_guard_vectors`, which a host calls deliberately — the same division
+    :func:`~meri.luotsi.embeddings.download_model` and :func:`~meri.luotsi.embeddings.load_embedder` already make for the
     embedding model. What the guard keeps is the refusal: an artifact whose exemplars, threshold, dimension or
     model no longer match is rejected by name rather than used, so nothing can classify against stale vectors.
     """

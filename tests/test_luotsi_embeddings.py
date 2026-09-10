@@ -9,7 +9,8 @@ interrupted download reads as finished for good.
 from pathlib import Path
 
 import pytest
-from luotsi.embeddings import load_embedder, model_exists
+
+from meri.luotsi.embeddings import load_embedder, model_exists
 
 
 def model2vec_layout(path: Path) -> Path:

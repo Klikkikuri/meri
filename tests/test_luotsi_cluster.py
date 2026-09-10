@@ -5,9 +5,14 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from luotsi.cluster import MessageClusterer, agglomerate, counter_cosine, ngram_counts
 
-from luotsi import Feedback, FeedbackType, LuotsiSettings
+from meri.luotsi import Feedback, FeedbackType, LuotsiSettings
+from meri.luotsi.cluster import (
+    MessageClusterer,
+    agglomerate,
+    counter_cosine,
+    ngram_counts,
+)
 
 # Deterministic stand-in vectors: messages sharing a leading tag land on the same axis.
 STUB_VECTORS = {

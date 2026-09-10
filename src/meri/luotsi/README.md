@@ -12,7 +12,7 @@ The default chain holds the injection guard, which needs an embedding model and 
 ## Use
 
 ```python
-from luotsi import Luotsi, LuotsiSettings
+from meri.luotsi import Luotsi, LuotsiSettings
 
 settings = LuotsiSettings(sources=[{"type": "csv", "path": "/app/instance/feedback.csv"}])
 feedback = Luotsi(settings).get_feedback()

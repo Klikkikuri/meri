@@ -5,12 +5,12 @@ from types import SimpleNamespace
 import click
 import pytest
 
-from luotsi import Feedback, FeedbackType, LuotsiSettings
 from meri.__main__ import run
 from meri.abc import ArticleLabels, article_url
 from meri.article import Article
 from meri.feedback import FeedbackMatcher
 from meri.lautta import ArticleTitleData, DiscoveredArticle, RahtiCleaner
+from meri.luotsi import Feedback, FeedbackType, LuotsiSettings
 from meri.settings.newssources import NewsSource
 
 
@@ -417,7 +417,7 @@ def configured_model(monkeypatch, ctx, tmp_path):
     model = tmp_path / "model"
     model.mkdir()
     ctx.obj["settings"].luotsi = LuotsiSettings(embedding_model=model)
-    monkeypatch.setattr("luotsi.cluster.load_embedder", lambda _path: lambda _text: None)
+    monkeypatch.setattr("meri.luotsi.cluster.load_embedder", lambda _path: lambda _text: None)
     return model
 
 

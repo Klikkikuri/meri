@@ -3,19 +3,31 @@ from datetime import datetime, timezone
 from importlib.util import find_spec
 
 from jinja2 import Template
-from luotsi import LuotsiSettings, provision
-from luotsi.cluster import MessageClusterer
-from luotsi.embeddings import load_embedder
-from opentelemetry import trace
-from sentry_sdk import monitor
 from niitti import get_logger
 from niitti.tracing import span
+from opentelemetry import trace
+from sentry_sdk import monitor
 
-from meri.settings import Settings
 from meri.abc import ArticleLabels
+from meri.luotsi import LuotsiSettings, provision
+from meri.luotsi.cluster import MessageClusterer
+from meri.luotsi.embeddings import load_embedder
+from meri.settings import Settings
 from meri.sulku import SulkuService
 
-
+from .article import Article
+from .bootstrap import setup
+from .cli.feedback import cli as feedback_cli
+from .cli.feedback import ensure_model
+from .cli.fetch import cli as fetch_cli
+from .cli.headlines import cli as headlines_cli
+from .feedback import (
+    ArticleFeedback,
+    FeedbackMatcher,
+    build_matcher,
+    feedback_for_article,
+    newest_actionable,
+)
 from .lautta import (
     ArticleTitleData,
     RahtiCleaner,
@@ -29,18 +41,6 @@ from .lautta import (
     matching_selector,
     prune_rahti,
     should_skip_processing,
-)
-from .bootstrap import setup
-from .cli.feedback import cli as feedback_cli, ensure_model
-from .cli.fetch import cli as fetch_cli
-from .cli.headlines import cli as headlines_cli
-from .article import Article
-from .feedback import (
-    ArticleFeedback,
-    FeedbackMatcher,
-    build_matcher,
-    feedback_for_article,
-    newest_actionable,
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache

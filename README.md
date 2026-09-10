@@ -4,6 +4,7 @@ Meta repository for the klikkikuri service
 ## Components
 
 - **meri 🌊**: The main service orchestrating the extraction and title generation pipeline.
+- **luotsi 🧭**: Reader feedback collection and guardrails, a subpackage of meri at `src/meri/luotsi` (see its `README.md`).
 - **suola 🧂**: WebAssembly module for url normalization.
 - **niitti 🪡**: Shared structured logging, OpenTelemetry tracing and Sentry setup.
 - **sulku 🌌**: AI-generated text detection service, consumed by meri over HTTP.

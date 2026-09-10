@@ -7,8 +7,7 @@ guard that resolution: what an unset key, a hub identifier, a path and an explic
 
 from pathlib import Path
 
-from luotsi.settings import LuotsiSettings
-
+from meri.luotsi.settings import LuotsiSettings
 from meri.settings.luotsi import (
     DEFAULT_EMBEDDING_MODEL,
     embedding_dir,

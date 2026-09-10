@@ -19,10 +19,10 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import NamedTuple
 
-from luotsi.cluster import MessageClusterer, MessageGroup
 from niitti import get_logger
 
-from luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi.cluster import MessageClusterer, MessageGroup
 
 from .abc import ClickbaitScale
 from .article import Article

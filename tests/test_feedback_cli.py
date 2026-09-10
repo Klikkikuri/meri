@@ -11,10 +11,10 @@ import click
 import numpy as np
 import pytest
 from click.testing import CliRunner
-from luotsi.embeddings import model_exists
-from luotsi.guards.vectors import GuardVectors
 
 from meri.cli.feedback import cli, ensure_model
+from meri.luotsi.embeddings import model_exists
+from meri.luotsi.guards.vectors import GuardVectors
 from meri.settings.luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors
 from meri.settings.luotsi import model_dir as resolved_dir
 from meri.settings.settings import Settings
@@ -590,7 +590,7 @@ def test_train_guard_records_the_same_identity_a_run_would(tmp_path: Path, model
     `train-guard` writes, the next run reads it, finds a model mismatch, retrains and writes back — and the
     operator's reviewed artifact is gone. Both must record what `model_identity` says.
     """
-    from luotsi.client import model_identity
+    from meri.luotsi.client import model_identity
 
     destination = tmp_path / "vectors.json"
     luotsi = {"embedding_model": str(model_dir), "guardrails": [{"type": "injection", "vectors": str(destination)}]}

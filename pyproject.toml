@@ -18,9 +18,9 @@ dependencies = [
     "httpx>=0.28.1",
     "jinja2-time>=0.2.0",
     "langdetect>=1.0.9",
-    "luotsi[semantic]",
     "lxml[html-clean]>=5.3.0",
     "markdownify>=0.14.1",
+    "model2vec>=0.6.0",
     "niitti[all]",
     "openrouter-haystack>=0.4.0",
     "opentelemetry-instrumentation-logging>=0.50b0",
@@ -35,6 +35,7 @@ dependencies = [
     "sentry-sdk>=2.48.0",
     "structlog>=25.1.0",
     "suola",
+    "tenacity>=9.0.0",
     "trafilatura>=2.0.0",
     "ultimate-sitemap-parser>=1.6.0",
     "url-normalize>=1.4.3",
@@ -83,7 +84,6 @@ suola = [
     #{ path = "packages/suola/python" },
     #{ workspace = true }
 ]
-luotsi = { path = "src/luotsi", editable = true }
 niitti = { workspace = true }
 #suola = { workspace = true }
 #karikko = { workspace = true }

@@ -3,7 +3,10 @@
 from pathlib import Path
 
 import pytest
-from luotsi.guards import (
+from test_luotsi_injection import ARTIFACT, STUB_LINES, stub_embed
+
+from meri.luotsi import Feedback, FeedbackItem, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi.guards import (
     DEFAULT_CHAIN,
     LanguageGuard,
     PiiRedactionGuard,
@@ -11,20 +14,17 @@ from luotsi.guards import (
     TruncateGuard,
     build_guards,
 )
-from luotsi.guards.labeled import write
-from luotsi.guards.provision import ensure_guard_vectors
-from luotsi.guards.trainer import source_digest
-from luotsi.settings.guardrails import (
+from meri.luotsi.guards.labeled import write
+from meri.luotsi.guards.provision import ensure_guard_vectors
+from meri.luotsi.guards.trainer import source_digest
+from meri.luotsi.settings.guardrails import (
     InjectionConfig,
     LanguageConfig,
     PiiConfig,
     SanitizeConfig,
     TruncateConfig,
 )
-from luotsi.settings.source import Csv
-from test_luotsi_injection import ARTIFACT, STUB_LINES, stub_embed
-
-from luotsi import Feedback, FeedbackItem, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi.settings.source import Csv
 
 FEEDBACK_CSV = Path(__file__).parent / "data" / "luotsi_feedback.csv"
 

@@ -24,7 +24,7 @@ def _default_exemplars() -> list[Path]:
     The labeled exemplar files shipped with Luotsi.
 
     Imported inside the function, not at module level: `guards` imports THIS module
-    (:mod:`luotsi.guards` pulls in the configuration classes), so a top-level import would close the cycle.
+    (:mod:`meri.luotsi.guards` pulls in the configuration classes), so a top-level import would close the cycle.
     It survives today only because `guards.labeled` happens to depend on nothing in its own package
     `__init__`, which is an accident rather than a guarantee.
     """

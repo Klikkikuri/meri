@@ -5,10 +5,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from luotsi.settings.source import Csv, GoogleSheets
-from luotsi.sources import CsvFeedbackSource, SheetsFeedbackSource
 
-from luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi.settings.source import Csv, GoogleSheets
+from meri.luotsi.sources import CsvFeedbackSource, SheetsFeedbackSource
 
 FEEDBACK_CSV = Path(__file__).parent / "data" / "luotsi_feedback.csv"
 

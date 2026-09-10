@@ -15,21 +15,22 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
-from luotsi.client import model_identity
-from luotsi.cluster import MessageClusterer
-from luotsi.embeddings import download_model, load_embedder, model_exists
-from luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
-from luotsi.guards.labeled import (
+from niitti import get_logger
+
+from meri.luotsi.client import model_identity
+from meri.luotsi.cluster import MessageClusterer
+from meri.luotsi.embeddings import download_model, load_embedder, model_exists
+from meri.luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
+from meri.luotsi.guards.labeled import (
     LabeledLine,
     parse,
     parse_files,
     write,
 )
-from luotsi.guards.provision import ensure_guard_vectors
-from luotsi.guards.trainer import training_report
-from luotsi.guards.vectors import GuardVectors
-from luotsi.settings import InjectionConfig, LuotsiSettings
-from niitti import get_logger
+from meri.luotsi.guards.provision import ensure_guard_vectors
+from meri.luotsi.guards.trainer import training_report
+from meri.luotsi.guards.vectors import GuardVectors
+from meri.luotsi.settings import InjectionConfig, LuotsiSettings
 
 try:
     import rich_click as click
@@ -38,7 +39,8 @@ except ImportError:
 
 if TYPE_CHECKING:
     from click import Command as CommandBase
-    from luotsi.embeddings import Embedder
+
+    from meri.luotsi.embeddings import Embedder
 else:
     # `cli.command()` builds RichCommands when rich_click is installed; subclass whichever is in play, so the
     # one command with a custom help still renders like every other.
@@ -119,7 +121,7 @@ def ensure_model(path: Path) -> bool:
     vectors. The hub identifier is the one the directory resolves from, so an operator names a model once and a
     run needs nothing else.
 
-    Publishes by rename, for the same reason :func:`~luotsi.guards.provision.write_artifact` does: runs overlap,
+    Publishes by rename, for the same reason :func:`~meri.luotsi.guards.provision.write_artifact` does: runs overlap,
     and a second process must never read a half-written model.
 
     :param path: The resolved model directory, from `luotsi.embedding_model`.

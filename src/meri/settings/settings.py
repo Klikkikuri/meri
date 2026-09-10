@@ -26,7 +26,6 @@ from typing import cast
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
-from luotsi.settings import LuotsiSettings
 from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
@@ -36,6 +35,8 @@ from niitti.settings.telemetry import TelemetrySettings
 from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
+
+from meri.luotsi.settings import LuotsiSettings
 
 from .const import (
     DEFAULT_BOT_ID,

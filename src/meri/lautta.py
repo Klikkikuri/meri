@@ -1,17 +1,18 @@
-from dataclasses import dataclass
-from collections import defaultdict
-from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
 import random
 import re
 import threading
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Iterable, List, NamedTuple, Optional, cast
 
 import pytz
 import wrapt
-from luotsi import Feedback
 from niitti import get_logger
 from niitti.logging import NiittiBoundLogger
+
+from meri.luotsi import Feedback
 
 from .abc import ArticleTitleResponse
 from .article import Article
@@ -22,8 +23,6 @@ from .rahti import RahtiData, RahtiEntry, RahtiUrl
 from .scraper import discover_articles, get_extractor
 from .settings import settings
 from .settings.newssources import NewsSource
-
-
 
 MAX_PARALLEL_FETCHES = 3
 

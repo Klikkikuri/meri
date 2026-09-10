@@ -39,7 +39,7 @@ def provision(settings: LuotsiSettings, *, force: bool = False) -> Path | None:
     """
     Bring the artifacts this configuration needs up to date. WRITES; call it deliberately.
 
-    The counterpart to :func:`~luotsi.embeddings.download_model`: guards read what a host has provisioned, and
+    The counterpart to :func:`~meri.luotsi.embeddings.download_model`: guards read what a host has provisioned, and
     a host provisions at a point of its choosing — before any spend, once per run — rather than having a
     constructor decide for it. A host that skips this does not get stale vectors; it gets a guard that refuses
     to build and says why.
