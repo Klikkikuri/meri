@@ -294,8 +294,11 @@ pipelines:
     # article's lead in the `embedding:` model's space, and fires when the generated headline scores lower than
     # the ORIGINAL headline by more than this margin. Off when `embedding:` is null. A headline still in the
     # wrong language after the revision marks the article `processing-failure=headline-language` and stores it
-    # without a generated title; persisting drift is accepted and logged at warning. The default is a starting
-    # point: the debug log prints both similarities on every review, which is what to tune it from.
+    # without a generated title; persisting drift is accepted and logged at warning. Accepted, because the
+    # measure has a known weakness: a static embedding rewards shared wording, so a tabloid original that
+    # repeats the article's own phrases can outscore a better headline that says the same thing in other words.
+    # The default is a starting point: the debug log prints both similarities on every review, which is what to
+    # tune it from.
     drift_margin: 0.1
 
   # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.

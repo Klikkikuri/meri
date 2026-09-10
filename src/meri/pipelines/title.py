@@ -109,6 +109,12 @@ def measure_drift(embed: Embedder, text: str, original: str, generated: str, mar
     the article's lead, which is what a headline summarises. A mean-pooled static vector of a whole long article
     would be diluted anyway.
 
+    Known weakness: the original headline is the yardstick, and a static embedding rewards shared surface words
+    over meaning. A tabloid original that repeats the article's own phrasing can outscore a better headline that
+    says what happened in other words — on a celebrity piece, "Arttu Wiskari astui kameroiden eteen muuttuneena"
+    scored 0.57 against a revised, more informative headline's 0.39, twice. This is why persisting drift is
+    accepted with a warning rather than rejected: the measure says "further from the wording", not "wrong".
+
     :param embed: The process-wide embedder.
     :param text: The article body.
     :param original: The outlet's headline, from the article metadata.
