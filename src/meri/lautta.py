@@ -16,6 +16,7 @@ from meri.luotsi import Feedback
 
 from .abc import ArticleTitleResponse
 from .article import Article
+from .exceptions import HeadlineRejected
 from .feedback import ArticleFeedback, newest_actionable
 from .labels import LabelSelector, LabelSet
 from .pipelines.title import TitlePredictor
@@ -60,6 +61,15 @@ def should_skip_processing(obj: Article | RahtiEntry | Iterable, selector_string
     Check if an article or RahtiEntry matches any label selector configured to skip title generation.
     """
     return matching_selector(obj, selector_strings) is not None
+
+
+PROCESSING_FAILURE_KEY = "processing-failure"
+"""The label key title generation records a failure under; its value is the reason. See `ArticleLabels`."""
+
+
+def has_processing_failure(article: Article) -> bool:
+    """Whether title generation has given up on the article for a reason a retry would not change."""
+    return LabelSet(article.labels).has_key(PROCESSING_FAILURE_KEY)
 
 
 @dataclass
@@ -605,6 +615,13 @@ def generate_titles(
                 with logger.span("generate_title", url=url_str):
                     try:
                         title_result = future.result()
+                    except HeadlineRejected as e:
+                        # Stored, not retried: the model's answer is near-deterministic, so the next run would
+                        # spend the same calls for the same rejection. The label keeps the entry current.
+                        logger.warning("Headline rejected, storing the article without one", url=url_str, reason=e.label.value)
+                        article.labels.append(e.label)
+                        skip_reason = e.label.value
+                        title_result = None
                     except Exception as e:
                         failed_count += 1
                         logger.error("Failed to generate title for article", url=url_str, error=str(e), exc_info=True)
@@ -630,7 +647,9 @@ def convert_for_rahti(source: NewsSource, article: Article, title: Optional[Arti
     updated = max(article.updated_at or minimum_date,
                   article.created_at or minimum_date)
 
-    is_skipped = should_skip_processing(article)
+    # A processing failure is stored like a skipped article: no generated title, and an entry current enough
+    # that `needs_updating` leaves it alone until the outlet changes the article.
+    is_skipped = should_skip_processing(article) or has_processing_failure(article)
 
     if not is_skipped and title is None:
         raise ValueError(

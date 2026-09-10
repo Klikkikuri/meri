@@ -58,7 +58,7 @@ def test_one_predictor_serves_every_article_without_cross_talk(monkeypatch):
         class StubPipeline:
             def run(self, inputs):
                 # The prompt builder is shared per LLM, so render through it: that is what would race.
-                rendered = prompt.run(template_variables=inputs["prompt_builder"])["prompt"][0].text
+                rendered = prompt.run(**inputs["prompt_builder"])["prompt"][0].text
                 marker = rendered.split("Body of article ")[1][0]
                 time.sleep(0.02)
                 return {"llm": {"replies": [title_reply(marker)]}}
@@ -68,6 +68,7 @@ def test_one_predictor_serves_every_article_without_cross_talk(monkeypatch):
         return StubPipeline()
 
     monkeypatch.setattr(TitlePredictor, "_make_pipeline", make_pipeline)
+    monkeypatch.setattr(TitlePredictor, "_embedder", lambda self: None)
     monkeypatch.setattr("meri.pipelines.common.settings", Settings(llm=[LLM]))
 
     results = generate_titles(articles)

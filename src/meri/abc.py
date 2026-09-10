@@ -192,12 +192,20 @@ class ArticleLabels(str, Enum):
 
         The page is primarily video content and lacks meaningful article text
 
+    - `com.github.klikkikuri/processing-failure=<reason>`:
+
+        Title generation gave up on the article for a reason that a retry would not change, so the article is
+        stored without a generated title instead of being regenerated on every run. One key, one value per
+        reason, so selectors can match the key alone or a set of reasons. `headline-language`: the generated
+        headline stayed in the wrong language after a revision turn.
+
     """
     PAYWALLED  = "com.github.klikkikuri/paywalled=true"
     SPONSORED  = "com.github.klikkikuri/sponsored=true"
     AI_SLOP    = "com.github.klikkikuri/ai-slop=true"
     HAS_VIDEO  = "com.github.klikkikuri/has-video=true"
     VIDEO      = "com.github.klikkikuri/type=video"
+    PROCESSING_FAILURE_HEADLINE_LANGUAGE = "com.github.klikkikuri/processing-failure=headline-language"
 
 
 class TitleQuorumLabel(str, Enum):

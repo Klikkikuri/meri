@@ -1,0 +1,9 @@
+Automated checks found problems with the headline you proposed: '{{revision.title|striptags|escape}}'.
+
+Review your answer above against the article, then return the full response again with a corrected headline that fixes every point below. Keep everything that was right; change only what these points require.
+{% if revision.language %}
+- The headline is written in '{{revision.language.detected}}', but the article is written in '{{revision.language.expected}}'. Write the headline in '{{revision.language.expected}}', as the Headline Language section requires.
+{% endif %}
+{% if revision.drift %}
+- The headline is further from the content of the article than the original headline is. Verify whether the original headline names details the article supports — the main event, who, where, or what changed — that your headline left out, and use them. Do not copy clickbait wording or unsupported claims from the original.
+{% endif %}

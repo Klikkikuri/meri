@@ -30,6 +30,7 @@
 #     - "sponsored=true"                         # OR match if sponsored=true
 #     - "type=video"                             # OR match if primary video content
 #     - "article-type in (opinion, review)"      # OR match if opinion or review
+#     - "processing-failure"                     # OR match any article title generation has given up on
 
 sentry:
   ## Sentry DSN for error tracking.
@@ -287,6 +288,15 @@ pipelines:
     max_retries: 3       # At least 1. Zero attempts is not a configuration, it is a stopped pipeline.
     initial_delay: 1.0   # Seconds to wait before the second attempt. 0 retries immediately.
     backoff_factor: 2.0  # Multiplier applied to that delay after each failure. At least 1.0, which holds it steady.
+    # Two guards check every generated headline and send it back once, as a continuation of the same
+    # conversation, when one fails: a headline in the wrong language (langdetect against the article's
+    # language), and one that drifts from the article. Drift compares each headline's cosine similarity to the
+    # article's lead in the `embedding:` model's space, and fires when the generated headline scores lower than
+    # the ORIGINAL headline by more than this margin. Off when `embedding:` is null. A headline still in the
+    # wrong language after the revision marks the article `processing-failure=headline-language` and stores it
+    # without a generated title; persisting drift is accepted and logged at warning. The default is a starting
+    # point: the debug log prints both similarities on every review, which is what to tune it from.
+    drift_margin: 0.1
 
   # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
   # A maintainer tool, run by hand a few times a year. It is never used in a deployment.
