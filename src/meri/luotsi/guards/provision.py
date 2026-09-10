@@ -6,7 +6,7 @@ model that produced it — so every deployment builds its own. This module is th
 publishes it. The guard itself only reads.
 
 That split is deliberate, and it follows the one this package already makes for the embedding model:
-:func:`~meri.luotsi.embeddings.download_model` fetches, :func:`~meri.luotsi.embeddings.load_embedder` loads and fails if
+:func:`~meri.embedding.download_model` fetches, :func:`~meri.embedding.load_embedder` loads and fails if
 nothing is there. A loader that quietly provisions is a loader that writes to disk when you thought you were
 reading, and it gives a host no way to say "check, but do not change anything".
 
@@ -25,7 +25,7 @@ from .trainer import source_digest, train_centroids
 from .vectors import GuardVectors
 
 if TYPE_CHECKING:
-    from ..embeddings import Embedder
+    from meri.embedding import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -198,7 +198,7 @@ def ensure_guard_vectors(
     logger.info("Training guard vectors from %d exemplar(s): %s", len(found.lines), reason)
     if not model_name:
         raise ValueError(
-            "The injection guard cannot record which model it trained with. Set `embedding_model`, or point "
+            "The injection guard cannot record which model it trained with. Set `embedding.model`, or point "
             "`vectors` at an artifact someone else trained."
         )
 

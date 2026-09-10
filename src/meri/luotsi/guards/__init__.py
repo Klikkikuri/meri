@@ -24,7 +24,7 @@ from .sanitize import SanitizeGuard
 from .truncate import TruncateGuard
 
 if TYPE_CHECKING:
-    from ..embeddings import Embedder
+    from meri.embedding import Embedder
 
 __all__ = [
     "DEFAULT_CHAIN",

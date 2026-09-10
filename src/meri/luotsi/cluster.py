@@ -16,11 +16,10 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from .abc import Feedback, FeedbackType
-from .embeddings import load_embedder
 from .settings import LuotsiSettings
 
 if TYPE_CHECKING:
-    from .embeddings import Embedder
+    from meri.embedding import Embedder
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +111,8 @@ class MessageClusterer:
         self.threshold = threshold
 
     @classmethod
-    def from_settings(cls, settings: LuotsiSettings) -> "MessageClusterer":
-        """Build a clusterer from configuration, sharing the process-wide embedding model when one is set."""
-        embed = load_embedder(settings.embedding_model) if settings.embedding_model else None
+    def from_settings(cls, settings: LuotsiSettings, embed: "Embedder | None" = None) -> "MessageClusterer":
+        """Build a clusterer from configuration, with the process-wide embedding model when one is set."""
         return cls(embed, settings.clustering.similarity_threshold)
 
     def group(self, feedbacks: Sequence[Feedback]) -> list[MessageGroup]:

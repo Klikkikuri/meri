@@ -151,6 +151,12 @@ python -m meri.settings show
 
 LLM:s can be configured in the `config.yaml` file in `llm` -section. If no specific LLM is configured, autodetection from environment variables is attempted (see below).
 
+### Embedding Model
+
+One Model2Vec model serves everything that embeds text: Luotsi's message consolidation and injection guard. It is
+named once under `embedding:` (see `config.example.yaml`), resolved and loaded by `meri.embedding`, and fetched by
+`meri run` when its directory is empty. `embedding: null` runs without one.
+
 ### Environment Variables
 
 - `DEBUG`: If set to `true`, debug mode is enabled.

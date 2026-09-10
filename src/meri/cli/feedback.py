@@ -9,17 +9,13 @@ The injection guard's centroid artifact is deliberately NOT shipped with Luotsi:
 model it was trained with, so each deployment trains its own from the exemplar data.
 """
 
-import os
-import shutil
-import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, NamedTuple
 
 from niitti import get_logger
 
-from meri.luotsi.client import model_identity
+from meri.embedding import download_model, get_embedder, load_embedder, model_identity
 from meri.luotsi.cluster import MessageClusterer
-from meri.luotsi.embeddings import download_model, load_embedder, model_exists
 from meri.luotsi.guards.evaluate import embed_lines, evaluate, explain, sweep
 from meri.luotsi.guards.labeled import (
     LabeledLine,
@@ -40,18 +36,13 @@ except ImportError:
 if TYPE_CHECKING:
     from click import Command as CommandBase
 
-    from meri.luotsi.embeddings import Embedder
+    from meri.embedding import Embedder
 else:
     # `cli.command()` builds RichCommands when rich_click is installed; subclass whichever is in play, so the
     # one command with a custom help still renders like every other.
     CommandBase = getattr(click, "RichCommand", click.Command)
 
-from ..settings.luotsi import (
-    DEFAULT_EMBEDDING_MODEL,
-    default_vectors,
-    hub_id_of,
-    model_dir,
-)
+from ..settings.embedding import DEFAULT_EMBEDDING_MODEL, hub_id_of, model_dir
 from ..settings.settings import Settings
 
 logger = get_logger(__name__)
@@ -65,14 +56,15 @@ def _luotsi_settings(ctx: click.Context) -> LuotsiSettings:
     return settings.luotsi
 
 
-def _embedding_model(settings: LuotsiSettings) -> Path:
+def _embedding_model(ctx: click.Context) -> Path:
     """Read the directory the configured model loads from, or say how to get one."""
-    if not settings.embedding_model:
+    settings: Settings = ctx.obj["settings"]
+    if not settings.embedding:
         raise click.ClickException(
-            "`luotsi.embedding_model` is null, so no model is configured. Name one, then provision it with "
+            "`embedding:` is null, so no model is configured. Name one, then provision it with "
             "`meri feedback download-model`."
         )
-    return settings.embedding_model
+    return settings.embedding.path
 
 
 def _embedder(path: Path) -> "Embedder":
@@ -93,14 +85,14 @@ def _configured_model(ctx: click.Context) -> Path | None:
     also runs while formatting `--help`, where the command has nothing to fail.
     """
     settings: Settings | None = (ctx.obj or {}).get("settings")
-    return settings.luotsi.embedding_model if settings and settings.luotsi else None
+    return settings.embedding.path if settings and settings.embedding else None
 
 
 def _download_defaults(ctx: click.Context, target_dir: Path | None, model: str | None) -> tuple[Path, str]:
     """
     Resolve what `download-model` fetches and where it saves it.
 
-    The configured `luotsi.embedding_model` drives both, so provisioning a deployment repeats nothing from
+    The configured `embedding.model` drives both, so provisioning a deployment repeats nothing from
     `config.yaml`: it names the directory to fill, and the hub identifier it was resolved from is the model to
     fetch into it.
 
@@ -111,56 +103,6 @@ def _download_defaults(ctx: click.Context, target_dir: Path | None, model: str |
     """
     destination = target_dir or _configured_model(ctx) or model_dir(DEFAULT_EMBEDDING_MODEL)
     return destination, model or hub_id_of(destination) or DEFAULT_EMBEDDING_MODEL
-
-
-def ensure_model(path: Path) -> bool:
-    """
-    Fetch the configured model when its directory holds none. WRITES, and reaches the hub.
-
-    What `meri run` calls so that a cold deployment provisions itself, the way it already trains its own guard
-    vectors. The hub identifier is the one the directory resolves from, so an operator names a model once and a
-    run needs nothing else.
-
-    Publishes by rename, for the same reason :func:`~meri.luotsi.guards.provision.write_artifact` does: runs overlap,
-    and a second process must never read a half-written model.
-
-    :param path: The resolved model directory, from `luotsi.embedding_model`.
-    :raises click.ClickException: When the directory names no hub model, or holds a partial one.
-    :return: True when it fetched a model, False when one was already there.
-    """
-    if model_exists(path):
-        return False
-
-    hub_id = hub_id_of(path)
-    if not hub_id or hub_id.count("/") != 1:
-        raise click.ClickException(
-            f"No model in {path}, and nothing says where to fetch one: it is not a directory a hub identifier "
-            f"resolves to. Provision it with `meri feedback download-model {path}`, or name a hub model in "
-            f"`luotsi.embedding_model`."
-        )
-
-    if path.exists() and any(path.iterdir()):
-        # An interrupted fetch, so this is not a directory to replace unasked; `download-model` writes in place
-        # and is the deliberate way to say "overwrite whatever is there".
-        raise click.ClickException(
-            f"{path} holds files but no loadable model, which is what an interrupted download leaves. "
-            f"`meri feedback download-model` fetches over it."
-        )
-
-    path.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(dir=path.parent, prefix=f".{path.name}."))
-    try:
-        download_model(staging, hub_id)
-        os.replace(staging, path)
-    except OSError:
-        # Two runs starting together fetch the same model into staging directories of their own; the loser
-        # renames onto a directory that is no longer empty. Its work is redundant, not failed.
-        if not model_exists(path):
-            raise
-    finally:
-        shutil.rmtree(staging, ignore_errors=True)
-
-    return True
 
 
 class ShowsResolvedDefaults(CommandBase):
@@ -197,7 +139,7 @@ def _vectors_path(settings: LuotsiSettings) -> Path:
     Mirrors the guard's own resolution — the injection guard's `vectors`, else the destination the settings
     resolved — so these commands read and write exactly the file a run would.
     """
-    return _injection_config(settings).vectors or settings.guard_vectors or default_vectors()
+    return _injection_config(settings).vectors or settings.guard_vectors
 
 
 class _Guard(NamedTuple):
@@ -219,7 +161,7 @@ def _load_guard(ctx: click.Context, vectors: Path | None, floor: float | None, m
     too rather than producing quietly meaningless scores.
     """
     settings = _luotsi_settings(ctx)
-    model_path = _embedding_model(settings)
+    model_path = _embedding_model(ctx)
     injection = _injection_config(settings)
 
     artifact_path = vectors or _vectors_path(settings)
@@ -248,7 +190,7 @@ def cli() -> None:
 @click.argument("target_dir", type=click.Path(path_type=Path), required=False)
 @click.option(
     "--model",
-    help="Model2Vec model to fetch from the hub. Defaults to the hub model `luotsi.embedding_model` names, "
+    help="Model2Vec model to fetch from the hub. Defaults to the hub model `embedding.model` names, "
     f"otherwise to {DEFAULT_EMBEDDING_MODEL}.",
 )
 @click.pass_context
@@ -256,7 +198,7 @@ def download(ctx: click.Context, target_dir: Path | None, model: str | None) -> 
     """
     Fetch a Model2Vec model into TARGET_DIR.
 
-    Both arguments default to the configured `luotsi.embedding_model`: it names the model to fetch, and the
+    Both arguments default to the configured `embedding.model`: it names the model to fetch, and the
     directory it resolves to is where the runs then load it from. Neither has to exist yet, so provisioning a
     configured deployment is this command with no arguments at all. Give TARGET_DIR only to save somewhere the
     configuration does not name; the command then prints the configuration line to add.
@@ -270,13 +212,13 @@ def download(ctx: click.Context, target_dir: Path | None, model: str | None) -> 
         raise click.ClickException(str(e)) from e
 
     if destination == _configured_model(ctx):
-        click.echo(f"Saved to {destination}, which is where `luotsi.embedding_model` loads from.")
+        click.echo(f"Saved to {destination}, which is where `embedding.model` loads from.")
         # Overwriting in place changes the weights but not the identifier or the dimension, so the injection
         # guard's artifact still reads as current and would keep centroids built from the old model.
         click.echo("If this replaced an existing model, run `meri feedback train-guard` to rebuild the guard.")
     else:
         click.echo(
-            f"Saved to {destination}. Add to your configuration:\n\n  luotsi:\n    embedding_model: "
+            f"Saved to {destination}. Add to your configuration:\n\n  embedding:\n    model: "
             f"{hub_id_of(destination) or destination.resolve()}\n"
         )
 
@@ -317,7 +259,7 @@ def train_guard(
     it alone.
     """
     settings = _luotsi_settings(ctx)
-    model_path = _embedding_model(settings)
+    model_path = _embedding_model(ctx)
 
     destination = output or _vectors_path(settings)
 
@@ -333,7 +275,7 @@ def train_guard(
     exemplars = parse_files(injection.data)
     # The same identity the run records, not the directory name: writing a different one here would have this
     # command and every run permanently disagree about whose artifact this is.
-    identity = model_identity(settings)
+    identity = model_identity(ctx.obj["settings"])
     click.echo(f"Training on {len(exemplars)} exemplar(s) with {identity} ...")
 
     embed = _embedder(model_path)
@@ -455,8 +397,10 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
     # This command reads; it does not provision. A guard whose vectors no longer match its exemplars refuses
     # to build, and that refusal is the answer to "why is feedback not reaching the model" — so it is worth a
     # sentence rather than a traceback.
+    meri_settings: Settings = ctx.obj["settings"]
     try:
-        matcher = build_matcher(settings)
+        embed = get_embedder(meri_settings)
+        matcher = build_matcher(settings, embed, model_identity(meri_settings))
     except FileNotFoundError as e:
         # The chain builds the model before the vectors, so an unprovisioned deployment fails here first.
         raise click.ClickException(
@@ -471,7 +415,7 @@ def show(ctx: click.Context, url: str, limit: int | None) -> None:
     aggregate = feedback_for_article(
         matcher,
         article,
-        MessageClusterer.from_settings(settings),
+        MessageClusterer.from_settings(settings, embed),
         settings.max_messages_per_article if limit is None else limit,
     )
 

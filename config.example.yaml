@@ -148,12 +148,26 @@ rahti:
     name: "[🤖 bot] Klikkikuri harbormaster"
     email: "klikkikuri+satamamestari@protonmail.com"
 
+# --- Embedding model ---
+# The Model2Vec model shared by everything in Meri that embeds text: Luotsi's message consolidation and
+# injection guard below. A hub identifier lives under the data directory, at
+# `$MERI_DATA_DIR/embedding/<identifier>`, so `model` names a model and never a path; give a path (absolute, or
+# starting with `.` or `~`) only for a model provisioned by other means. `meri run` fills the directory when it
+# holds no model — pass `--no-download-model` to keep hub access out of a run — and `meri feedback download-model`
+# fills it with no arguments, for provisioning ahead of time or fetching over what is there.
+# Omitting the block keeps the default below. `embedding: null` runs without a model: character-n-gram
+# consolidation and NO injection guard — that mode must also leave `injection` out of `luotsi.guardrails`,
+# because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
+# embedding:
+#   provider: local
+#   model: "minishlab/potion-multilingual-128M"
+
 # --- Luotsi (reader feedback) settings ---
 # Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
 # without reader feedback; a `luotsi:` key with nothing after it reads as null and does the same. An explicit
 # empty mapping (`luotsi: {}`) is the one that turns feedback ON with every default, which means the default
-# guardrail chain and so the injection guard. That needs an embedding model, which a run fetches for itself
-# the first time, exactly as it trains its own artifact.
+# guardrail chain and so the injection guard. That needs the embedding model above, which a run fetches for
+# itself the first time, exactly as it trains its own artifact.
 # luotsi:
 #   sources:
 #     - type: sheets
@@ -165,17 +179,6 @@ rahti:
 #       timestamp_format: "%m/%d/%Y %H:%M:%S"
 #     - type: csv
 #       path: "/app/instance/feedback.csv"
-#
-#   # The Model2Vec model shared by message consolidation and the injection guard's centroid tier. A hub
-#   # identifier lives under the data directory, at `$MERI_DATA_DIR/embedding/<identifier>`, so this
-#   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
-#   # provisioned by other means. `meri run` fills the directory when it holds no model — pass
-#   # `--no-download-model` to keep hub access out of a run — and `meri feedback download-model` fills it with
-#   # no arguments, for provisioning ahead of time or fetching over what is there.
-#   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
-#   # consolidation and NO injection guard — that mode must also leave `injection` out of `guardrails` below,
-#   # because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
-#   embedding_model: "minishlab/potion-multilingual-128M"
 #
 #   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
 #   guardrails:

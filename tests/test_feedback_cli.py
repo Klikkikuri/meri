@@ -7,16 +7,15 @@ guard the settings plumbing and the messages an operator sees when something is 
 
 from pathlib import Path
 
-import click
 import numpy as np
 import pytest
 from click.testing import CliRunner
 
-from meri.cli.feedback import cli, ensure_model
-from meri.luotsi.embeddings import model_exists
+from meri.cli.feedback import cli
 from meri.luotsi.guards.vectors import GuardVectors
-from meri.settings.luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors
-from meri.settings.luotsi import model_dir as resolved_dir
+from meri.luotsi.settings import default_vectors
+from meri.settings.embedding import DEFAULT_EMBEDDING_MODEL
+from meri.settings.embedding import model_dir as resolved_dir
 from meri.settings.settings import Settings
 
 RAHTI = {"url": "file:///app/instance/rahti/data.json"}
@@ -41,15 +40,30 @@ def model_dir(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def embedder(monkeypatch: pytest.MonkeyPatch):
+    """One stub for both loaders: the commands load through their own import, `show` through the matcher."""
     monkeypatch.setattr("meri.cli.feedback.load_embedder", lambda _path: stub_embed)
+    monkeypatch.setattr("meri.embedding.load_embedder", lambda _path: stub_embed)
 
 
-def settings_with(luotsi: dict | None) -> Settings:
-    return Settings.model_validate({"rahti": RAHTI, **({"luotsi": luotsi} if luotsi else {})})
+DEFAULT_MODEL = object()
+"""Leave `embedding:` out, so the settings resolve the default model."""
 
 
-def invoke(args: list[str], luotsi: dict | None):
-    return CliRunner().invoke(cli, args, obj={"settings": settings_with(luotsi)})
+def settings_with(luotsi: dict | None, model: Path | str | None | object = DEFAULT_MODEL) -> Settings:
+    """
+    :param luotsi: The `luotsi:` section, or None to leave feedback unconfigured.
+    :param model: The `embedding.model` value, None for `embedding: null`, or unset for the default model.
+    """
+    config: dict = {"rahti": RAHTI, **({"luotsi": luotsi} if luotsi is not None else {})}
+    if model is None:
+        config["embedding"] = None
+    elif model is not DEFAULT_MODEL:
+        config["embedding"] = {"model": str(model)}
+    return Settings.model_validate(config)
+
+
+def invoke(args: list[str], luotsi: dict | None, model: Path | str | None | object = DEFAULT_MODEL):
+    return CliRunner().invoke(cli, args, obj={"settings": settings_with(luotsi, model)})
 
 
 def test_train_guard_writes_the_configured_vectors_path(tmp_path: Path, model_dir: Path, embedder):
@@ -57,10 +71,8 @@ def test_train_guard_writes_the_configured_vectors_path(tmp_path: Path, model_di
     destination = tmp_path / "nested" / "vectors.json"
     result = invoke(
         ["train-guard"],
-        {
-            "embedding_model": str(model_dir),
-            "guardrails": [{"type": "injection", "vectors": str(destination)}],
-        },
+        {"guardrails": [{"type": "injection", "vectors": str(destination)}]},
+        model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -72,7 +84,7 @@ def test_train_guard_writes_the_configured_vectors_path(tmp_path: Path, model_di
 def test_train_guard_reports_the_self_check(tmp_path: Path, model_dir: Path, embedder):
     result = invoke(
         ["train-guard", "--output", str(tmp_path / "v.json")],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert "Self-check" in result.output
@@ -89,7 +101,7 @@ def test_train_guard_honours_explicit_data_files(tmp_path: Path, model_dir: Path
 
     result = invoke(
         ["train-guard", "--output", str(tmp_path / "v.json"), "--data", str(data)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert "Training on 2 exemplar(s)" in result.output
@@ -103,8 +115,8 @@ def test_train_guard_without_luotsi_configured_explains_why(tmp_path: Path):
 
 
 def test_train_guard_in_the_builtin_mode_names_the_provisioning_command(tmp_path: Path):
-    """`embedding_model: null` is the built-in mode, and the guard cannot be trained without a model."""
-    result = invoke(["train-guard", "--output", str(tmp_path / "v.json")], {"embedding_model": None})
+    """`embedding: null` is the built-in mode, and the guard cannot be trained without a model."""
+    result = invoke(["train-guard", "--output", str(tmp_path / "v.json")], {}, model=None)
 
     assert result.exit_code != 0
     assert "download-model" in result.output
@@ -117,7 +129,7 @@ def test_train_guard_falls_back_to_the_resolved_destination(model_dir: Path, emb
     It used to refuse for want of a destination; now the settings resolve one, and writing anywhere else
     would leave the run to retrain over it at the next start.
     """
-    result = invoke(["train-guard"], {"embedding_model": str(model_dir)})
+    result = invoke(["train-guard"], {}, model=model_dir)
 
     assert result.exit_code == 0, result.output
     assert default_vectors().exists()
@@ -138,12 +150,12 @@ def test_download_model_delegates_and_prints_the_config_line(tmp_path: Path, dow
 
     assert result.exit_code == 0, result.output
     assert downloads == [(target, "minishlab/potion-multilingual-128M")]
-    assert "embedding_model:" in result.output
+    assert "embedding:" in result.output
 
 
 def test_download_model_defaults_to_the_configured_directory(model_dir: Path, downloads: list):
     """The point of the default: a configured deployment re-provisions without repeating the path."""
-    result = invoke(["download-model"], {"embedding_model": str(model_dir)})
+    result = invoke(["download-model"], {}, model=model_dir)
 
     assert result.exit_code == 0, result.output
     assert downloads == [(model_dir, "minishlab/potion-multilingual-128M")]
@@ -159,87 +171,15 @@ def test_download_model_without_configuration_uses_the_default_model_and_place(d
 
 def test_download_model_fetches_the_hub_model_the_configuration_names(downloads: list):
     """The configured identifier survives the round trip through the resolved path settings hold."""
-    result = invoke(["download-model"], {"embedding_model": "minishlab/potion-base-8M"})
+    result = invoke(["download-model"], {}, model="minishlab/potion-base-8M")
 
     assert result.exit_code == 0, result.output
     assert downloads == [(resolved_dir("minishlab/potion-base-8M"), "minishlab/potion-base-8M")]
 
 
-def saved_model(path: Path) -> Path:
-    """A directory as a finished fetch leaves it."""
-    path.mkdir(parents=True, exist_ok=True)
-    for name in ("config.json", "model.safetensors", "tokenizer.json"):
-        (path / name).write_text("", encoding="utf-8")
-    return path
-
-
-@pytest.fixture
-def staged(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
-    """A stubbed fetch that writes a model where it is told, so what `ensure_model` publishes can be read."""
-    targets: list[Path] = []
-
-    def fetch(target: Path, _model: str) -> None:
-        targets.append(target)
-        saved_model(target)
-
-    monkeypatch.setattr("meri.cli.feedback.download_model", fetch)
-    return targets
-
-
-def test_ensure_model_leaves_a_provisioned_directory_alone(model_dir: Path, downloads: list):
-    """The common case: every run after the first must not re-fetch, and must not touch the hub to find out."""
-    saved_model(model_dir)
-
-    assert ensure_model(model_dir) is False
-    assert downloads == []
-
-
-def test_ensure_model_fetches_the_hub_model_the_directory_resolves_from(staged: list):
-    """A cold deployment provisions itself from the configuration alone: the directory names the model."""
-    destination = resolved_dir("minishlab/potion-base-8M")
-
-    assert ensure_model(destination) is True
-    assert model_exists(destination)
-
-
-def test_ensure_model_publishes_by_rename(staged: list):
-    """
-    Runs overlap, so a second process must never read a half-written model.
-
-    The fetch goes to a directory of its own and is renamed into place, exactly as the guard's artifact is.
-    """
-    destination = resolved_dir(DEFAULT_EMBEDDING_MODEL)
-
-    ensure_model(destination)
-
-    assert staged and staged[0] != destination
-    assert staged[0].parent == destination.parent
-    assert not staged[0].exists()
-
-
-def test_ensure_model_refuses_a_directory_it_cannot_name_a_model_for(tmp_path: Path, downloads: list):
-    """A model provisioned by other means: nothing says what to fetch, so say that rather than guess."""
-    with pytest.raises(click.ClickException, match="download-model"):
-        ensure_model(tmp_path / "own-model")
-
-    assert downloads == []
-
-
-def test_ensure_model_refuses_a_half_written_download(downloads: list):
-    """What an interrupted fetch leaves. Overwriting a configured directory unasked is not this command's call."""
-    destination = resolved_dir(DEFAULT_EMBEDDING_MODEL)
-    destination.mkdir(parents=True)
-    (destination / "model.safetensors").write_text("", encoding="utf-8")
-
-    with pytest.raises(click.ClickException, match="download-model"):
-        ensure_model(destination)
-
-    assert downloads == []
-
-
 def test_train_guard_on_an_unprovisioned_model_names_the_command(model_dir: Path):
     """No `embedder` fixture here: this is the real loader meeting an empty directory."""
-    result = invoke(["train-guard"], {"embedding_model": str(model_dir)})
+    result = invoke(["train-guard"], {}, model=model_dir)
 
     assert result.exit_code != 0
     assert "download-model" in result.output
@@ -248,7 +188,7 @@ def test_train_guard_on_an_unprovisioned_model_names_the_command(model_dir: Path
 
 def test_show_on_an_unprovisioned_model_names_the_command(model_dir: Path):
     """`show` reaches the loader through the matcher, so it needs its own answer."""
-    result = invoke(["show", "https://example.com/article"], {"embedding_model": str(model_dir)})
+    result = invoke(["show", "https://example.com/article"], {}, model=model_dir)
 
     assert result.exit_code != 0
     assert "download-model" in result.output
@@ -261,7 +201,7 @@ def unwrapped(output: str) -> str:
 
 def test_download_model_help_names_the_configured_directory(model_dir: Path):
     """An argument has no `show_default`, so the resolved path has to reach --help another way."""
-    result = invoke(["download-model", "--help"], {"embedding_model": str(model_dir)})
+    result = invoke(["download-model", "--help"], {}, model=model_dir)
 
     assert result.exit_code == 0, result.output
     assert unwrapped(str(model_dir)) in unwrapped(result.output)
@@ -312,7 +252,7 @@ def artifact(tmp_path: Path, model_dir: Path, embedder) -> Path:
 
     result = invoke(
         ["train-guard", "--data", str(source), "--output", str(destination)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -331,7 +271,7 @@ def test_probe_reports_an_evasion(tmp_path: Path, model_dir: Path, artifact: Pat
 
     result = invoke(
         ["probe", str(lines), "--vectors", str(artifact)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -345,7 +285,7 @@ def test_probe_reports_a_benign_line_as_a_false_positive(tmp_path: Path, model_d
 
     result = invoke(
         ["probe", str(lines), "--vectors", str(artifact)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -357,7 +297,7 @@ def test_probe_quiet_reports_the_rates_without_the_lines(tmp_path: Path, model_d
 
     result = invoke(
         ["probe", str(lines), "--vectors", str(artifact), "--quiet"],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -371,7 +311,8 @@ def test_probe_sweep_marks_the_configured_thresholds(tmp_path: Path, model_dir: 
 
     result = invoke(
         ["probe", str(lines), "--vectors", str(artifact), "--sweep"],
-        {"embedding_model": str(model_dir), "guardrails": [{"type": "injection", "floor": 0.65, "margin": 0.05}]},
+        {"guardrails": [{"type": "injection", "floor": 0.65, "margin": 0.05}]},
+        model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -383,7 +324,7 @@ def test_probe_sweep_marks_the_configured_thresholds(tmp_path: Path, model_dir: 
 def test_probe_without_an_artifact_says_where_to_get_one(tmp_path: Path, model_dir: Path, embedder):
     lines = probe_file(tmp_path, "__label__benign hyvä otsikko\n")
 
-    result = invoke(["probe", str(lines)], {"embedding_model": str(model_dir)})
+    result = invoke(["probe", str(lines)], {}, model=model_dir)
 
     assert result.exit_code != 0
     assert "--vectors" in result.output
@@ -395,7 +336,7 @@ def test_probe_without_an_artifact_says_where_to_get_one(tmp_path: Path, model_d
 def test_check_reports_a_drop_and_the_centroid_it_turned_on(model_dir: Path, artifact: Path, embedder):
     result = invoke(
         ["check", "attack", "--vectors", str(artifact)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -412,7 +353,7 @@ def test_check_reports_a_kept_message_and_which_clause_saved_it(model_dir: Path,
     """
     result = invoke(
         ["check", "ordinary", "--vectors", str(artifact)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -425,7 +366,7 @@ def test_check_names_the_veto_when_the_margin_is_what_saved_the_message(model_di
     """The other way a message survives: near an attack, but a benign exemplar sits nearly as close."""
     result = invoke(
         ["check", "attack", "--vectors", str(artifact), "--margin", "0.99"],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -437,7 +378,7 @@ def test_check_shows_the_sanitized_text_when_cleaning_changed_it(model_dir: Path
     """Invisible padding is the usual cause, and a maintainer needs to see that it was stripped."""
     result = invoke(
         ["check", "at\u200btack", "--vectors", str(artifact)],
-        {"embedding_model": str(model_dir)},
+        {}, model=model_dir,
     )
 
     assert result.exit_code == 0, result.output
@@ -455,7 +396,6 @@ def test_check_honours_the_configured_thresholds(model_dir: Path, artifact: Path
     result = invoke(
         ["check", "ordinary", "--vectors", str(artifact)],
         {
-            "embedding_model": str(model_dir),
             "guardrails": [{"type": "injection", "vectors": str(artifact), "floor": 0.99, "margin": 0.10}],
         },
     )
@@ -466,7 +406,7 @@ def test_check_honours_the_configured_thresholds(model_dir: Path, artifact: Path
 
 
 def test_check_without_an_artifact_says_where_to_get_one(model_dir: Path, embedder):
-    result = invoke(["check", "attack"], {"embedding_model": str(model_dir)})
+    result = invoke(["check", "attack"], {}, model=model_dir)
 
     assert result.exit_code != 0
     assert "train-guard" in result.output
@@ -502,9 +442,8 @@ def feedback_csv(tmp_path: Path, rows: list[tuple[str, str, str]]) -> Path:
 
 
 def show_settings(path: Path, guardrails: list[dict] | None = None) -> dict:
-    """Feedback from a local CSV, and no embedding model, so no test needs the real one."""
+    """Feedback from a local CSV. Callers pass `model=None`, so no test needs the real embedding model."""
     return {
-        "embedding_model": None,
         "sources": [{"type": "csv", "path": str(path)}],
         "guardrails": guardrails if guardrails is not None else [{"type": "sanitize"}, {"type": "truncate"}],
     }
@@ -517,7 +456,7 @@ def test_show_renders_the_prompt_block(tmp_path: Path):
         [("Title A", "good_conversion", "clear and accurate now"), ("Title A", "bad_conversion", "still too long")],
     )
 
-    result = invoke(["show", ARTICLE_URL], show_settings(path))
+    result = invoke(["show", ARTICLE_URL], show_settings(path), model=None)
 
     assert result.exit_code == 0, result.output
     assert "<reader_feedback>" in result.output
@@ -531,7 +470,7 @@ def test_show_applies_the_guardrail_chain(tmp_path: Path):
     """The point of the command: the text shown is what survived the guards, not what the reader typed."""
     path = feedback_csv(tmp_path, [("Title A", "bad_conversion", "write to me at foo.bar@example.com about this")])
 
-    result = invoke(["show", ARTICLE_URL], show_settings(path, [{"type": "sanitize"}, {"type": "pii"}]))
+    result = invoke(["show", ARTICLE_URL], show_settings(path, [{"type": "sanitize"}, {"type": "pii"}]), model=None)
 
     assert result.exit_code == 0, result.output
     assert "foo.bar@example.com" not in result.output
@@ -545,7 +484,7 @@ def test_show_consolidates_repeated_messages(tmp_path: Path):
         [("Title A", "bad_conversion", "the town name is missing")] * 3,
     )
 
-    result = invoke(["show", ARTICLE_URL], show_settings(path))
+    result = invoke(["show", ARTICLE_URL], show_settings(path), model=None)
 
     assert result.exit_code == 0, result.output
     assert "<reported_times>3</reported_times>" in result.output
@@ -557,7 +496,7 @@ def test_show_caps_the_groups_at_the_limit(tmp_path: Path):
         [("Title A", "bad_conversion", f"a distinct complaint number {index}") for index in range(3)],
     )
 
-    result = invoke(["show", ARTICLE_URL, "--limit", "1"], show_settings(path))
+    result = invoke(["show", ARTICLE_URL, "--limit", "1"], show_settings(path), model=None)
 
     assert result.exit_code == 0, result.output
     assert result.output.count("<comment>") == 1
@@ -567,7 +506,7 @@ def test_show_without_matching_feedback_names_the_signature(tmp_path: Path):
     """Feedback is matched by signature, so the signature is the first thing to check when nothing matches."""
     path = feedback_csv(tmp_path, [("Title A", "good_conversion", "fine")])
 
-    result = invoke(["show", "https://www.hs.fi/politiikka/art-2000099999999.html"], show_settings(path))
+    result = invoke(["show", "https://www.hs.fi/politiikka/art-2000099999999.html"], show_settings(path), model=None)
 
     assert result.exit_code != 0
     assert "No feedback matches" in result.output
@@ -577,7 +516,7 @@ def test_show_without_matching_feedback_names_the_signature(tmp_path: Path):
 def test_show_rejects_a_malformed_url(tmp_path: Path):
     path = feedback_csv(tmp_path, [("Title A", "good_conversion", "fine")])
 
-    result = invoke(["show", "not-a-url"], show_settings(path))
+    result = invoke(["show", "not-a-url"], show_settings(path), model=None)
 
     assert result.exit_code != 0
     assert "Not a usable article URL" in result.output
@@ -590,12 +529,12 @@ def test_train_guard_records_the_same_identity_a_run_would(tmp_path: Path, model
     `train-guard` writes, the next run reads it, finds a model mismatch, retrains and writes back — and the
     operator's reviewed artifact is gone. Both must record what `model_identity` says.
     """
-    from meri.luotsi.client import model_identity
+    from meri.embedding import model_identity
 
     destination = tmp_path / "vectors.json"
-    luotsi = {"embedding_model": str(model_dir), "guardrails": [{"type": "injection", "vectors": str(destination)}]}
+    luotsi = {"guardrails": [{"type": "injection", "vectors": str(destination)}]}
 
-    result = invoke(["train-guard"], luotsi)
+    result = invoke(["train-guard"], luotsi, model=model_dir)
 
     assert result.exit_code == 0, result.output
-    assert GuardVectors.load(destination).model_name == model_identity(settings_with(luotsi).luotsi)
+    assert GuardVectors.load(destination).model_name == model_identity(settings_with(luotsi, model_dir))

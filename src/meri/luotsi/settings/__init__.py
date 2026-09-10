@@ -2,7 +2,10 @@
 
 from pathlib import Path
 
-from pydantic import BaseModel, Field, field_validator
+from niitti.paths import data_dir
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from meri.settings.const import APP_NAME
 
 from .clustering import ClusteringSettings
 from .guardrails import (
@@ -30,12 +33,28 @@ __all__ = [
 ]
 
 
+def default_vectors() -> Path:
+    """
+    Where the injection guard keeps its trained artifact when no guard names a path of its own.
+
+    It lands in the data directory, which a container mounts as a persistent volume, so a rebuilt image with new
+    exemplars retrains once and keeps the result.
+
+    :return: `<data dir>/guard-vectors.json`. Neither it nor its parent need exist yet.
+    """
+    return data_dir(APP_NAME) / "guard-vectors.json"
+
+
 class LuotsiSettings(BaseModel):
     """
     Reader feedback settings.
 
-    Sources default to empty so that a host application can embed the model without configuring Luotsi.
+    Sources default to empty so that a host application can embed the model without configuring Luotsi. The
+    embedding model is not named here: `embedding:` names the one model every embedding consumer shares, and
+    the client receives it as a callable. Extra keys are rejected so a stale `embedding_model` fails loudly.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     sources: list[FeedbackSourceConfig] = Field(default_factory=list, description="Feedback sources to pull from.")
 
@@ -45,27 +64,10 @@ class LuotsiSettings(BaseModel):
         "truncate.",
     )
 
-    embedding_model: Path | None = Field(
-        default=None,
-        description="Directory of the Model2Vec model shared by message consolidation and the injection guard's "
-        "centroid tier. The host application resolves it — in Meri, `luotsi.embedding_model` in `config.yaml` "
-        "names a hub model or a directory, and `meri feedback download-model` fills it. None runs both in "
-        "their weaker built-in mode.",
-    )
-
-    embedding_model_id: str | None = Field(
-        default=None,
-        description="Opaque identity of the embedding model, recorded in the injection guard's artifact and "
-        "compared against it. The host application supplies it — Luotsi never parses it — because only the "
-        "host knows what a model is called; in Meri it is the hub identifier. Defaults to the model "
-        "directory's name, which cannot tell two models of the same name apart.",
-    )
-
-    guard_vectors: Path | None = Field(
-        default=None,
-        description="Where the injection guard keeps its trained artifact, when no guard names one of its "
-        "own. The host application resolves it — in Meri it lands in the data directory — because Luotsi "
-        "knows no directory layout. None leaves the guard with nowhere to write, and it refuses to build.",
+    guard_vectors: Path = Field(
+        default_factory=default_vectors,
+        description="Where the injection guard keeps its trained artifact, when no guard names one of its own. "
+        "Defaults to the data directory, which a container mounts as a persistent volume.",
     )
 
     clustering: ClusteringSettings = Field(
@@ -76,18 +78,8 @@ class LuotsiSettings(BaseModel):
         default=3, ge=0, description="Most consolidated message groups to pass on for one article."
     )
 
-    @field_validator("embedding_model")
+    @field_validator("guard_vectors", mode="before")
     @classmethod
-    def _model_must_be_a_directory(cls, value: Path | None) -> Path | None:
-        """
-        A configured directory need not hold a model yet — it need only be able to.
-
-        `meri feedback download-model` creates and fills it, so on a cold start it is absent, and the host
-        application decides where it lands. A path that exists as something other than a directory can never
-        work, and this is the earliest place to say so. Whether the directory really holds a loadable model is
-        settled when it is loaded, at the start of a run, so a configured model still never degrades silently
-        into the built-in mode.
-        """
-        if value is not None and value.expanduser().exists() and not value.expanduser().is_dir():
-            raise ValueError(f"embedding_model is not a directory: {value}")
-        return value
+    def _vectors_default_on_null(cls, value: Path | None) -> Path:
+        """An explicit null is not a mode here: the guard needs somewhere to write, so null means the default."""
+        return default_vectors() if value is None else value

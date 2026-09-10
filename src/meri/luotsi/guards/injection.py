@@ -17,7 +17,7 @@ from .sanitize import SanitizeGuard
 from .vectors import Centroid, GuardVectors
 
 if TYPE_CHECKING:
-    from ..embeddings import Embedder, Vector
+    from meri.embedding import Embedder, Vector
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +96,7 @@ class InjectionGuard(Guardrail):
 
     It READS its artifact and never writes one. Building it belongs to
     :func:`~meri.luotsi.guards.provision.ensure_guard_vectors`, which a host calls deliberately — the same division
-    :func:`~meri.luotsi.embeddings.download_model` and :func:`~meri.luotsi.embeddings.load_embedder` already make for the
+    :func:`~meri.embedding.download_model` and :func:`~meri.embedding.load_embedder` already make for the
     embedding model. What the guard keeps is the refusal: an artifact whose exemplars, threshold, dimension or
     model no longer match is rejected by name rather than used, so nothing can classify against stale vectors.
     """
@@ -120,7 +120,7 @@ class InjectionGuard(Guardrail):
         """
         if embed is None:
             raise ValueError(
-                "The injection guard needs an embedding model. Set `embedding_model`, or leave the guard out of "
+                "The injection guard needs an embedding model. Set `embedding.model`, or leave the guard out of "
                 "`guardrails`."
             )
 
