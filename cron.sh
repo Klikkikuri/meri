@@ -16,9 +16,6 @@ cleanup() {
     rm -f "$LOCK_FILE"
 }
 
-# Exit trap
-trap cleanup EXIT
-
 # Acquire lock
 acquire_lock() {
     local lock_age
@@ -36,6 +33,9 @@ acquire_lock() {
 }
 
 acquire_lock
+
+# Exit trap
+trap cleanup EXIT
 
 # Change to repository directory
 pushd "$REPO_DIR"
