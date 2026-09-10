@@ -176,5 +176,8 @@ teemu/
 .devcontainer/bash_history
 .venv/
 
+# Ignore test data
+tests/data/html
+
 # Written by cron.sh after each successful image build
 .cron-build-state
