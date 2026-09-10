@@ -366,3 +366,44 @@ def test_a_failing_continuation_is_retried_with_the_same_messages():
     assert result.title == "Revised"
     templates = [call[0][0]["prompt_builder"]["template"] for call in pipeline.run.call_args_list]
     assert templates == [BASE + continuation] * 2
+
+
+def test_a_real_haystack_pipeline_accepts_the_inputs_with_and_without_a_continuation():
+    """
+    The seam hides Haystack's own input validation, which is where the required variables are checked.
+
+    A builder declares one socket per variable of its base template and the pipeline demands the mandatory
+    ones directly; a continuation adds variables the base template never declared. Both must get through.
+    """
+    from haystack import Pipeline, component
+
+    @component
+    class EchoGenerator:
+        @component.output_types(replies=list[ChatMessage])
+        def run(self, messages: list[ChatMessage]):
+            return {"replies": [reply(messages[-1].text or "")]}
+
+    class Strict(DummyPipeline):
+        REQUIRED_VARIABLES = ("text",)
+        prompt_templates: ClassVar[dict[str, str]] = {"only": "Article: {{ text }}{% if extra %} ({{ extra }}){% endif %}"}
+
+    dummy = Strict()
+
+    def make(llm):
+        prompt = dummy._prompt_builder()
+        dummy._prompts[llm.name] = prompt
+        pipeline = Pipeline()
+        pipeline.add_component("prompt_builder", prompt)
+        pipeline.add_component("llm", EchoGenerator())
+        pipeline.connect("prompt_builder", "llm")
+        return pipeline
+
+    dummy._make_pipeline = make  # type: ignore[method-assign]
+    continuation = [ChatMessage.from_assistant('{"title": "First"}'), ChatMessage.from_user("Fix: {{ revision }}")]
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        assert dummy.run({"text": "body"}).title == "Now, please generate the response."
+        assert dummy.run({"text": "body", "revision": "shorter"}, messages=continuation).title == "Fix: shorter"
+
+        with pytest.raises(ValueError, match="text"):
+            dummy.run({"extra": "only optional"}, max_retries=1)

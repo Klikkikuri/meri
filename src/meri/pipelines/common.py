@@ -184,9 +184,11 @@ class StructuredPipeline:
             llm = chain[(attempt - 1) % len(chain)]
             pipeline, prompt = self._pipeline_for(llm)
 
-            # `template_variables` is one declared input, so the builder takes every variable a template may
-            # name without the pipeline validating them one by one; the builder renders what the templates use.
-            inputs: dict = {"template_variables": prompt_vars}
+            # The builder declares one input socket per variable of its base template, and the pipeline checks
+            # the mandatory ones are given directly. Everything else — variables only a continuation names —
+            # arrives through `template_variables`, which the builder merges over the direct inputs.
+            inputs: dict = {name: prompt_vars[name] for name in prompt.variables if name in prompt_vars}
+            inputs["template_variables"] = prompt_vars
             if messages:
                 inputs["template"] = list(prompt.template or []) + list(messages)
 
