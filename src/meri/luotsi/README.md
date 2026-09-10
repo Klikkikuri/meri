@@ -50,9 +50,9 @@ takes the nearest non-benign centroid whatever its label, against one floor and 
 widens the same surface rather than adding a tier of its own. The Finnish file is still `injection` and `benign`.
 
 **The trained artifact is not shipped with this package.** It is bound to the embedding model that produced
-it, so each deployment builds its own. `luotsi.provision(settings)` does that — and `meri run` calls it at
-the start of every run, so a deployment that edits its exemplars or swaps its model gets a rebuilt artifact
-with no operator action.
+it, so each deployment builds its own. `meri.luotsi.provision(settings, embed, model_name)` does that, with the
+embedder and its identity from `meri.embedding` — and `meri run` calls it at the start of every run, so a
+deployment that edits its exemplars or swaps its model gets a rebuilt artifact with no operator action.
 
 The model is named once, in Meri's `embedding:` section, and is provisioned the same way: `meri run` fetches it into the directory `embedding.model` resolves to
 when nothing is there, so a cold deployment needs no operator action either. Fetch it ahead of time, or into a

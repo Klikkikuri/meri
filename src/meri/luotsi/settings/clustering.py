@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class ClusteringSettings(BaseModel):
     """
-    Tuning for :class:`luotsi.cluster.MessageClusterer`.
+    Tuning for :class:`meri.luotsi.cluster.MessageClusterer`.
 
     The threshold measures different things per mode — character-3-gram cosine without an embedding model,
     embedding cosine with one — so it needs tuning per mode against real feedback.

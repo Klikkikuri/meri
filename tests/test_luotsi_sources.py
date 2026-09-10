@@ -87,6 +87,16 @@ def test_sheets_source_parses_response(mock_get: MagicMock, csv_feedback: list[F
     assert "sheet-id" in url and "sheet=Feedback" in url
 
 
+@patch("requests.get")
+def test_sheets_source_url_encodes_the_worksheet_name(mock_get: MagicMock):
+    """A worksheet name is free text; `&` or `#` in it would otherwise cut the query short."""
+    mock_get.return_value = MagicMock(text="", status_code=200)
+
+    SheetsFeedbackSource(GoogleSheets(spreadsheet_id="sheet-id", worksheet="Form Responses #1 & 2")).get_feedback()
+
+    assert mock_get.call_args.args[0].endswith("&sheet=Form%20Responses%20%231%20%26%202")
+
+
 @patch("requests.get", side_effect=RuntimeError("network down"))
 def test_sheets_source_failure_returns_empty(mock_get: MagicMock):
     assert SheetsFeedbackSource(GoogleSheets(spreadsheet_id="sheet-id")).get_feedback() == []
