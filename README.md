@@ -112,6 +112,7 @@ uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
    language check and a drift check against the original headline in the embedding model's space, and a failing
    headline is sent back once as a continuation of the same conversation. A headline still in the wrong language
    after that marks the article `processing-failure=headline-language` and stores it without a generated title.
+   `docs/drift-guard.md` explains the drift check and where its thresholds come from.
 8. **Upsert, prune, and push** back to Rahti with a rendered commit message.
 
 Two separate plugin mechanisms feed this. **Discoverers** (`src/meri/discovery/`) find article URLs — RSS,
