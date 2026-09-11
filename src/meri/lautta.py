@@ -618,7 +618,7 @@ def generate_titles(
                     except HeadlineRejected as e:
                         # Stored, not retried: the model's answer is near-deterministic, so the next run would
                         # spend the same calls for the same rejection. The label keeps the entry current.
-                        logger.warning("Headline rejected, storing the article without one", url=url_str, reason=e.label.value)
+                        logger.warning("Headline rejected, storing the article without one", url=url_str, reason=e.label.value, error=str(e))
                         article.labels.append(e.label)
                         skip_reason = e.label.value
                         title_result = None

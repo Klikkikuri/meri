@@ -45,6 +45,15 @@ Finnish still at 0.29 (a headline of foreign names). A genuinely English headlin
 at all, so the floor rescues the near-miss without weakening the check.
 """
 
+RELATED_LANGUAGES = ({"sv", "da", "no"}, {"fi", "et"})
+"""
+Languages langdetect cannot tell apart on a short headline, each treated as satisfying the others.
+
+A Swedish handball headline of club names and a score read as Danish with Swedish at 0.00, and was rejected
+for it; Finnish reads as Estonian the same way. The model writing Danish for a Swedish article is far less
+likely than langdetect confusing the two, so the guard asks only that the headline is in the right family.
+"""
+
 
 class TitleSettings(PipelineSettings):
     """
@@ -94,7 +103,8 @@ def language_issue(title: str, expected: str | None) -> dict[str, str] | None:
         # Text with no letters to go on. Nothing to say, so nothing to correct.
         return None
 
-    if probabilities.get(expected, 0.0) >= LANGUAGE_FLOOR:
+    family = next((group for group in RELATED_LANGUAGES if expected in group), {expected})
+    if sum(probabilities.get(code, 0.0) for code in family) >= LANGUAGE_FLOOR:
         return None
 
     detected = max(probabilities, key=lambda code: probabilities[code], default="unknown")
@@ -216,7 +226,7 @@ class TitlePredictor(StructuredPipeline):
                 raise HeadlineRejected(
                     ArticleLabels.PROCESSING_FAILURE_HEADLINE_LANGUAGE,
                     f"Headline language is {remaining['language']['detected']!r}, expected "
-                    f"{remaining['language']['expected']!r}, after a revision turn.",
+                    f"{remaining['language']['expected']!r}, after a revision turn: {result.title!r}",
                 )
             if "drift" in remaining:
                 # A heuristic, so it does not block publication. The numbers are here to tune the margin by.

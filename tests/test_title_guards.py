@@ -186,6 +186,32 @@ def test_the_expected_language_passes_above_the_floor_even_when_not_first(monkey
     assert language_issue("whatever", "fi") == {"detected": "en", "expected": "fi"}
 
 
+def test_a_language_langdetect_confuses_with_the_expected_one_passes(monkeypatch):
+    """
+    A Swedish sports headline of club names and a score read as Danish with Swedish at zero, and was rejected.
+
+    The model writing Danish for a Swedish article is far less likely than langdetect confusing the two, so the
+    guard asks for the right family. A language outside it still fails.
+    """
+    monkeypatch.setattr("meri.pipelines.title.detect_languages", lambda _text: {"da": 1.0})
+    assert language_issue("HIFK leder FM-ligan efter 36–23-vinst mot GrIFK", "sv") is None
+
+    monkeypatch.setattr("meri.pipelines.title.detect_languages", lambda _text: {"et": 0.86, "fi": 0.14})
+    assert language_issue("Maailmanmestari John Klingberg: ura ohi", "fi") is None
+
+    monkeypatch.setattr("meri.pipelines.title.detect_languages", lambda _text: {"en": 1.0})
+    assert language_issue("HIFK leads the league after a win", "sv") == {"detected": "en", "expected": "sv"}
+
+
+def test_a_rejection_names_the_headline_it_rejected(settings):
+    """The rejected headline is otherwise never stored or printed, and it is what an operator needs to see."""
+    predictor = TitlePredictor()
+    stub(predictor, [title_reply(ENGLISH), title_reply(ENGLISH)])
+
+    with pytest.raises(HeadlineRejected, match=ENGLISH[:30]):
+        predictor.run(make_article("fi"))
+
+
 # --- Drift ---------------------------------------------------------------------
 
 
