@@ -13,6 +13,7 @@ PROMPT_TEMPLATE_ARTICLE_TITLE = "artcile_title_inst.md.j2"
 PROMPT_TEMPLATE_ARTICLE = "article.md.j2"
 PROMPT_TEMPLATE_ARTICLE_UPDATED = "article_updated.md.j2"
 PROMPT_TEMPLATE_FEEDBACK = "feedback.md.j2"
+PROMPT_TEMPLATE_TITLE_REVISION = "title_revision.md.j2"
 
 PROMPT_ENCODING = "utf-8"
 

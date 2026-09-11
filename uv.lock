@@ -1113,31 +1113,6 @@ wheels = [
 ]
 
 [[package]]
-name = "luotsi"
-version = "0.1.0"
-source = { editable = "src/luotsi" }
-dependencies = [
-    { name = "langdetect" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "tenacity" },
-]
-
-[package.optional-dependencies]
-semantic = [
-    { name = "model2vec" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "langdetect", specifier = ">=1.0.9" },
-    { name = "model2vec", marker = "extra == 'semantic'", specifier = ">=0.6.0" },
-    { name = "pydantic", specifier = ">=2.10.5" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "tenacity", specifier = ">=9.0.0" },
-]
-
-[[package]]
 name = "lxml"
 version = "6.1.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1310,9 +1285,9 @@ dependencies = [
     { name = "httpx" },
     { name = "jinja2-time" },
     { name = "langdetect" },
-    { name = "luotsi", extra = ["semantic"] },
     { name = "lxml", extra = ["html-clean"] },
     { name = "markdownify" },
+    { name = "model2vec" },
     { name = "niitti", extra = ["all"] },
     { name = "openrouter-haystack" },
     { name = "opentelemetry-instrumentation-logging" },
@@ -1327,6 +1302,7 @@ dependencies = [
     { name = "sentry-sdk" },
     { name = "structlog" },
     { name = "suola" },
+    { name = "tenacity" },
     { name = "trafilatura" },
     { name = "ultimate-sitemap-parser" },
     { name = "url-normalize" },
@@ -1383,9 +1359,9 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "jinja2-time", specifier = ">=0.2.0" },
     { name = "langdetect", specifier = ">=1.0.9" },
-    { name = "luotsi", extras = ["semantic"], editable = "src/luotsi" },
     { name = "lxml", extras = ["html-clean"], specifier = ">=5.3.0" },
     { name = "markdownify", specifier = ">=0.14.1" },
+    { name = "model2vec", specifier = ">=0.6.0" },
     { name = "niitti", extras = ["all"], editable = "packages/niitti" },
     { name = "openrouter-haystack", specifier = ">=0.4.0" },
     { name = "opentelemetry-instrumentation-logging", specifier = ">=0.50b0" },
@@ -1400,6 +1376,7 @@ requires-dist = [
     { name = "sentry-sdk", specifier = ">=2.48.0" },
     { name = "structlog", specifier = ">=25.1.0" },
     { name = "suola", url = "https://github.com/Klikkikuri/suola/releases/download/v0.5.0/suola-0.5.0-py3-none-any.whl" },
+    { name = "tenacity", specifier = ">=9.0.0" },
     { name = "trafilatura", specifier = ">=2.0.0" },
     { name = "ultimate-sitemap-parser", specifier = ">=1.6.0" },
     { name = "url-normalize", specifier = ">=1.4.3" },

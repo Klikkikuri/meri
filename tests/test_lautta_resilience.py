@@ -1,14 +1,20 @@
-from unittest.mock import patch, MagicMock
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
 
-from meri.abc import article_url
+from meri.abc import ArticleLabels, article_url
 from meri.article import Article
+from meri.exceptions import HeadlineRejected
 from meri.lautta import (
     DiscoveredArticle,
+    RahtiCleaner,
+    convert_for_rahti,
     fetch_full_articles,
     fetch_latest,
     generate_titles,
 )
+from meri.rahti import RahtiData
 from meri.settings.newssources import NewsSource
 
 
@@ -72,3 +78,46 @@ def test_fetch_full_articles_all_failed_raises():
     with patch("meri.lautta.get_extractor", mock_extractor):
         with pytest.raises(RuntimeError, match="All full article fetches failed"):
             fetch_full_articles([art1])
+
+
+REJECTED = ArticleLabels.PROCESSING_FAILURE_HEADLINE_LANGUAGE
+
+
+def rejecting_run(self, article, **kwargs):
+    raise HeadlineRejected(REJECTED, "Headline language is 'en', expected 'fi', after a revision turn.")
+
+
+def test_a_rejected_headline_is_labelled_and_stored_without_a_title():
+    """
+    The failure is recorded on the article rather than retried: the model would answer the same next run.
+
+    It is not a failed generation either, so one rejected article must not trip the all-failed guard.
+    """
+    art1 = make_discovered_article("https://example.com/art1")
+
+    with patch("meri.pipelines.title.TitlePredictor.run", rejecting_run):
+        results = generate_titles([art1])
+
+    assert results[0].title is None
+    assert results[0].skip_reason == REJECTED.value
+    assert REJECTED in art1.article.labels
+
+    entry = convert_for_rahti(art1.source, art1.article, None)
+    assert entry.title is None
+    assert entry.clickbaitiness is None
+    assert REJECTED in entry.labels
+
+
+def test_a_stored_processing_failure_is_not_regenerated_next_run(monkeypatch):
+    """The stored entry is as current as the article, so the cheap early exit skips it until the outlet changes it."""
+    # The Suola rules have no entry for example.com, so signatures would otherwise all be empty and never match.
+    monkeypatch.setattr("meri.abc.hash_url", lambda url: f"sig::{url}")
+    now = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)
+    discovered = make_discovered_article("https://example.com/art1")
+    discovered.article.created_at = now
+    discovered.article.labels.append(REJECTED)
+
+    entry = convert_for_rahti(discovered.source, discovered.article, None)
+    cleaner = RahtiCleaner(RahtiData(updated=now, entries=[entry]))
+
+    assert cleaner.needs_updating(discovered.article) is False

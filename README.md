@@ -4,6 +4,7 @@ Meta repository for the klikkikuri service
 ## Components
 
 - **meri 🌊**: The main service orchestrating the extraction and title generation pipeline.
+- **luotsi 🧭**: Reader feedback collection and guardrails, a subpackage of meri at `src/meri/luotsi` (see its `README.md`).
 - **suola 🧂**: WebAssembly module for url normalization.
 - **niitti 🪡**: Shared structured logging, OpenTelemetry tracing and Sentry setup.
 - **sulku 🌌**: AI-generated text detection service, consumed by meri over HTTP.
@@ -107,7 +108,11 @@ uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
 5. **Prune and label**: articles with too little text, unhandled URLs, or matching a `skip_processing` label
    selector are dropped, or carried into Rahti without headline generation.
 6. **Classify** with Sulku, labelling AI-generated articles.
-7. **Generate headlines** via the Haystack pipeline in `pipelines/title.py`.
+7. **Generate headlines** via the Haystack pipeline in `pipelines/title.py`. Two guards check the answer, a
+   language check and a drift check against the original headline in the embedding model's space, and a failing
+   headline is sent back once as a continuation of the same conversation. A headline still in the wrong language
+   after that marks the article `processing-failure=headline-language` and stores it without a generated title.
+   `docs/drift-guard.md` explains the drift check and where its thresholds come from.
 8. **Upsert, prune, and push** back to Rahti with a rendered commit message.
 
 Two separate plugin mechanisms feed this. **Discoverers** (`src/meri/discovery/`) find article URLs — RSS,
@@ -149,6 +154,13 @@ python -m meri.settings show
 ### LLM Configuration
 
 LLM:s can be configured in the `config.yaml` file in `llm` -section. If no specific LLM is configured, autodetection from environment variables is attempted (see below).
+
+### Embedding Model
+
+One Model2Vec model serves everything that embeds text: Luotsi's message consolidation and injection guard, and
+the title pipeline's drift guard. It is
+named once under `embedding:` (see `config.example.yaml`), resolved and loaded by `meri.embedding`, and fetched by
+`meri run` when its directory is empty. `embedding: null` runs without one.
 
 ### Environment Variables
 

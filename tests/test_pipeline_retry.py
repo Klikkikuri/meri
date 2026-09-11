@@ -299,3 +299,111 @@ def test_a_pipeline_that_declares_nothing_keeps_every_variable_optional():
     # Haystack normalizes an unset list to empty, which is its "everything optional" state.
     assert builder.required_variables == []
     assert builder.run(template_variables={})["prompt"]
+
+
+# --- Conversation continuation --------------------------------------------------
+
+
+BASE = [ChatMessage.from_system("system"), ChatMessage.from_user("user")]
+
+
+def stub_with_template(dummy: StructuredPipeline, pipeline: MagicMock) -> None:
+    """The seam with a prompt builder that carries a base template, which a continuation extends."""
+
+    def make(llm):
+        dummy._prompts[llm.name] = MagicMock(template=BASE)
+        return pipeline
+
+    dummy._make_pipeline = make  # type: ignore[method-assign]
+
+
+def test_a_continuation_is_appended_after_the_base_template():
+    """
+    The model's previous answer and the follow-up request come after the pipeline's own prompt.
+
+    The base template is untouched, so the cacheable prefix of the first turn is the prefix of the second.
+    """
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.return_value = {"llm": {"replies": [reply("Revised")]}}
+    stub_with_template(dummy, pipeline)
+    continuation = [ChatMessage.from_assistant('{"title": "First"}'), ChatMessage.from_user("Fix it")]
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        result = dummy.run({"var1": "val1"}, messages=continuation)
+
+    assert result.title == "Revised"
+    inputs = pipeline.run.call_args[0][0]["prompt_builder"]
+    assert inputs["template"] == BASE + continuation
+    assert inputs["template_variables"]["var1"] == "val1"
+
+
+def test_without_a_continuation_the_base_template_is_used():
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.return_value = {"llm": {"replies": [reply("First")]}}
+    stub_with_template(dummy, pipeline)
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        dummy.run({"var1": "val1"})
+
+    assert "template" not in pipeline.run.call_args[0][0]["prompt_builder"]
+
+
+def test_a_failing_continuation_is_retried_with_the_same_messages():
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = [
+        PipelineRuntimeError("llm", object, "flaky"),
+        {"llm": {"replies": [reply("Revised")]}},
+    ]
+    stub_with_template(dummy, pipeline)
+    continuation = [ChatMessage.from_assistant('{"title": "First"}'), ChatMessage.from_user("Fix it")]
+
+    with patch("meri.pipelines.common.settings", one_llm()), patch("time.sleep"):
+        result = dummy.run({"var1": "val1"}, max_retries=2, messages=continuation)
+
+    assert result.title == "Revised"
+    templates = [call[0][0]["prompt_builder"]["template"] for call in pipeline.run.call_args_list]
+    assert templates == [BASE + continuation] * 2
+
+
+def test_a_real_haystack_pipeline_accepts_the_inputs_with_and_without_a_continuation():
+    """
+    The seam hides Haystack's own input validation, which is where the required variables are checked.
+
+    A builder declares one socket per variable of its base template and the pipeline demands the mandatory
+    ones directly; a continuation adds variables the base template never declared. Both must get through.
+    """
+    from haystack import Pipeline, component
+
+    @component
+    class EchoGenerator:
+        @component.output_types(replies=list[ChatMessage])
+        def run(self, messages: list[ChatMessage]):
+            return {"replies": [reply(messages[-1].text or "")]}
+
+    class Strict(DummyPipeline):
+        REQUIRED_VARIABLES = ("text",)
+        prompt_templates: ClassVar[dict[str, str]] = {"only": "Article: {{ text }}{% if extra %} ({{ extra }}){% endif %}"}
+
+    dummy = Strict()
+
+    def make(llm):
+        prompt = dummy._prompt_builder()
+        dummy._prompts[llm.name] = prompt
+        pipeline = Pipeline()
+        pipeline.add_component("prompt_builder", prompt)
+        pipeline.add_component("llm", EchoGenerator())
+        pipeline.connect("prompt_builder", "llm")
+        return pipeline
+
+    dummy._make_pipeline = make  # type: ignore[method-assign]
+    continuation = [ChatMessage.from_assistant('{"title": "First"}'), ChatMessage.from_user("Fix: {{ revision }}")]
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        assert dummy.run({"text": "body"}).title == "Now, please generate the response."
+        assert dummy.run({"text": "body", "revision": "shorter"}, messages=continuation).title == "Fix: shorter"
+
+        with pytest.raises(ValueError, match="text"):
+            dummy.run({"extra": "only optional"}, max_retries=1)

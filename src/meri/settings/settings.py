@@ -26,7 +26,6 @@ from typing import cast
 
 # Ugly duckling hack – load .env before initializing settings, to ensure that environment variables are available
 from dotenv import load_dotenv
-from luotsi.settings import LuotsiSettings
 from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
@@ -37,16 +36,18 @@ from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import SettingsConfigDict
 
+from meri.luotsi.settings import LuotsiSettings
+
 from .const import (
     DEFAULT_BOT_ID,
     DEFAULT_BOT_USER_AGENT,
     PKG_NAME,
 )
+from .embedding import EmbeddingSettings, LocalEmbeddingSettings
 from .llms import (
     LLMSetting,
     detect_generators,
 )
-from .luotsi import DEFAULT_EMBEDDING_MODEL, default_vectors, hub_id_of, model_dir
 from .newssources import NewsSource
 from .pipelines import PipelineSettings, UnknownLLMError
 from .rahti import RahtiFileSettings, RahtiSettings
@@ -178,70 +179,11 @@ class Settings(NiittiSettings):
         description="Luotsi reader feedback settings. Omit to run without reader feedback.",
     )
 
-    @staticmethod
-    def _identity_of_model(resolved: Path | None) -> str | None:
-        """
-        What the guard's artifact records as the model that produced it.
-
-        The hub identifier when the model came from the hub, so `minishlab/potion-multilingual-128M` and
-        `otherorg/potion-multilingual-128M` are distinguishable — the bare directory name is not, and neither
-        is the dimension, so the guard would score one model's centroids against the other's embeddings.
-        A model provisioned by other means keeps its directory name rather than its absolute path, which would
-        be machine-specific and would make merely moving an identical model read as a different one.
-        """
-        return None if resolved is None else (hub_id_of(resolved) or resolved.name)
-
-    @field_validator("luotsi", mode="before")
-    @classmethod
-    def resolve_embedding_model(cls, value):
-        """
-        Turn `luotsi.embedding_model` into the directory Luotsi loads from.
-
-        Luotsi takes a directory and carries no default, so the model is named here: an unset key means
-        `DEFAULT_EMBEDDING_MODEL`, a hub identifier resolves under the data directory, and an explicit path is
-        left alone. Setting the key to null still selects the built-in mode, which is why an unset key and a
-        null one are told apart rather than both falling back to the default.
-        """
-        if value is None:
-            return value
-
-        # A configuration file gives a mapping; a caller constructing Settings in code gives the model.
-        if isinstance(value, LuotsiSettings):
-            update: dict[str, Path | str | None] = {}
-
-            resolved = value.embedding_model
-            if "embedding_model" not in value.model_fields_set:
-                resolved = model_dir(DEFAULT_EMBEDDING_MODEL)
-                update["embedding_model"] = resolved
-
-            # Not `model_fields_set`, unlike the model above: an explicit null is a MODE for `embedding_model`
-            # but means nothing for a destination, and honouring it here would leave a guard built in code with
-            # nowhere to read from — a difference the dict branch below does not make either.
-            if value.guard_vectors is None:
-                update["guard_vectors"] = default_vectors()
-
-            if value.embedding_model_id is None:
-                update["embedding_model_id"] = cls._identity_of_model(resolved)
-
-            return value.model_copy(update=update) if update else value
-
-        if not isinstance(value, dict):
-            return value
-
-        model = value.get("embedding_model", DEFAULT_EMBEDDING_MODEL)
-        resolved = model_dir(str(model)) if model else None
-        return {
-            **value,
-            "embedding_model": resolved,
-            # `minishlab/potion-multilingual-128M` rather than the bare `potion-multilingual-128M`, which
-            # cannot tell two same-named models from different orgs apart. A model provisioned by other means
-            # has no hub identity, so it keeps the directory name — not the absolute path, which would be
-            # machine-specific and would make merely MOVING an identical model read as a different one.
-            "embedding_model_id": value.get("embedding_model_id") or cls._identity_of_model(resolved),
-            # Unlike the model, an explicit null is not a mode: the guard needs somewhere to write, and only
-            # a guard naming its own `vectors` overrides where.
-            "guard_vectors": value.get("guard_vectors") or default_vectors(),
-        }
+    embedding: EmbeddingSettings | None = Field(
+        default_factory=LocalEmbeddingSettings,
+        description="The one embedding model shared by reader feedback and the title guards. Omit for the "
+        "default model; set to null to run without one.",
+    )
 
     @model_validator(mode="before")
     @classmethod

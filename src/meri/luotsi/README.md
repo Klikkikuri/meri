@@ -12,7 +12,7 @@ The default chain holds the injection guard, which needs an embedding model and 
 ## Use
 
 ```python
-from luotsi import Luotsi, LuotsiSettings
+from meri.luotsi import Luotsi, LuotsiSettings
 
 settings = LuotsiSettings(sources=[{"type": "csv", "path": "/app/instance/feedback.csv"}])
 feedback = Luotsi(settings).get_feedback()
@@ -50,16 +50,16 @@ takes the nearest non-benign centroid whatever its label, against one floor and 
 widens the same surface rather than adding a tier of its own. The Finnish file is still `injection` and `benign`.
 
 **The trained artifact is not shipped with this package.** It is bound to the embedding model that produced
-it, so each deployment builds its own. `luotsi.provision(settings)` does that — and `meri run` calls it at
-the start of every run, so a deployment that edits its exemplars or swaps its model gets a rebuilt artifact
-with no operator action.
+it, so each deployment builds its own. `meri.luotsi.provision(settings, embed, model_name)` does that, with the
+embedder and its identity from `meri.embedding` — and `meri run` calls it at the start of every run, so a
+deployment that edits its exemplars or swaps its model gets a rebuilt artifact with no operator action.
 
-The model is provisioned the same way: `meri run` fetches it into the directory `embedding_model` resolves to
+The model is named once, in Meri's `embedding:` section, and is provisioned the same way: `meri run` fetches it into the directory `embedding.model` resolves to
 when nothing is there, so a cold deployment needs no operator action either. Fetch it ahead of time, or into a
 directory the configuration does not name, with:
 
 ```bash
-meri feedback download-model    # into the directory Meri resolves `embedding_model` to
+meri feedback download-model    # into the directory Meri resolves `embedding.model` to
 ```
 
 A run that must not reach the hub — an air-gapped deployment provisioning its own model directory — takes
@@ -89,7 +89,7 @@ has nobody to force, so it says to retrain with `meri feedback train-guard`.
 Without a model, or with nowhere to keep the artifact, the guard refuses to be built and the run fails at
 start. There is no reduced mode to fall back to, so a deployment that cannot run the guard says so in its
 configuration: it lists `guardrails` explicitly and leaves `injection` out. That includes
-`embedding_model: null`. A broken deployment must not degrade quietly — which is also why a destination that
+`embedding: null`. A broken deployment must not degrade quietly — which is also why a destination that
 cannot be written fails the run rather than being retrained around on every start.
 
 The exemplar files DO ship, and they are the default training data: they are this package's domain knowledge

@@ -5,10 +5,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from luotsi.settings.source import Csv, GoogleSheets
-from luotsi.sources import CsvFeedbackSource, SheetsFeedbackSource
 
-from luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi.settings.source import Csv, GoogleSheets
+from meri.luotsi.sources import CsvFeedbackSource, SheetsFeedbackSource
 
 FEEDBACK_CSV = Path(__file__).parent / "data" / "luotsi_feedback.csv"
 
@@ -85,6 +85,16 @@ def test_sheets_source_parses_response(mock_get: MagicMock, csv_feedback: list[F
     assert [item.url_sign for item in feedback] == [item.url_sign for item in csv_feedback]
     url = mock_get.call_args.args[0]
     assert "sheet-id" in url and "sheet=Feedback" in url
+
+
+@patch("requests.get")
+def test_sheets_source_url_encodes_the_worksheet_name(mock_get: MagicMock):
+    """A worksheet name is free text; `&` or `#` in it would otherwise cut the query short."""
+    mock_get.return_value = MagicMock(text="", status_code=200)
+
+    SheetsFeedbackSource(GoogleSheets(spreadsheet_id="sheet-id", worksheet="Form Responses #1 & 2")).get_feedback()
+
+    assert mock_get.call_args.args[0].endswith("&sheet=Form%20Responses%20%231%20%26%202")
 
 
 @patch("requests.get", side_effect=RuntimeError("network down"))

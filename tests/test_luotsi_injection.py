@@ -5,23 +5,23 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from luotsi.guards import trainer
-from luotsi.guards.injection import InjectionGuard, classify
-from luotsi.guards.labeled import (
+
+from meri.luotsi import Feedback, FeedbackItem, FeedbackType
+from meri.luotsi.guards import trainer
+from meri.luotsi.guards.injection import InjectionGuard, classify
+from meri.luotsi.guards.labeled import (
     LabeledLine,
     packaged_exemplars,
     parse,
     parse_files,
     write,
 )
-from luotsi.guards.provision import artifact_path, ensure_guard_vectors
-from luotsi.guards.trainer import source_digest, train_centroids, training_report
-from luotsi.guards.vectors import Centroid, GuardVectors
-from luotsi.settings.guardrails import InjectionConfig
+from meri.luotsi.guards.provision import artifact_path, ensure_guard_vectors
+from meri.luotsi.guards.trainer import source_digest, train_centroids, training_report
+from meri.luotsi.guards.vectors import Centroid, GuardVectors
+from meri.luotsi.settings.guardrails import InjectionConfig
 
-from luotsi import Feedback, FeedbackItem, FeedbackType
-
-DATA = Path(__file__).parents[1] / "src" / "luotsi" / "luotsi" / "guards" / "data"
+DATA = Path(__file__).parents[1] / "src" / "meri" / "luotsi" / "guards" / "data"
 
 # Three orthogonal axes stand in for an embedding space: "attack", "ordinary" and "unrelated".
 AXES = {"attack": [1.0, 0.0, 0.0], "ordinary": [0.0, 1.0, 0.0], "unrelated": [0.0, 0.0, 1.0]}
@@ -134,7 +134,7 @@ def test_a_benign_centroid_within_the_margin_vetoes_the_drop():
 
 
 def test_guard_logs_the_vetoing_representative(guard: InjectionGuard, caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("DEBUG", logger="luotsi.guards.injection"):
+    with caplog.at_level("DEBUG", logger="meri.luotsi.guards.injection"):
         guard.run([item("attack ordinary")])
 
     assert "benign exemplar on ordinary" in caplog.text

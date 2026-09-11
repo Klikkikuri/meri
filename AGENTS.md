@@ -64,6 +64,8 @@ The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `
 - Extractors are not registered explicitly: every concrete `Outlet` subclass defining `valid_url` in
   `src/meri/extractor/` is auto-discovered and matched in descending `weight` order. A new site-specific
   extractor must outrank `generic.py`.
+- `meri.luotsi` (reader feedback) must not import `meri.pipelines` or `meri.llm`: it never talks to a language model.
+  It used to be a separate package, and that boundary is now a convention rather than an import graph.
 - Discoverers (`src/meri/discovery/`) *are* explicit — `@registry.register("<type>", weight=...)`, resolved by
   the `type:` field of a `NewsSource`.
 - Prompts are Jinja `.md.j2` templates in `src/meri/prompts/`, and `get_prompt_template` prefers a copy in the

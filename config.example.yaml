@@ -30,6 +30,7 @@
 #     - "sponsored=true"                         # OR match if sponsored=true
 #     - "type=video"                             # OR match if primary video content
 #     - "article-type in (opinion, review)"      # OR match if opinion or review
+#     - "processing-failure"                     # OR match any article title generation has given up on
 
 sentry:
   ## Sentry DSN for error tracking.
@@ -148,12 +149,26 @@ rahti:
     name: "[🤖 bot] Klikkikuri harbormaster"
     email: "klikkikuri+satamamestari@protonmail.com"
 
+# --- Embedding model ---
+# The Model2Vec model shared by everything in Meri that embeds text: Luotsi's message consolidation and
+# injection guard below. A hub identifier lives under the data directory, at
+# `$MERI_DATA_DIR/embedding/<identifier>`, so `model` names a model and never a path; give a path (absolute, or
+# starting with `.` or `~`) only for a model provisioned by other means. `meri run` fills the directory when it
+# holds no model — pass `--no-download-model` to keep hub access out of a run — and `meri feedback download-model`
+# fills it with no arguments, for provisioning ahead of time or fetching over what is there.
+# Omitting the block keeps the default below. `embedding: null` runs without a model: character-n-gram
+# consolidation and NO injection guard — that mode must also leave `injection` out of `luotsi.guardrails`,
+# because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
+# embedding:
+#   provider: local
+#   model: "minishlab/potion-multilingual-128M"
+
 # --- Luotsi (reader feedback) settings ---
 # Reader ratings of generated titles feed back into the next generation. Omit the whole `luotsi:` block to run
 # without reader feedback; a `luotsi:` key with nothing after it reads as null and does the same. An explicit
 # empty mapping (`luotsi: {}`) is the one that turns feedback ON with every default, which means the default
-# guardrail chain and so the injection guard. That needs an embedding model, which a run fetches for itself
-# the first time, exactly as it trains its own artifact.
+# guardrail chain and so the injection guard. That needs the embedding model above, which a run fetches for
+# itself the first time, exactly as it trains its own artifact.
 # luotsi:
 #   sources:
 #     - type: sheets
@@ -165,17 +180,6 @@ rahti:
 #       timestamp_format: "%m/%d/%Y %H:%M:%S"
 #     - type: csv
 #       path: "/app/instance/feedback.csv"
-#
-#   # The Model2Vec model shared by message consolidation and the injection guard's centroid tier. A hub
-#   # identifier lives under the data directory, at `$MERI_DATA_DIR/embedding/<identifier>`, so this
-#   # names a model and never a path; give a path (absolute, or starting with `.` or `~`) only for a model
-#   # provisioned by other means. `meri run` fills the directory when it holds no model — pass
-#   # `--no-download-model` to keep hub access out of a run — and `meri feedback download-model` fills it with
-#   # no arguments, for provisioning ahead of time or fetching over what is there.
-#   # Omitting the key keeps the default below. Set it to null for the built-in mode: character-n-gram
-#   # consolidation and NO injection guard — that mode must also leave `injection` out of `guardrails` below,
-#   # because the guard has no reduced mode. A model that is set but cannot load fails the run at start, by design.
-#   embedding_model: "minishlab/potion-multilingual-128M"
 #
 #   # Guards to run, in order. Omit for the default chain, which is exactly the list below.
 #   guardrails:
@@ -284,6 +288,24 @@ pipelines:
     max_retries: 3       # At least 1. Zero attempts is not a configuration, it is a stopped pipeline.
     initial_delay: 1.0   # Seconds to wait before the second attempt. 0 retries immediately.
     backoff_factor: 2.0  # Multiplier applied to that delay after each failure. At least 1.0, which holds it steady.
+    # Two guards check every generated headline and send it back once, as a continuation of the same
+    # conversation, when one fails: a headline in the wrong language (langdetect against the article's
+    # language), and one that drifts from the article. Drift compares each headline's cosine similarity to the
+    # article's lead in the `embedding:` model's space, and fires when the generated headline scores lower than
+    # the ORIGINAL headline by more than `drift_margin`, or lower than `drift_floor` outright. Off when
+    # `embedding:` is null. A headline still in the wrong language after the revision marks the article
+    # `processing-failure=headline-language` and stores it without a generated title; persisting drift is
+    # accepted and logged at warning. Accepted, because the measure has a known weakness: a static embedding
+    # rewards shared wording, so a tabloid original that repeats the article's own phrases can outscore a
+    # better headline that says the same thing in other words.
+    # Both defaults were measured against 1,440 unrelated same-outlet headlines and 43 real generated ones: the
+    # margin catches nine in ten unrelated headlines anywhere in 0.08–0.12 and fires on four of the 43 real
+    # ones; the floor covers a weak original that an unrelated headline can match, lifting the catch rate to
+    # 96% with no extra false positives. The debug log prints both similarities on every review to re-tune from.
+    # Both are optional. Omit a key to keep the default below; set it to null to switch off that half of the
+    # check. With both null the drift guard does not run at all, and no article is embedded for it.
+    drift_margin: 0.1
+    drift_floor: 0.4
 
   # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
   # A maintainer tool, run by hand a few times a year. It is never used in a deployment.

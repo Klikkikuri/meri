@@ -21,7 +21,7 @@ from .sanitize import SanitizeGuard
 from .vectors import GuardVectors
 
 if TYPE_CHECKING:
-    from ..embeddings import Embedder, Vector
+    from meri.embedding import Embedder, Vector
 
 logger = logging.getLogger(__name__)
 

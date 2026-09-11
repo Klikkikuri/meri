@@ -4,10 +4,8 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
-from luotsi.cluster import MessageClusterer, MessageGroup
 from pydantic import AnyHttpUrl
 
-from luotsi import Feedback, FeedbackType
 from meri.abc import ArticleUrl, ClickbaitScale
 from meri.article import Article
 from meri.feedback import (
@@ -19,6 +17,8 @@ from meri.feedback import (
     newest_actionable,
 )
 from meri.lautta import RahtiCleaner
+from meri.luotsi import Feedback, FeedbackType
+from meri.luotsi.cluster import MessageClusterer, MessageGroup
 from meri.rahti import RahtiData, RahtiEntry, RahtiUrl
 
 NOON = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)

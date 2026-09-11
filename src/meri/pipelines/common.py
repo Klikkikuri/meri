@@ -151,6 +151,7 @@ class StructuredPipeline:
         max_retries: int | None = None,
         initial_delay: float | None = None,
         backoff_factor: float | None = None,
+        messages: list[ChatMessage] | None = None,
         **kwargs,
     ) -> BaseModel:
         """Run the Haystack pipeline, falling over between the configured LLMs.
@@ -162,6 +163,10 @@ class StructuredPipeline:
         :param max_retries: Total attempts before failing. Defaults to the pipeline's configuration.
         :param initial_delay: Delay in seconds before the second attempt. Defaults to the configuration.
         :param backoff_factor: Backoff multiplier per failed attempt. Defaults to the configuration.
+        :param messages: A continuation of the conversation, appended after the pipeline's own prompt: the
+            model's previous answer as an assistant message and the request that follows it as a user message.
+            User and system messages are Jinja templates rendered with `prompt_vars`; assistant messages are
+            passed through as they are.
         :return: Validated output Pydantic model.
         """
         definition = self._definition()
@@ -179,40 +184,53 @@ class StructuredPipeline:
             llm = chain[(attempt - 1) % len(chain)]
             pipeline, prompt = self._pipeline_for(llm)
 
-            # HACK: Haystack prompt -class bitches if it receives extra variables
-            attempt_vars = {k: v for k, v in prompt_vars.items() if k in prompt.variables}
+            # The builder declares one input socket per variable of its base template, and the pipeline checks
+            # the mandatory ones are given directly. Everything else — variables only a continuation names —
+            # arrives through `template_variables`, which the builder merges over the direct inputs.
+            inputs: dict = {name: prompt_vars[name] for name in prompt.variables if name in prompt_vars}
+            inputs["template_variables"] = prompt_vars
+            if messages:
+                inputs["template"] = list(prompt.template or []) + list(messages)
 
             if settings.logging.DEBUG:
-                rendered = prompt.run(template_variables=attempt_vars)["prompt"][0].text
-                logger.debug("Prompt for '%s': %s", self.PIPELINE_NAME, rendered)
+                rendered = prompt.run(**inputs)["prompt"]
+                logger.debug("Prompt for pipeline", pipeline=self.PIPELINE_NAME, messages=[m.text for m in rendered])
 
             try:
-                results = pipeline.run({
-                    "prompt_builder": attempt_vars,
-                })
+                with logger.span(
+                    "pipeline_attempt",
+                    pipeline=self.PIPELINE_NAME,
+                    llm=llm.name,
+                    attempt=attempt,
+                    continuation=bool(messages),
+                ) as span:
+                    results = pipeline.run({
+                        "prompt_builder": inputs,
+                    })
 
-                match results:
-                    case {"llm": {"replies": [reply, *_]}}:
-                        content = reply.text
-                        if not content:
-                            raise ValueError("Empty response from LLM")
+                    match results:
+                        case {"llm": {"replies": [reply, *_]}}:
+                            content = reply.text
+                            if not content:
+                                raise ValueError("Empty response from LLM")
 
-                        model_name = reply.meta.get("model", "unknown") if reply.meta else "unknown"
-                        # The configured name and the model the provider reports answer different questions
-                        # once a chain is in play, so log both.
-                        logger.debug(
-                            "Pipeline output from LLM '%s' on model: %s",
-                            llm.name,
-                            model_name,
-                            extra=dict(reply.meta) if reply.meta else {},
-                        )
+                            model_name = reply.meta.get("model", "unknown") if reply.meta else "unknown"
+                            span.set_attribute("model", model_name)
+                            # The configured name and the model the provider reports answer different questions
+                            # once a chain is in play, so log both.
+                            logger.debug(
+                                "Pipeline output from LLM '%s' on model: %s",
+                                llm.name,
+                                model_name,
+                                extra=dict(reply.meta) if reply.meta else {},
+                            )
 
-                        # Parse the response using the output_model
-                        model_output = self.output_model.model_validate_json(content)
-                        return self._validate_output(model_output, attempt_vars)
-                    case _:
-                        logger.error("Invalid pipeline output", extra={"pipeline": pipeline, "results": results})
-                        raise ValueError(f"Invalid pipeline output: {results!r}")
+                            # Parse the response using the output_model
+                            model_output = self.output_model.model_validate_json(content)
+                            return self._validate_output(model_output, prompt_vars)
+                        case _:
+                            logger.error("Invalid pipeline output", extra={"pipeline": pipeline, "results": results})
+                            raise ValueError(f"Invalid pipeline output: {results!r}")
             except Exception as exc:
                 if attempt < max_retries:
                     logger.warning(

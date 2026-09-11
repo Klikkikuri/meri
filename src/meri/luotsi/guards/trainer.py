@@ -18,7 +18,7 @@ from .labeled import BENIGN, LabeledLine
 from .vectors import Centroid, GuardVectors
 
 if TYPE_CHECKING:
-    from ..embeddings import Embedder, Vector
+    from meri.embedding import Embedder, Vector
 
 logger = logging.getLogger(__name__)
 

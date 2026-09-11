@@ -37,7 +37,7 @@ def stub(translator: ExemplarTranslator, replies, settings: Settings | None = No
         translator._prompts[llm.name] = prompt
 
         def run(inputs):
-            rendered.append(prompt.run(template_variables=inputs["prompt_builder"])["prompt"][0].text)
+            rendered.append(prompt.run(**inputs["prompt_builder"])["prompt"][0].text)
             answer = replies.pop(0)
             if isinstance(answer, Exception):
                 raise answer

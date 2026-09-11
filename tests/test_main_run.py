@@ -5,12 +5,13 @@ from types import SimpleNamespace
 import click
 import pytest
 
-from luotsi import Feedback, FeedbackType, LuotsiSettings
 from meri.__main__ import run
 from meri.abc import ArticleLabels, article_url
 from meri.article import Article
 from meri.feedback import FeedbackMatcher
 from meri.lautta import ArticleTitleData, DiscoveredArticle, RahtiCleaner
+from meri.luotsi import Feedback, FeedbackType, LuotsiSettings
+from meri.settings.embedding import LocalEmbeddingSettings
 from meri.settings.newssources import NewsSource
 
 
@@ -109,6 +110,7 @@ def test_run_splits_skipped_articles_before_generation(monkeypatch):
             rahti=object(),
             sulku=SimpleNamespace(enabled=False),
             luotsi=None,
+            embedding=None,
             MAX_WORKERS=1,
         )
     }
@@ -218,7 +220,7 @@ def build_feedback_run(
 
     monkeypatch.setattr(
         "meri.__main__.build_matcher",
-        lambda _settings: FeedbackMatcher(feedback(article), guard=stub_guard),
+        lambda _settings, _embed=None, _name=None: FeedbackMatcher(feedback(article), guard=stub_guard),
     )
 
     ctx = click.Context(run)
@@ -229,6 +231,7 @@ def build_feedback_run(
             rahti=object(),
             sulku=SimpleNamespace(enabled=False),
             luotsi=LuotsiSettings(),
+            embedding=None,
             MAX_WORKERS=1,
         )
     }
@@ -407,17 +410,16 @@ def test_feedback_older_than_the_entry_does_not_warn_on_a_pruned_article(monkeyp
 # --- Embedding model provisioning ------------------------------------------------
 
 
-def configured_model(monkeypatch, ctx, tmp_path):
-    """
-    Point the run at a model directory. `LuotsiSettings()` carries none, so the block is otherwise skipped.
+def stub_embed(_text: str):
+    """Stands in for the loaded model; the run only passes it along."""
+    return
 
-    The clusterer loads the model for itself further down the run; in a real one that is the cached load from
-    the start of it, so the stub stands in for the same shared model.
-    """
+
+def configured_model(ctx, tmp_path):
+    """Point the run at a model directory; the fixtures set `embedding=None`, so the block is otherwise skipped."""
     model = tmp_path / "model"
     model.mkdir()
-    ctx.obj["settings"].luotsi = LuotsiSettings(embedding_model=model)
-    monkeypatch.setattr("luotsi.cluster.load_embedder", lambda _path: lambda _text: None)
+    ctx.obj["settings"].embedding = LocalEmbeddingSettings(model=str(model))
     return model
 
 
@@ -430,29 +432,33 @@ def test_a_missing_model_is_fetched_before_anything_else(monkeypatch, tmp_path):
     """
     entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
     ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
-    model = configured_model(monkeypatch, ctx, tmp_path)
+    model = configured_model(ctx, tmp_path)
 
     events = []
-    monkeypatch.setattr("meri.__main__.ensure_model", lambda path: events.append(("fetch", path)) or True)
-    monkeypatch.setattr("meri.__main__.load_embedder", lambda path: events.append(("load", path)))
-    monkeypatch.setattr("meri.__main__.provision", lambda _s, force=False: events.append(("provision", force)))
+    monkeypatch.setattr("meri.embedding.ensure_model", lambda path: events.append(("fetch", path)) or True)
+    monkeypatch.setattr("meri.embedding.load_embedder", lambda path: events.append(("load", path)) or stub_embed)
+    monkeypatch.setattr(
+        "meri.__main__.provision",
+        lambda _s, embed, name, force=False: events.append(("provision", embed, name, force)),
+    )
 
     with ctx:
         run.callback(sample=False, max_workers=1)
 
-    assert events == [("fetch", model), ("load", model), ("provision", True)]
+    assert events[:2] == [("fetch", model), ("load", model)]
+    assert events[-1] == ("provision", stub_embed, "model", True)
 
 
 def test_a_model_already_there_is_not_retrained_around(monkeypatch, tmp_path):
     """Nothing was fetched, so the artifact is left to its own staleness check."""
     entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
     ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
-    configured_model(monkeypatch, ctx, tmp_path)
+    configured_model(ctx, tmp_path)
 
     forced = []
-    monkeypatch.setattr("meri.__main__.ensure_model", lambda _path: False)
-    monkeypatch.setattr("meri.__main__.load_embedder", lambda _path: None)
-    monkeypatch.setattr("meri.__main__.provision", lambda _s, force=False: forced.append(force))
+    monkeypatch.setattr("meri.embedding.ensure_model", lambda _path: False)
+    monkeypatch.setattr("meri.embedding.load_embedder", lambda _path: stub_embed)
+    monkeypatch.setattr("meri.__main__.provision", lambda _s, _e, _n, force=False: forced.append(force))
 
     with ctx:
         run.callback(sample=False, max_workers=1)
@@ -460,11 +466,30 @@ def test_a_model_already_there_is_not_retrained_around(monkeypatch, tmp_path):
     assert forced == [False]
 
 
+def test_the_model_is_provisioned_without_reader_feedback_too(monkeypatch, tmp_path):
+    """The title guards need the model as much as Luotsi does, so `luotsi:` being absent changes nothing here."""
+    entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
+    ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
+    model = configured_model(ctx, tmp_path)
+    ctx.obj["settings"].luotsi = None
+
+    events = []
+    monkeypatch.setattr("meri.embedding.ensure_model", lambda path: events.append(("fetch", path)) or True)
+    monkeypatch.setattr("meri.embedding.load_embedder", lambda path: events.append(("load", path)) or stub_embed)
+    monkeypatch.setattr("meri.__main__.provision", lambda *_a, **_k: events.append("provision"))
+
+    with ctx:
+        run.callback(sample=False, max_workers=1)
+
+    assert events[:2] == [("fetch", model), ("load", model)]
+    assert "provision" not in events
+
+
 def test_no_download_model_keeps_the_hub_out_of_the_run(monkeypatch, tmp_path):
     """The opt-out for a deployment that provisions its own model: an unprovisioned one is then an error."""
     entry_updated = datetime(2026, 7, 14, 9, 0, tzinfo=UTC)
     ctx, _calls, _ = build_feedback_run(monkeypatch, lambda _a: [], entry_updated, needs_updating=True)
-    model = configured_model(monkeypatch, ctx, tmp_path)
+    model = configured_model(ctx, tmp_path)
 
     def refuse(_path):
         raise AssertionError("--no-download-model must not reach the hub")
@@ -472,8 +497,8 @@ def test_no_download_model_keeps_the_hub_out_of_the_run(monkeypatch, tmp_path):
     def missing(path):
         raise FileNotFoundError(f"No Model2Vec model in {path}.")
 
-    monkeypatch.setattr("meri.__main__.ensure_model", refuse)
-    monkeypatch.setattr("meri.__main__.load_embedder", missing)
+    monkeypatch.setattr("meri.embedding.ensure_model", refuse)
+    monkeypatch.setattr("meri.embedding.load_embedder", missing)
 
     with ctx, pytest.raises(click.ClickException, match="download-model") as failure:
         run.callback(sample=False, max_workers=1, download_model=False)

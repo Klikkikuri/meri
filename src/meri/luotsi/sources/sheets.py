@@ -7,6 +7,7 @@ needing credentials for a publicly readable sheet.
 
 import csv
 import logging
+from urllib.parse import quote
 
 import requests
 from tenacity import (
@@ -59,7 +60,8 @@ class SheetsFeedbackSource(FeedbackSource):
         """
         url = f"https://docs.google.com/spreadsheets/d/{self.config.spreadsheet_id}/gviz/tq?tqx=out:csv"
         if self.config.worksheet:
-            url += f"&sheet={self.config.worksheet}"
+            # A worksheet name is free text; `&`, `#` or `+` in it would otherwise cut or alter the query.
+            url += f"&sheet={quote(self.config.worksheet, safe='')}"
 
         try:
             lines = self._fetch_csv(url).splitlines()

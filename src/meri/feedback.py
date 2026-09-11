@@ -17,12 +17,15 @@ import re
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
-from luotsi.cluster import MessageClusterer, MessageGroup
 from niitti import get_logger
 
-from luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+from meri.luotsi import Feedback, FeedbackType, Luotsi, LuotsiSettings
+
+if TYPE_CHECKING:
+    from meri.embedding import Embedder
+from meri.luotsi.cluster import MessageClusterer, MessageGroup
 
 from .abc import ClickbaitScale
 from .article import Article
@@ -91,14 +94,18 @@ class ArticleFeedback(NamedTuple):
     """Consolidated message groups, most recent first, capped."""
 
 
-def create_luotsi(settings: LuotsiSettings | None) -> Luotsi | None:
+def create_luotsi(
+    settings: LuotsiSettings | None, embed: "Embedder | None" = None, model_name: str | None = None
+) -> Luotsi | None:
     """
     Build a Luotsi client, or None when feedback is not configured.
 
     :param settings: The `luotsi` section of Meri's settings.
-    :raises Exception: When a configured embedding model or guard artifact cannot load.
+    :param embed: The process-wide embedder from :func:`meri.embedding.get_embedder`, or None without a model.
+    :param model_name: The model identity from :func:`meri.embedding.model_identity`.
+    :raises Exception: When the guard artifact cannot load.
     """
-    return Luotsi(settings) if settings else None
+    return Luotsi(settings, embed, model_name) if settings else None
 
 
 def newest_actionable(feedback: list[Feedback]) -> datetime | None:
@@ -170,16 +177,20 @@ class FeedbackMatcher:
         return self.map[signature]
 
 
-def build_matcher(settings: LuotsiSettings | None) -> FeedbackMatcher:
+def build_matcher(
+    settings: LuotsiSettings | None, embed: "Embedder | None" = None, model_name: str | None = None
+) -> FeedbackMatcher:
     """
     Fetch all reader feedback and wrap it in a matcher that guards it per article.
 
     Fail-soft: an unreachable source must not stop the run. Construction stays outside the `try` so that a
-    broken embedding model or a missing guard artifact still fails the run at start — see the module docstring.
+    missing guard artifact still fails the run at start — see the module docstring.
 
+    :param embed: The process-wide embedder, or None without a model.
+    :param model_name: The model identity the guard artifact is checked against.
     :return: A matcher over the fetched feedback, empty when feedback is disabled or unreachable.
     """
-    client = create_luotsi(settings)
+    client = create_luotsi(settings, embed, model_name)
     if not client:
         return FeedbackMatcher([])
 

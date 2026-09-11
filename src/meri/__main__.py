@@ -3,19 +3,30 @@ from datetime import datetime, timezone
 from importlib.util import find_spec
 
 from jinja2 import Template
-from luotsi import LuotsiSettings, provision
-from luotsi.cluster import MessageClusterer
-from luotsi.embeddings import load_embedder
-from opentelemetry import trace
-from sentry_sdk import monitor
 from niitti import get_logger
 from niitti.tracing import span
+from opentelemetry import trace
+from sentry_sdk import monitor
 
-from meri.settings import Settings
 from meri.abc import ArticleLabels
+from meri.luotsi import LuotsiSettings, provision
+from meri.luotsi.cluster import MessageClusterer
+from meri.settings import Settings
 from meri.sulku import SulkuService
 
-
+from .article import Article
+from .bootstrap import setup
+from .cli.feedback import cli as feedback_cli
+from .cli.fetch import cli as fetch_cli
+from .cli.headlines import cli as headlines_cli
+from .embedding import get_embedder, model_identity, provision_model
+from .feedback import (
+    ArticleFeedback,
+    FeedbackMatcher,
+    build_matcher,
+    feedback_for_article,
+    newest_actionable,
+)
 from .lautta import (
     ArticleTitleData,
     RahtiCleaner,
@@ -29,18 +40,6 @@ from .lautta import (
     matching_selector,
     prune_rahti,
     should_skip_processing,
-)
-from .bootstrap import setup
-from .cli.feedback import cli as feedback_cli, ensure_model
-from .cli.fetch import cli as fetch_cli
-from .cli.headlines import cli as headlines_cli
-from .article import Article
-from .feedback import (
-    ArticleFeedback,
-    FeedbackMatcher,
-    build_matcher,
-    feedback_for_article,
-    newest_actionable,
 )
 from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
@@ -141,21 +140,21 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     # load is a broken deployment, and it must say so at the start of the run rather than part way through it.
     # The injection guard's vectors are provisioned in the same breath and for the same reason — this is the one
     # command that writes them, so the read-only ones can be trusted not to.
-    if settings.luotsi and settings.luotsi.embedding_model:
-        model = settings.luotsi.embedding_model
-        fetched = ensure_model(model) if download_model else False
-        try:
-            load_embedder(model)
-        except OSError as e:
-            raise click.ClickException(f"{e}\n\n`meri feedback download-model` provisions it.") from e
+    try:
+        fetched = provision_model(settings, download=download_model)
+    except OSError as e:
+        raise click.ClickException(f"{e}\n\n`meri feedback download-model` provisions it.") from e
+    embed = get_embedder(settings)
+    identity = model_identity(settings)
+    if settings.luotsi:
         # A fetch keeps the model's identifier and its dimension, so the artifact would otherwise read as
         # current while its centroids belong to the weights that were just replaced, and no operator is here
         # to be told to retrain.
-        provision(settings.luotsi, force=fetched)
+        provision(settings.luotsi, embed, identity, force=fetched)
 
     # Fetch reader feedback once. It gates reprocessing below and enriches the prompts further down. The
     # guardrail chain runs per article, inside the matcher, so a growing corpus costs only what this run reads.
-    feedback_matcher = build_matcher(settings.luotsi)
+    feedback_matcher = build_matcher(settings.luotsi, embed, identity)
 
     # Fetch latest articles from sources
     latest_articles = fetch_latest(settings.sources)
@@ -204,7 +203,7 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     article_feedback: list[ArticleFeedback | None] = []
     # Defaults stand in when feedback is disabled; the matcher is empty then, so neither is ever consulted.
     luotsi_settings = settings.luotsi or LuotsiSettings()
-    clusterer = MessageClusterer.from_settings(luotsi_settings)
+    clusterer = MessageClusterer.from_settings(luotsi_settings, embed)
     feedback_limit = luotsi_settings.max_messages_per_article
     for a in full_articles:
         # Classify as primary video content if video metadata is present without meaningful article text
