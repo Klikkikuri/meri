@@ -7,7 +7,7 @@ conversation: the model sees its own answer and a request to correct it. A langu
 processing failure the caller stores rather than retries; drift that persists is accepted and logged.
 """
 
-from typing import ClassVar, NamedTuple, cast
+from typing import Annotated, ClassVar, NamedTuple, cast
 
 from haystack import Document
 from haystack.dataclasses import ChatMessage
@@ -65,21 +65,26 @@ class TitleSettings(PipelineSettings):
 
     model_config = ConfigDict(extra="forbid")
 
-    drift_margin: float = Field(default=0.1, ge=0.0)
+    drift_margin: Annotated[float, Field(ge=0.0)] | None = 0.1
     """
     How much lower than the original headline's the generated headline's similarity to the article may be
     before it is sent back for revision. Cosine similarity in the embedding model's space, 0 to 1.
 
     Measured on 1,440 unrelated same-outlet headlines and 43 real generated ones: 0.08 to 0.12 all catch about
     nine in ten unrelated headlines and fire on four of the 43 real ones, so 0.1 is kept as the middle of that band.
+
+    Null switches this half of the check off. With `drift_floor` off as well the drift guard does not run, and
+    the article is never embedded.
     """
 
-    drift_floor: float = Field(default=0.4, ge=0.0, le=1.0)
+    drift_floor: Annotated[float, Field(ge=0.0, le=1.0)] | None = 0.4
     """
     Similarity to the article below which a generated headline is sent back for revision whatever the original
     scored. Covers the margin's blind spot: a weak original, typically a curiosity-gap headline, that an unrelated
     headline can match. Unrelated headlines score under 0.46 nine times in ten, real generated ones over 0.54;
     0.4 lifts the catch rate from 89% to 96% with no extra false positives in that sample.
+
+    Null switches this half of the check off, as for `drift_margin`.
     """
 
 
@@ -88,12 +93,15 @@ class Drift(NamedTuple):
 
     original: float
     generated: float
-    margin: float
-    floor: float
+    margin: float | None
+    floor: float | None
 
     @property
     def drifted(self) -> bool:
-        return self.original - self.generated > self.margin or self.generated < self.floor
+        """Whether an armed threshold is exceeded. A threshold of None is not armed and never fires."""
+        below_original = self.margin is not None and self.original - self.generated > self.margin
+        below_floor = self.floor is not None and self.generated < self.floor
+        return below_original or below_floor
 
 
 def language_issue(title: str, expected: str | None) -> dict[str, str] | None:
@@ -123,7 +131,9 @@ def language_issue(title: str, expected: str | None) -> dict[str, str] | None:
     return {"detected": detected, "expected": expected}
 
 
-def measure_drift(embed: Embedder, text: str, original: str, generated: str, margin: float, floor: float) -> Drift:
+def measure_drift(
+    embed: Embedder, text: str, original: str, generated: str, margin: float | None, floor: float | None
+) -> Drift:
     """
     Compare both headlines against the article in the embedding space.
 
@@ -141,8 +151,8 @@ def measure_drift(embed: Embedder, text: str, original: str, generated: str, mar
     :param text: The article body.
     :param original: The outlet's headline, from the article metadata.
     :param generated: The headline the model proposed.
-    :param margin: See :attr:`TitleSettings.drift_margin`.
-    :param floor: See :attr:`TitleSettings.drift_floor`.
+    :param margin: See :attr:`TitleSettings.drift_margin`. None leaves the comparison to the original unarmed.
+    :param floor: See :attr:`TitleSettings.drift_floor`. None leaves the absolute limit unarmed.
     """
     article = embed(text)
     return Drift(cosine(article, embed(original)), cosine(article, embed(generated)), margin, floor)
@@ -190,17 +200,21 @@ class TitlePredictor(StructuredPipeline):
                 span.set_attribute("language.detected", language["detected"])
 
             # The original headline is the article's own metadata, not the model's echo of it.
+            definition = cast(TitleSettings, self._definition())
+            armed = definition.drift_margin is not None or definition.drift_floor is not None
             original = article.meta.get("title")
-            embed = self._embedder() if original and article.text else None
+            # Resolved last, and only when something would use it: loading the model is the expensive part.
+            embed = self._embedder() if armed and original and article.text else None
             if embed and original and article.text:
-                definition = cast(TitleSettings, self._definition())
                 drift = measure_drift(
                     embed, article.text, original, result.title, definition.drift_margin, definition.drift_floor
                 )
                 span.set_attribute("drift.original", drift.original)
                 span.set_attribute("drift.generated", drift.generated)
-                span.set_attribute("drift.margin", drift.margin)
-                span.set_attribute("drift.floor", drift.floor)
+                # An unarmed threshold is None, which OpenTelemetry does not accept as an attribute value.
+                for name in ("margin", "floor"):
+                    if getattr(drift, name) is not None:
+                        span.set_attribute(f"drift.{name}", getattr(drift, name))
                 logger.debug("Headline similarity to the article", url=url, **drift._asdict())
                 if drift.drifted:
                     issues["drift"] = drift._asdict()

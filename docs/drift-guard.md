@@ -28,6 +28,10 @@ enough. Refer to **Known weaknesses**.
 
 The guard does nothing if `embedding:` is null, or if the article has no original headline.
 
+The two conditions are independent, and each one is optional. If you do not give a value, the default applies.
+If you set a value to null, that condition does not operate. If you set both to null, the guard does not
+operate, and the pipeline does not embed the article.
+
 The model truncates the article at 512 tokens. So the guard compares the headlines to the start of the
 article, which is the part that a headline usually tells about.
 
@@ -89,6 +93,19 @@ to drift.
 **The guard does not find a headline that tells about a detail.** A sentence from the middle of the article is
 approximately as near to the article as the original headline. Only 26 % of the detail sentences went above the
 margin of 0.1. So a headline that is correct, but tells about a small part of the article, can go through the guard.
+
+## How to switch off a condition
+
+```yaml
+pipelines:
+  title:
+    drift_margin: 0.1     # omit for the default, or set to null to stop the comparison to the original
+    drift_floor: null     # this condition does not operate
+```
+
+Switch off the floor if your articles are short, or if they contain many quotations. These articles give low
+similarities for all headlines. Switch off the margin if the headlines of your sources hold back the news, which
+gives the original headline a low similarity.
 
 ## How to tune the numbers for your deployment
 

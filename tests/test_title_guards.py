@@ -296,14 +296,64 @@ def test_the_floor_catches_a_weak_original_the_margin_cannot():
 def test_the_drift_floor_comes_from_the_pipeline_definition(monkeypatch, embedder):
     monkeypatch.setattr(
         "meri.pipelines.common.settings",
-        Settings(llm=[LLM], pipelines={"title": {"drift_margin": 2.0, "drift_floor": 0.0}}),
+        Settings(llm=[LLM], pipelines={"title": {"drift_margin": None, "drift_floor": 0.9}}),
     )
     predictor = TitlePredictor()
-    _, pipeline = stub(predictor, [title_reply("unrelated")])
+    # Half on the article's axis, so it scores about 0.71: under this floor, and the margin is not armed.
+    _, pipeline = stub(predictor, [title_reply("ordinary unrelated"), title_reply("ordinary")])
 
     predictor.run(make_article(None, title="ordinary", text="ordinary " * 20))
 
-    assert pipeline.run.call_count == 1, "with both knobs disarmed nothing fires"
+    assert pipeline.run.call_count == 2
+
+
+def test_a_null_threshold_switches_off_that_half_of_the_check(monkeypatch, embedder):
+    """Each half is optional on its own, so a deployment can keep the one it trusts."""
+    article = make_article(None, title="ordinary", text="ordinary " * 20)
+
+    # Only the margin armed: an unrelated headline is far below the original, so it fires.
+    monkeypatch.setattr(
+        "meri.pipelines.common.settings",
+        Settings(llm=[LLM], pipelines={"title": {"drift_floor": None}}),
+    )
+    predictor = TitlePredictor()
+    _, pipeline = stub(predictor, [title_reply("unrelated"), title_reply("ordinary")])
+    predictor.run(article)
+    assert pipeline.run.call_count == 2
+
+    # Neither armed: the same headline goes out untouched.
+    monkeypatch.setattr(
+        "meri.pipelines.common.settings",
+        Settings(llm=[LLM], pipelines={"title": {"drift_margin": None, "drift_floor": None}}),
+    )
+    predictor = TitlePredictor()
+    _, pipeline = stub(predictor, [title_reply("unrelated")])
+    assert predictor.run(article).title == "unrelated"
+    assert pipeline.run.call_count == 1
+
+
+def test_both_thresholds_off_never_loads_the_embedding_model(monkeypatch):
+    """Loading the model is the expensive part, so a disarmed guard must not ask for it."""
+    monkeypatch.setattr(
+        "meri.pipelines.common.settings",
+        Settings(llm=[LLM], pipelines={"title": {"drift_margin": None, "drift_floor": None}}),
+    )
+    monkeypatch.setattr(TitlePredictor, "_embedder", lambda self: pytest.fail("the model must not be loaded"))
+    predictor = TitlePredictor()
+    stub(predictor, [title_reply("unrelated")])
+
+    predictor.run(make_article(None, title="ordinary", text="ordinary " * 20))
+
+
+def test_an_unarmed_threshold_never_fires_on_its_own():
+    """`measure_drift` still reports both similarities; only the verdict changes."""
+    off = measure_drift(stub_embed, "ordinary ordinary", "ordinary", "unrelated", None, None)
+    assert off.original == pytest.approx(1.0)
+    assert off.generated == pytest.approx(0.0)
+    assert not off.drifted
+
+    assert measure_drift(stub_embed, "ordinary ordinary", "ordinary", "unrelated", None, 0.4).drifted
+    assert measure_drift(stub_embed, "ordinary ordinary", "ordinary", "unrelated", 0.1, None).drifted
 
 
 def test_both_guards_failing_produce_one_revision_naming_both(settings, embedder):

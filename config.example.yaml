@@ -302,6 +302,8 @@ pipelines:
     # margin catches nine in ten unrelated headlines anywhere in 0.08–0.12 and fires on four of the 43 real
     # ones; the floor covers a weak original that an unrelated headline can match, lifting the catch rate to
     # 96% with no extra false positives. The debug log prints both similarities on every review to re-tune from.
+    # Both are optional. Omit a key to keep the default below; set it to null to switch off that half of the
+    # check. With both null the drift guard does not run at all, and no article is embedded for it.
     drift_margin: 0.1
     drift_floor: 0.4
 
