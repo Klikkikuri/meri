@@ -255,8 +255,9 @@ def test_the_drift_margin_comes_from_the_pipeline_definition(monkeypatch, embedd
         "meri.pipelines.common.settings", Settings(llm=[LLM], pipelines={"title": {"drift_margin": 2.0}})
     )
     predictor = TitlePredictor()
-    _, pipeline = stub(predictor, [title_reply("unrelated")])
+    _, pipeline = stub(predictor, [title_reply("ordinary unrelated")])
 
+    # Half on the article's axis: clears the floor at about 0.71, but sits 0.29 under the original's 1.0.
     predictor.run(make_article(None, title="ordinary", text="ordinary " * 20))
 
     assert pipeline.run.call_count == 1, "a margin above the whole similarity range never fires"
@@ -271,12 +272,38 @@ def test_a_typo_in_a_title_key_is_caught_at_construction(monkeypatch):
 
 
 def test_measure_drift_compares_both_headlines_against_the_article():
-    drifted = measure_drift(stub_embed, "ordinary ordinary", "ordinary", "unrelated", 0.1)
+    drifted = measure_drift(stub_embed, "ordinary ordinary", "ordinary", "unrelated", 0.1, 0.0)
     assert drifted.drifted
     assert drifted.original == pytest.approx(1.0)
     assert drifted.generated == pytest.approx(0.0)
 
-    assert not measure_drift(stub_embed, "ordinary ordinary", "ordinary", "ordinary", 0.1).drifted
+    assert not measure_drift(stub_embed, "ordinary ordinary", "ordinary", "ordinary", 0.1, 0.0).drifted
+
+
+def test_the_floor_catches_a_weak_original_the_margin_cannot():
+    """
+    One unrelated headline in ten lands within the margin of a curiosity-gap original that scores low itself.
+
+    Here the original is as unrelated as the candidate, so the margin sees no drift; the floor still does.
+    """
+    weak = measure_drift(stub_embed, "ordinary ordinary", "unrelated", "unrelated", 0.1, 0.4)
+    assert weak.original == pytest.approx(0.0)
+    assert weak.drifted
+
+    assert not measure_drift(stub_embed, "ordinary ordinary", "unrelated", "ordinary", 0.1, 0.4).drifted
+
+
+def test_the_drift_floor_comes_from_the_pipeline_definition(monkeypatch, embedder):
+    monkeypatch.setattr(
+        "meri.pipelines.common.settings",
+        Settings(llm=[LLM], pipelines={"title": {"drift_margin": 2.0, "drift_floor": 0.0}}),
+    )
+    predictor = TitlePredictor()
+    _, pipeline = stub(predictor, [title_reply("unrelated")])
+
+    predictor.run(make_article(None, title="ordinary", text="ordinary " * 20))
+
+    assert pipeline.run.call_count == 1, "with both knobs disarmed nothing fires"
 
 
 def test_both_guards_failing_produce_one_revision_naming_both(settings, embedder):

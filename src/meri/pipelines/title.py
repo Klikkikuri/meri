@@ -69,19 +69,31 @@ class TitleSettings(PipelineSettings):
     """
     How much lower than the original headline's the generated headline's similarity to the article may be
     before it is sent back for revision. Cosine similarity in the embedding model's space, 0 to 1.
+
+    Measured on 1,440 unrelated same-outlet headlines and 43 real generated ones: 0.08 to 0.12 all catch about
+    nine in ten unrelated headlines and fire on four of the 43 real ones, so 0.1 is kept as the middle of that band.
+    """
+
+    drift_floor: float = Field(default=0.4, ge=0.0, le=1.0)
+    """
+    Similarity to the article below which a generated headline is sent back for revision whatever the original
+    scored. Covers the margin's blind spot: a weak original, typically a curiosity-gap headline, that an unrelated
+    headline can match. Unrelated headlines score under 0.46 nine times in ten, real generated ones over 0.54;
+    0.4 lifts the catch rate from 89% to 96% with no extra false positives in that sample.
     """
 
 
 class Drift(NamedTuple):
-    """Similarity of each headline to the article, and the margin they are judged by."""
+    """Similarity of each headline to the article, and the margin and floor they are judged by."""
 
     original: float
     generated: float
     margin: float
+    floor: float
 
     @property
     def drifted(self) -> bool:
-        return self.original - self.generated > self.margin
+        return self.original - self.generated > self.margin or self.generated < self.floor
 
 
 def language_issue(title: str, expected: str | None) -> dict[str, str] | None:
@@ -111,7 +123,7 @@ def language_issue(title: str, expected: str | None) -> dict[str, str] | None:
     return {"detected": detected, "expected": expected}
 
 
-def measure_drift(embed: Embedder, text: str, original: str, generated: str, margin: float) -> Drift:
+def measure_drift(embed: Embedder, text: str, original: str, generated: str, margin: float, floor: float) -> Drift:
     """
     Compare both headlines against the article in the embedding space.
 
@@ -130,9 +142,10 @@ def measure_drift(embed: Embedder, text: str, original: str, generated: str, mar
     :param original: The outlet's headline, from the article metadata.
     :param generated: The headline the model proposed.
     :param margin: See :attr:`TitleSettings.drift_margin`.
+    :param floor: See :attr:`TitleSettings.drift_floor`.
     """
     article = embed(text)
-    return Drift(cosine(article, embed(original)), cosine(article, embed(generated)), margin)
+    return Drift(cosine(article, embed(original)), cosine(article, embed(generated)), margin, floor)
 
 
 class TitlePredictor(StructuredPipeline):
@@ -180,11 +193,14 @@ class TitlePredictor(StructuredPipeline):
             original = article.meta.get("title")
             embed = self._embedder() if original and article.text else None
             if embed and original and article.text:
-                margin = cast(TitleSettings, self._definition()).drift_margin
-                drift = measure_drift(embed, article.text, original, result.title, margin)
+                definition = cast(TitleSettings, self._definition())
+                drift = measure_drift(
+                    embed, article.text, original, result.title, definition.drift_margin, definition.drift_floor
+                )
                 span.set_attribute("drift.original", drift.original)
                 span.set_attribute("drift.generated", drift.generated)
                 span.set_attribute("drift.margin", drift.margin)
+                span.set_attribute("drift.floor", drift.floor)
                 logger.debug("Headline similarity to the article", url=url, **drift._asdict())
                 if drift.drifted:
                     issues["drift"] = drift._asdict()

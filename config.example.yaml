@@ -292,14 +292,18 @@ pipelines:
     # conversation, when one fails: a headline in the wrong language (langdetect against the article's
     # language), and one that drifts from the article. Drift compares each headline's cosine similarity to the
     # article's lead in the `embedding:` model's space, and fires when the generated headline scores lower than
-    # the ORIGINAL headline by more than this margin. Off when `embedding:` is null. A headline still in the
-    # wrong language after the revision marks the article `processing-failure=headline-language` and stores it
-    # without a generated title; persisting drift is accepted and logged at warning. Accepted, because the
-    # measure has a known weakness: a static embedding rewards shared wording, so a tabloid original that
-    # repeats the article's own phrases can outscore a better headline that says the same thing in other words.
-    # The default is a starting point: the debug log prints both similarities on every review, which is what to
-    # tune it from.
+    # the ORIGINAL headline by more than `drift_margin`, or lower than `drift_floor` outright. Off when
+    # `embedding:` is null. A headline still in the wrong language after the revision marks the article
+    # `processing-failure=headline-language` and stores it without a generated title; persisting drift is
+    # accepted and logged at warning. Accepted, because the measure has a known weakness: a static embedding
+    # rewards shared wording, so a tabloid original that repeats the article's own phrases can outscore a
+    # better headline that says the same thing in other words.
+    # Both defaults were measured against 1,440 unrelated same-outlet headlines and 43 real generated ones: the
+    # margin catches nine in ten unrelated headlines anywhere in 0.08–0.12 and fires on four of the 43 real
+    # ones; the floor covers a weak original that an unrelated headline can match, lifting the catch rate to
+    # 96% with no extra false positives. The debug log prints both similarities on every review to re-tune from.
     drift_margin: 0.1
+    drift_floor: 0.4
 
   # Translates Luotsi's labeled exemplar files into a new language, for `meri feedback translate-exemplars`.
   # A maintainer tool, run by hand a few times a year. It is never used in a deployment.
