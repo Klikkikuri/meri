@@ -20,7 +20,7 @@ from .exceptions import HeadlineRejected
 from .feedback import ArticleFeedback, newest_actionable
 from .labels import LabelSelector, LabelSet
 from .pipelines.title import TitlePredictor
-from .rahti import RahtiData, RahtiEntry, RahtiUrl
+from .rahti.data import RahtiData, RahtiEntry, RahtiUrl
 from .scraper import discover_articles, get_extractor
 from .settings import settings
 from .settings.newssources import NewsSource

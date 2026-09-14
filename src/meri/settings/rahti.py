@@ -1,11 +1,8 @@
 from socket import gethostname
-from typing import Annotated, Any, Optional, Union
 
-from niitti import get_logger
-from pydantic import Discriminator, Field, HttpUrl, SecretStr, Tag
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings
 
-logger = get_logger(__name__)
 
 def _default_committer_email():
     hostname = gethostname()
@@ -30,38 +27,28 @@ class GitHubCommitter(BaseSettings):
     )
 
 
-class RahtiBaseSettings(BaseSettings):
-    url: str = Field(
-        "file:///app/instance/rahti/data.json",
-        description="Target URL for Rahti data.",
+class RahtiSettings(BaseSettings):
+    """
+    Where Rahti data is pulled from and pushed to, and the credentials for it.
+
+    The storage driver is chosen from the location when Rahti is used (see :mod:`meri.rahti.storage`), so one
+    settings model serves every driver, and the manifest and rule reads use the same credentials.
+    """
+
+    url: str | None = Field(
+        None,
+        description="Location of the Rahti `data.json`: a path, a `file://` URL, or a GitHub Contents API or raw "
+        "URL. If empty, `file:///app/instance/rahti/data.json`. The manifest never sets it.",
     )
-
-    model_config = {
-        "extra": "ignore"   # Allow extra fields
-    }
-
-
-class RahtiFileSettings(RahtiBaseSettings):
-    url: str = Field(
-        "file:///app/instance/rahti/data.json",
-        description="Target URL for Rahti data.",
-    )
-
-
-class RahtiGithubSettings(RahtiBaseSettings):
-    url: HttpUrl = Field(  # type: ignore
-        HttpUrl("https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"),
-        description="Target URL for Rahti data.",
-    )
-    auth_token: Optional[SecretStr] = Field(
+    auth_token: SecretStr | None = Field(
         default=None,
-        description="GitHub token for GitHub API access.",
+        description="Token for the storage host, such as a GitHub token.",
         alias="GITHUB_TOKEN",
     )
 
-    timeout: Optional[int] = Field(
+    timeout: int = Field(
         30,
-        description="Timeout (in seconds) for GitHub API requests.",
+        description="Timeout (in seconds) for requests to the storage host.",
     )
 
     committer: GitHubCommitter = Field(
@@ -69,32 +56,11 @@ class RahtiGithubSettings(RahtiBaseSettings):
         description="Committer info for bot.",
     )
 
+    model_config = {
+        "extra": "ignore"   # Allow extra fields
+    }
 
-def match_by_url(v: Any) -> str:
-    """
-    Discriminator function to determine the Rahti settings type based on the URL.
-    """
-    url = ""
-    if isinstance(v, dict) and "url" in v:
-        url = str(v["url"]).strip()
-    elif hasattr(v, "url"):
-        url = str(getattr(v, "url")).strip()
-    else:
-        raise ValueError("Rahti settings missing 'url' field")
-
-    if url.startswith("file://"):
-        return "file"
-    elif url.startswith("https://api.github.com"):
-        return "github"
-
-    logger.error("Unknown Rahti settings type for value: %s", v)
-    raise ValueError("Unknown Rahti settings type")
-
-# When adding new Rahti settings types, also update the `match_by_url` function, and `rahti` factory function.
-RahtiSettings = Annotated[
-    Union[
-        Annotated[RahtiFileSettings, Tag("file")],
-        Annotated[RahtiGithubSettings, Tag("github")]
-    ],
-    Discriminator(match_by_url)
-]
+    @field_validator("url")
+    @classmethod
+    def _empty_url(cls, v: str | None) -> str | None:
+        return v.strip() or None if v else None
