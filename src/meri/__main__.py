@@ -19,6 +19,7 @@ from .bootstrap import setup
 from .cli.feedback import cli as feedback_cli
 from .cli.fetch import cli as fetch_cli
 from .cli.headlines import cli as headlines_cli
+from .cli.manifest import cli as manifest_cli
 from .embedding import get_embedder, model_identity, provision_model
 from .feedback import (
     ArticleFeedback,
@@ -41,7 +42,7 @@ from .lautta import (
     prune_rahti,
     should_skip_processing,
 )
-from .rahti import COMMIT_MESSAGE, RahtiData, create_rahti
+from .rahti.data import COMMIT_MESSAGE, RahtiData, create_rahti
 from .scraper import get_extractor, try_setup_requests_cache
 
 try:
@@ -341,6 +342,7 @@ def run(ctx: click.Context, sample: bool = False, max_workers: int | None = None
     test_json = rahti.model_dump_json()
     assert RahtiData.model_validate_json(test_json)
 
+    logger.debug("Pushing Rahti data", commit_message=commit_message)
     rahti_repo.push(
         hash_of_stored_file,
         rahti.rahti,
@@ -388,6 +390,7 @@ def test(ctx: click.Context, url: str, with_paywalled: bool):
 cli.add_command(feedback_cli)
 cli.add_command(fetch_cli)
 cli.add_command(headlines_cli)
+cli.add_command(manifest_cli)
 
 
 if __name__ == "__main__":

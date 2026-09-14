@@ -35,10 +35,10 @@ the submodule, rewrites Sulku's pin, and relocks Sulku. It changes files only �
 repositories yourself.
 
 Since suola v0.5.0 the module parses **compiled JSON rules only**; `packages/suola/rules.yaml` is build-time
-source that `make rules` compiles into `packages/suola/build/rules.json`. That compiled file is the default for
-the `suola_rules` setting when it exists, and the rules built into the module are used otherwise. The setting
-also accepts an `http(s)://` URL — such as the `rules.json` published by suola's CI into the `rahti` repository,
-see `config.example.yaml` — which is downloaded and cached under the user cache directory.
+source that `make rules` compiles into `packages/suola/build/rules.json`. Meri reads its rules from the provider
+manifest that the `manifest` setting names, by default `packages/rahti/manifest.json`: its `suola-rules` resources
+link the `rules.json` that suola's CI publishes into the `rahti` repository. A remote rules document is cached
+under the user cache directory for one day. Without a manifest, the rules built into the module are used.
 
 ## Running Meri
 
@@ -93,14 +93,16 @@ uv run meri fetch <article-url>  # extract one URL and print it as Markdown, wit
 uv run meri list-sources
 uv run meri headlines --limit 10  # newest headlines from the sources, without extracting or generating
 uv run meri headlines --limit 10 --sample  # a random pick instead of the newest
+uv run meri manifest validate    # check the provider manifest and every document it links to
 ```
 
 ## Architecture
 
 `src/meri/__main__.py::run` orchestrates the whole pipeline:
 
-1. **Pull** the existing `RahtiData` (`rahti.py`) — from the GitHub Contents API or a local file, chosen by URL
-   scheme. The file's blob hash is carried through and passed back on push for optimistic concurrency.
+1. **Pull** the existing `RahtiData` (`rahti/data.py`) through the storage driver that its location selects
+   (`rahti/storage.py`): a local file or a GitHub repository. The version it reads, a GitHub blob sha, is passed
+   back on push for optimistic concurrency.
 2. **Discover** article stubs for each configured news source (`lautta.fetch_latest`).
 3. **Filter** against `url_blacklist`, then `RahtiCleaner.needs_updating` — the cheap early exit that avoids
    spending LLM calls on articles whose headline and timestamps are unchanged.
@@ -120,6 +122,12 @@ sitemap, links and site-specific APIs — and register explicitly with `@registr
 `type:` field of a source. **Extractors** (`src/meri/extractor/`) turn a URL into an `Article`, and are instead
 auto-discovered: every concrete `Outlet` subclass defining `valid_url` is collected and matched in descending
 `weight` order, with `generic.py` as the low-weight fallback.
+
+The **provider manifest** (`src/meri/rahti/manifest/`) is a typed list of resources — Suola rules, Rahti data and
+site configurations — that Meri and the Paatti browser extension share. Meri reads its Suola rules from it; where Meri
+writes Rahti data is `rahti.url` alone. `meri manifest generate`, `validate`, `show` and `schema` write and
+check it. `docs/provider-manifest.md` describes the format and its safety rules, and `docs/manifest.schema.json`
+is its JSON schema, generated from the models.
 
 LLM pipelines derive from `pipelines/common.StructuredPipeline`, which builds a two-component Haystack pipeline
 (prompt builder → generator) per LLM. The generator class is resolved from the `provider` in the `llm` config,

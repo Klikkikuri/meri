@@ -80,7 +80,8 @@ dev-dependencies = [
 ]
 [tool.uv.sources]
 suola = [
-    { url = "https://github.com/Klikkikuri/suola/releases/download/v0.5.0/suola-0.5.0-py3-none-any.whl" },
+    # TODO: pin a Suola release once `main` (named rule sets, catch-all) is tagged.
+    { path = "packages/suola/build/suola-0.5.1.dev6+g2283987ee.d20260914-py3-none-any.whl" },
     #{ path = "packages/suola/python" },
     #{ workspace = true }
 ]

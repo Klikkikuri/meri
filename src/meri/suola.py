@@ -1,22 +1,33 @@
 """
 Suola URL hashing utility.
 
-Suola parses compiled JSON rules only; the `rules.yaml` in the suola repository is build-time source that
-`make rules` compiles. Rules are therefore consumed from a *location* – an `http(s)://` URL, a `file://` URL
-or a filesystem path – which :func:`resolve_rules` turns into a local JSON file for the Wasm runtime.
+Suola parses compiled JSON rules only. Meri takes them from the `suola-rules` resources of the provider manifest
+that the `manifest` setting names: the first document that loads replaces the rules built into the module, and
+each further one is appended. Without a manifest, or when no rules load, the built-in rules are used.
 """
-import json
-import os
+import hashlib
 import time
 from contextvars import ContextVar
 from datetime import timedelta
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import requests
 from niitti import get_logger
 from niitti.paths import cache_dir
 from pydantic import AnyHttpUrl, HttpUrl
 from suola import Suola
+
+from .rahti.manifest.loader import (
+    LoadedResource,
+    is_local,
+    load_resources,
+    read_manifest,
+)
+from .rahti.manifest.models import RulesDocument, describe
+from .rahti.storage import FileDriver, StoredBlob, driver_for, write_atomic
+
+if TYPE_CHECKING:
+    from .settings.rahti import RahtiSettings
 
 # replace eager default with lazy-initialized per-context singleton
 _suola_var: ContextVar[Suola | None] = ContextVar(f"{__name__}.suola", default=None)
@@ -26,8 +37,6 @@ type Url = str | HttpUrl | AnyHttpUrl
 #: How long a downloaded rules file is reused before refetching. The instance is initialized per context, so
 #: without this every new context would hit the network.
 RULES_MAX_AGE = timedelta(days=1)
-
-RULES_TIMEOUT = 30
 
 logger = get_logger(__name__)
 
@@ -44,7 +53,7 @@ def hash_url(url: Url) -> str | None:
         inst = _suola_var.get()
         if inst is None:
             from .settings import settings
-            inst = init_suola(settings.suola_rules)
+            inst = init_suola(settings.manifest, settings.rahti)
 
         try:
             sign = inst(url)
@@ -58,106 +67,127 @@ def hash_url(url: Url) -> str | None:
             raise
 
 
-def init_suola(rules: str | Path | None = None) -> Suola:
+def init_suola(manifest: str | None = None, storage: "RahtiSettings | None" = None) -> Suola:
     """
-    Initialize the Suola instance with optional custom rules.
+    Initialize the Suola instance of this context from the `suola-rules` resources of a manifest.
 
-    :param rules: Rules location, see :func:`resolve_rules`.
-    :return: The initialized Suola instance.
+    :param manifest: Location of the manifest. Empty means the built-in rules.
+    :param storage: Credentials for reading the manifest and the rules.
     """
-    rules_path = resolve_rules(rules)
-
-    logger.info("Initializing Suola with rules", rules=str(rules_path) if rules_path else "built-in rules")
-    inst = Suola(custom_rules=rules_path) if rules_path else Suola()
+    inst = build_suola(load_rules(manifest, storage))
     _suola_var.set(inst)
     return inst
 
 
-def assert_json_rules(location: str | Path) -> None:
+def load_rules(manifest: str | None, storage: "RahtiSettings | None" = None) -> list[LoadedResource]:
     """
-    Reject YAML rule locations, which Suola has not accepted since v0.5.0.
+    The `suola-rules` resources of `manifest` that load, in precedence order.
 
-    :raises ValueError: If the location points to a YAML file.
+    Rules are not worth failing a run over: a manifest that cannot be read, or a document that does not load, is
+    logged and skipped.
     """
-    if Path(str(location)).suffix.lower() in (".yaml", ".yml"):
-        raise ValueError(
-            f"Suola rules must be compiled JSON, got a YAML location: {location!s}. Use the published "
-            "`rules.json`, or compile a local `rules.yaml` with `make rules` in the suola repository."
-        )
+    if not manifest:
+        return []
+
+    try:
+        document = read_manifest(manifest, storage)
+    except (OSError, ValueError) as e:
+        logger.warning("Cannot read the manifest, using built-in Suola rules", manifest=manifest, error=str(e))
+        return []
+
+    loaded = load_resources(
+        document, manifest, types={"suola-rules"}, settings=storage, read=lambda location: _cached_read(location, storage)
+    )
+    for item in loaded:
+        for location, error in item.errors.items():
+            logger.warning(
+                "Skipping Suola rules that do not load",
+                resource=describe(item.resource),
+                location=location,
+                error=str(error),
+            )
+    return [item for item in loaded if item.content is not None]
 
 
-def resolve_rules(location: str | Path | None) -> Path | None:
+def build_suola(rules: list[LoadedResource]) -> Suola:
+    """A Suola instance with the first rules document as its base, and the others appended in order."""
+    inst: Suola | None = None
+    for item in rules:
+        try:
+            if inst is None:
+                inst = Suola(custom_rules=_rules_file(item))
+            else:
+                inst.append_rules(_rules_bytes(item))
+            logger.info("Loaded Suola rules", resource=describe(item.resource), locations=list(item.blobs))
+        # The Wasm runtime raises its own error types for rules it refuses, and they are not part of Suola's API.
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Suola refused rules, skipping them", resource=describe(item.resource), error=str(e))
+
+    if inst is None:
+        logger.info("Initializing Suola with built-in rules")
+        return Suola()
+    return inst
+
+
+def _rules_bytes(item: LoadedResource) -> bytes:
+    assert item.content is not None
+    return item.content.model_dump_json().encode("utf-8")
+
+
+def _rules_file(item: LoadedResource) -> Path:
     """
-    Resolve a rules location into a local compiled JSON file.
+    A rules file on disk, as the Wasm runtime preopens its parent directory.
 
-    :param location: An `http(s)://` URL, a `file://` URL or a filesystem path. Empty means built-in rules.
-    :return: Path to a local rules file, or `None` to use the rules built into the Suola module.
-    :raises ValueError: If the location is YAML.
-    :raises FileNotFoundError: If a local location does not exist.
+    A single local document with no inline content is used as it is; merged content is written to the cache.
     """
-    if not location:
-        return None
+    if len(item.blobs) == 1 and item.resource.inline() is None and is_local(location := next(iter(item.blobs))):
+        return FileDriver.path(location)
 
-    location = str(location).strip()
-    if not location:
-        return None
-
-    assert_json_rules(location)
-
-    if location.startswith(("http://", "https://")):
-        return _fetch_rules(location)
-
-    rules_path = Path(location.removeprefix("file://")).resolve()
-    if not rules_path.is_file():
-        raise FileNotFoundError(f"Suola rules file not found: {rules_path}")
-    return rules_path
+    content = _rules_bytes(item)
+    # Named by content, so concurrent contexts never write different rules to one file.
+    path = _cache_dir() / f"rules-{hashlib.sha256(content).hexdigest()[:16]}.json"
+    if not path.is_file():
+        write_atomic(path, content)
+    return path
 
 
-def _rules_cache() -> Path:
-    """Local copy of the downloaded rules. Suola needs a file on disk, as the Wasm runtime preopens its parent."""
-    return cache_dir(__package__ or "meri") / "rules.json"
+def _cache_dir() -> Path:
+    return cache_dir(__package__ or "meri") / "suola"
 
 
-def _fetch_rules(url: str) -> Path | None:
+def _rules_cache(location: str) -> Path:
+    """The cached copy of the rules document at a remote `location`."""
+    return _cache_dir() / f"{hashlib.sha256(location.encode()).hexdigest()[:16]}.json"
+
+
+def _cached_read(location: str, storage: "RahtiSettings | None" = None) -> StoredBlob:
     """
-    Download rules into the local cache, falling back to the built-in rules when unavailable.
+    Read a rules document, and keep a copy of a remote one for :data:`RULES_MAX_AGE`.
 
-    :return: Path to the cached rules, or `None` when neither the download nor a cached copy is available.
+    When a refresh fails, a stale copy is used; with no copy, the error is raised and the resource is skipped.
     """
-    cache = _rules_cache()
+    driver = driver_for(location, storage)
+    if isinstance(driver, FileDriver):
+        return driver.read(location)
 
+    cache = _rules_cache(location)
     try:
         age = timedelta(seconds=time.time() - cache.stat().st_mtime) if cache.is_file() else None
     except OSError:
         age = None
 
     if age is not None and age < RULES_MAX_AGE:
-        logger.debug("Using cached Suola rules", path=str(cache), age=str(age))
-        return cache
+        logger.debug("Using cached Suola rules", location=location, path=str(cache), age=str(age))
+        return StoredBlob(cache.read_bytes(), None)
 
     try:
-        from .settings import settings
-
-        response = requests.get(url, headers={"User-Agent": settings.BOT_USER_AGENT}, timeout=RULES_TIMEOUT)
-        response.raise_for_status()
-
+        blob = driver.read(location)
         # Guard against caching an error page or a truncated response.
-        if "sites" not in json.loads(response.content):
-            raise ValueError("Rules document has no 'sites' key")
-
-        cache.parent.mkdir(parents=True, exist_ok=True)
-        tmp = cache.with_suffix(".json.tmp")
-        tmp.write_bytes(response.content)
-        os.replace(tmp, cache)
-
-        logger.info("Downloaded Suola rules", url=url, path=str(cache))
-        return cache
-    except (requests.RequestException, OSError, ValueError) as e:
-        # Rules are not worth failing the run over: a transport, payload or cache-write problem degrades to
-        # the previously cached rules, and failing that to the ones built into the module.
+        RulesDocument.model_validate_json(blob.content)
+        write_atomic(cache, blob.content)
+        return blob
+    except (OSError, ValueError) as e:
         if cache.is_file():
-            logger.warning("Could not refresh Suola rules, using cached copy", url=url, path=str(cache), error=str(e))
-            return cache
-
-        logger.warning("Could not download Suola rules, using built-in rules", url=url, error=str(e))
-        return None
+            logger.warning("Could not refresh Suola rules, using cached copy", location=location, error=str(e))
+            return StoredBlob(cache.read_bytes(), None)
+        raise

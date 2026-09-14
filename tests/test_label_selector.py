@@ -165,7 +165,7 @@ def test_convert_for_rahti_and_cleaner():
     from meri.abc import ArticleLabels, ClickbaitScale, article_url
     from meri.article import Article
     from meri.lautta import RahtiCleaner, convert_for_rahti, should_skip_processing
-    from meri.rahti import RahtiData, RahtiEntry, RahtiUrl
+    from meri.rahti.data import RahtiData, RahtiEntry, RahtiUrl
     from meri.settings.newssources import NewsSource
 
     source = NewsSource.model_construct(name="Yle Uutiset", type="rss", url="https://yle.fi")
@@ -283,7 +283,7 @@ def test_pipeline_deduplication_and_upsert_behavior():
     from meri.abc import ArticleLabels, ArticleTypeLabels, article_url
     from meri.article import Article
     from meri.lautta import RahtiCleaner, convert_for_rahti
-    from meri.rahti import RahtiData
+    from meri.rahti.data import RahtiData
     from meri.settings.newssources import NewsSource
 
     now = datetime.now(timezone.utc)
@@ -360,7 +360,7 @@ def test_replace_rejects_missing_generated_title_metadata_for_non_skipped_entry(
     from datetime import datetime, timezone
     from meri.abc import ClickbaitScale
     from meri.lautta import RahtiCleaner
-    from meri.rahti import RahtiData, RahtiEntry, RahtiUrl
+    from meri.rahti.data import RahtiData, RahtiEntry, RahtiUrl
 
     now = datetime.now(timezone.utc)
     sign = "non-skipped-signature"
