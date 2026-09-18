@@ -213,11 +213,15 @@ class GoogleGeminiSettings(_OpenAISettingsBase):
     # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
 
 
-class _OpenRouterProviderSettings(TypedDict):
-    sort: Literal["latency", "quality", "price"]
+class _OpenRouterProviderSettings(TypedDict, total=False):
+    sort: Literal["latency", "quality", "price"] | None
+    service_tier: Literal["flex", "priority", "fast"] | None
+    preferred_min_throughput: int | None
     "Prefer providers sorted by latency, quality, or price."
-    zdr: bool
+    zdr: bool | None
     "Use Zero Data Retention providers only."
+    plugins: list[dict[str, str]] | None
+
 
 class _OpenRouterReasoningEffort(TypedDict):
     effort: Literal["xhigh", "high", "medium", "low", "minimal", "none"]
@@ -233,6 +237,11 @@ class OpenRouterSettings(GeneratorSettings):
         "provider": _OpenRouterProviderSettings(
             sort="price",  # Prefer cheaper providers
             zdr=True,  # Zero Data Retention providers only
+            service_tier="flex",  # Use the flexible service tier
+            preferred_min_throughput=10,  # Prefer providers with at least 1 request per second throughput
+            plugins=[{
+                "id": "response-healing"
+            }]
         ),
         "reasoning": _OpenRouterReasoningEffort(
             effort="minimal",
