@@ -155,6 +155,7 @@ agrees with the user interface language, or else the first link.
   "sites": {
     "www.hs.fi": {
       "name": "Helsingin Sanomat",
+      "description": "Selectors for the front page and the article pages.",
       "enabled": true,
       "origins": ["https://www.hs.fi/*"],
       "links": [
@@ -176,7 +177,7 @@ agrees with the user interface language, or else the first link.
 - The key of a site is its host.
 - `origins` are match patterns. The default is `https://<key>/*`. A pattern must have an exact host: `*` is not
   permitted in the host.
-- `description` tells why a selector rule exists.
+- `description` on a site gives notes about the site. On a selector rule, it tells why the rule exists.
 - For the bundled sites, `enabled: true` means that the site is on. For a site from a provider, it means that the
   site is offered: the site is off until the user turns it on.
 

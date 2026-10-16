@@ -124,6 +124,7 @@ class Site(BaseModel):
     """The configuration of one site, keyed by its host in :attr:`SitesDocument.sites`."""
 
     name: str
+    description: str | None = Field(None, description="Notes about the site and its configuration.")
     enabled: bool = True
     origins: list[Origin] | None = Field(None, description="Match patterns. Defaults to `https://<key>/*`.")
     links: list[Link] = Field(default_factory=list)

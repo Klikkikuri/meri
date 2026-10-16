@@ -190,6 +190,19 @@
           "title": "Name",
           "type": "string"
         },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Notes about the site and its configuration.",
+          "title": "Description"
+        },
         "enabled": {
           "default": true,
           "title": "Enabled",
