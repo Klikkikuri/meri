@@ -137,14 +137,18 @@ def test_ordered_puts_weight_before_document_order():
 
 def test_merge_sites_concatenates_rules_and_last_wins_other_fields():
     link = Link(rel="x-publisher-policy", href="https://www.hs.fi/info/")
-    first = Site(name="HS", enabled=True, links=[link], rules=[RULE])
+    first = Site(name="HS", description="old", enabled=True, links=[link], rules=[RULE])
     second = Site(
-        name="Helsingin Sanomat", enabled=False, links=[link], rules=[RULE, RULE.model_copy(update={"link": "self"})]
+        name="Helsingin Sanomat",
+        description="new",
+        enabled=False,
+        links=[link],
+        rules=[RULE, RULE.model_copy(update={"link": "self"})],
     )
 
     merged = merge_sites(first, second)
 
-    assert (merged.name, merged.enabled) == ("Helsingin Sanomat", False)
+    assert (merged.name, merged.description, merged.enabled) == ("Helsingin Sanomat", "new", False)
     assert merged.links == [link]
     assert [r.link for r in merged.rules] == ["a", "self"]
 
