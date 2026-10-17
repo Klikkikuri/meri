@@ -114,6 +114,15 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ln -sf "$(command -v fdfind)" /usr/local/bin/fd && \
     ln -sf "$(command -v batcat)" /usr/local/bin/bat
 
+# GitHub CLI, per the official Debian instructions: https://github.com/cli/cli/blob/trunk/docs/install_linux.md#debian
+# ADD fetches the keyring as its own layer, cached by URL.
+ADD --chmod=644 https://cli.github.com/packages/githubcli-archive-keyring.gpg /etc/apt/keyrings/githubcli-archive-keyring.gpg
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get --no-install-recommends install -y gh
+
 # Install development dependencies
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --dev --group otel --package meri && \

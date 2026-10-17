@@ -51,7 +51,7 @@ Write idiomatic Python 3.12, as *Fluent Python* (2nd ed.) teaches. Do not write 
 
 The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `wget`, `tree` and
 `node`/`npm`/`npx`, plus the search and inspection tools installed in the `development` stage of the `Dockerfile`:
-`rg` (ripgrep), `fd`, `jq`, `yq` and `shellcheck`. The project's Python tooling is on `PATH` from `/app/.venv`:
+`rg` (ripgrep), `fd`, `jq`, `yq`, `shellcheck` and `gh`. The project's Python tooling is on `PATH` from `/app/.venv`:
 `uv`, `python`, `pytest`, `ruff`, `black`, `pyright`, `pre-commit`, `ipython`, `jupyter` and `meri`.
 
 - This project uses `uv`. Use `uv run`, `uv add` etc to run and manage the project.
@@ -64,7 +64,6 @@ The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `
 - Run `shellcheck` over changes to `cron.sh` and `entrypoint.sh`.
 - If a tool you need is missing, add it to the `development` stage in the `Dockerfile` rather than installing it
   ad hoc — anything installed in a shell is lost on the next rebuild.
-- `gh` is not installed; use `curl` against the GitHub API instead.
 - The `sulku` CLI used in the classification instructions above is not in this container; it lives in the `sulku`
   compose service (which uses it for its healthcheck).
 
