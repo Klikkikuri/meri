@@ -90,10 +90,13 @@ def parse_one(**cells: str) -> Feedback:
         ("https://user:pass@www.hs.fi:8443/a/1", "https://www.hs.fi:8443/a/1"),
         ("https://www.hs.fi/kotimaa/a/123", "https://www.hs.fi/kotimaa/a/123"),
         ("not-a-valid-url", "not-a-valid-url"),
+        ("/article?token=secret#reader", "/article"),
+        ("//user:pass@example.com/article?q=1", "//example.com/article"),
+        ("http://[x/a?q=1", None),
         ("  ", None),
     ],
 )
-def test_parse_rows_keeps_only_origin_and_path_of_page_url(raw: str, expected: str | None):
+def test_parse_rows_removes_reader_data_from_page_url(raw: str, expected: str | None):
     assert parse_one(pageUrl=raw).page_url == expected
 
 
@@ -107,11 +110,17 @@ def test_parse_rows_keeps_only_origin_and_path_of_page_url(raw: str, expected: s
         ("-", None),
         ("", None),
         ("yesterday", None),
+        ("0001-01-01T00:00:00+01:00", None),
     ],
 )
 def test_parse_rows_reads_database_updated_as_utc(raw: str, expected: datetime | None):
-    """A value that does not parse becomes None. The row stays."""
+    """A value that does not parse, or that is out of range in UTC, becomes None. The row stays."""
     assert parse_one(databaseUpdated=raw).database_updated == expected
+
+
+def test_parse_rows_keeps_row_when_timestamp_is_out_of_range_in_utc():
+    """Helsinki is ahead of UTC, so the first second of year 1 is before the first UTC date."""
+    assert parse_one(Timestamp="1/1/0001 0:00:00").submitted_at is None
 
 
 def test_csv_source_missing_file_returns_empty(tmp_path: Path):

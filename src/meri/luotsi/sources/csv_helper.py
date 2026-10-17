@@ -76,11 +76,10 @@ def _parse_submitted_at(raw: str, config: FeedbackSourceConfig) -> datetime | No
     """
     try:
         naive = datetime.strptime(raw.strip(), config.timestamp_format)  # noqa: DTZ007 — tz comes from config below
-    except ValueError:
+        return naive.replace(tzinfo=_timezone(config.timezone)).astimezone(UTC)
+    except (ValueError, OverflowError):
         logger.warning("Unparseable feedback timestamp %r for format %r", raw, config.timestamp_format)
         return None
-
-    return naive.replace(tzinfo=_timezone(config.timezone)).astimezone(UTC)
 
 
 @cache
@@ -93,20 +92,17 @@ def _timezone(name: str) -> tzinfo:
         return UTC
 
 
-def _parse_page_url(raw: str) -> str:
+def _parse_page_url(raw: str) -> str | None:
     """
-    Return the origin and path of the page URL.
+    Return the page URL without its query, fragment and user credentials.
 
-    The query, the fragment and the user credentials can identify the reader, so remove them. The URL signature
-    identifies the article. Return a value that is not an absolute URL unchanged.
+    These parts can identify the reader, so remove them from all URLs, also from relative URLs. The URL signature
+    identifies the article. Return None when the URL does not parse, because then the parts cannot be removed safely.
     """
-    url = raw.strip()
     try:
-        parts = urlsplit(url)
+        parts = urlsplit(raw.strip())
     except ValueError:
-        return url
-    if not (parts.scheme and parts.netloc):
-        return url
+        return None
     return parts._replace(netloc=parts.netloc.rpartition("@")[2], query="", fragment="").geturl()
 
 
@@ -117,10 +113,10 @@ def _parse_database_updated(raw: str) -> datetime | None:
         return None
     try:
         parsed = datetime.fromisoformat(value)
-    except ValueError:
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
         logger.warning("Unparseable dataset generation time in a feedback row")
         return None
-    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
 
 
 def _parse_row(row: Mapping[str, str | None], config: FeedbackSourceConfig) -> Feedback | None:
