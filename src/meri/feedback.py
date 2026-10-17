@@ -8,9 +8,10 @@ Two failure modes, deliberately different. Fetching is fail-soft — a Google Sh
 pipeline. Construction is fail-hard — a configured embedding model that cannot load is a broken deployment, and
 it fails at start, before any LLM spend.
 
-Personal data: feedback lives in memory only. Message text reaches the guardrail chain when an article claims
-it, and the per-article prompt, and nowhere else. It is never logged and never persisted to Rahti — only the
-entry's `updated` timestamp moves.
+Personal data: Meri keeps feedback in memory only. Message text goes to the guardrail chain when an article claims
+it, and to the prompt of that article. It goes to no other place. Meri does not log it and does not write it to
+Rahti. Only the `updated` timestamp of the entry changes. Refer to the Luotsi README for the other columns that
+Luotsi reads.
 """
 
 import re
