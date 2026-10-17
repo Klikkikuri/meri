@@ -24,19 +24,22 @@ class Feedback(BaseModel):
     """
     One reader feedback submission.
 
-    Field names are the normalized form of the raw spreadsheet headers (e.g. ``pageUrl`` -> ``page_url``), so all
-    sources produce one schema.
+    All sources parse the feedback form columns into this one schema.
     """
 
     type: FeedbackType = Field(..., description="Reader verdict on the generated title.")
     message: str = Field(default="", description="Free-text reader comment. Empty when the reader only voted.")
     url_sign: str = Field(..., description="Hash signature of the article URL.")
     submitted_at: datetime | None = Field(default=None, description="Submission time in UTC. None when unparseable.")
-    page_url: str | None = Field(default=None, description="URL of the page the feedback was submitted from.")
+    page_url: str | None = Field(
+        default=None, description="Page that the reader sent the feedback from. Origin and path only."
+    )
     original_title: str | None = Field(default=None, description="Original headline of the article.")
     converted_title: str | None = Field(default=None, description="Generated non-clickbait title the reader rated.")
     clickbait_level: str | None = Field(default=None, description="Clickbait level the reader saw.")
-    database_updated: str | None = Field(default=None, description="Publication time of the data set the reader saw.")
+    database_updated: datetime | None = Field(
+        default=None, description="Generation time in UTC of the dataset that the reader's extension used. None when unknown."
+    )
 
 
 @dataclass

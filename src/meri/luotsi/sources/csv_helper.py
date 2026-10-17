@@ -1,15 +1,19 @@
 """
 Shared row parsing for the CSV and Google Sheets sources.
 
-Both sources receive the same tabular export of the feedback form, so header normalization and field mapping live
-here.
+The two sources read the same export of the feedback form. This module maps the column headers to :class:`Feedback`
+fields and parses each value. Of the page URL, it keeps only the parts that identify the article.
 """
 
 import logging
 import re
-from collections.abc import Iterable, Mapping
-from datetime import UTC, datetime
+from collections.abc import Callable, Iterable, Mapping
+from datetime import UTC, datetime, tzinfo
+from functools import cache, partial
+from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from pydantic import ValidationError
 
 from ..abc import Feedback, FeedbackType
 from ..settings.source import FeedbackSourceConfig
@@ -17,7 +21,7 @@ from ..settings.source import FeedbackSourceConfig
 logger = logging.getLogger(__name__)
 
 _HEADER_TO_FIELD = {
-    "timestamp": "timestamp",
+    "timestamp": "submitted_at",
     "pageurl": "page_url",
     "urlsign": "url_sign",
     "originaltitle": "original_title",
@@ -28,14 +32,33 @@ _HEADER_TO_FIELD = {
     "databaseupdated": "database_updated",
 }
 
+_NO_DATE = frozenset({"-", "unknown"})
+"""Lowercase placeholders that the extension sends when it has no dataset date."""
+
 
 def _normalize_header(header: str) -> str:
-    """Reduce a spreadsheet header to letters and digits, so casing, spacing and quoting do not matter."""
+    """Reduce a spreadsheet header to letters and digits, so that case, spaces and quotes have no effect."""
     return re.sub(r"[^a-z0-9]", "", header.lower())
 
 
+def _map_headers(row: Mapping[str, str | None]) -> dict[str, str]:
+    """Return the non-blank cells of the known columns, keyed by :class:`Feedback` field name."""
+    fields: dict[str, str] = {}
+    for header, value in row.items():
+        if header is None or value is None or not value.strip():
+            continue
+        if field := _HEADER_TO_FIELD.get(_normalize_header(header)):
+            fields[field] = value
+    return fields
+
+
+def _optional[T](parse: Callable[[str], T], raw: str | None) -> T | None:
+    """Apply ``parse`` to a cell. Return None when the cell is missing."""
+    return parse(raw) if raw else None
+
+
 def _parse_type(raw: str) -> FeedbackType | None:
-    """Map a ``feedbackType`` cell to a :class:`FeedbackType`, tolerating stray punctuation."""
+    """Map a ``feedbackType`` cell to a :class:`FeedbackType`, and ignore stray punctuation."""
     for candidate in (raw.strip(), re.sub(r"[^a-zA-Z0-9_]", "", raw)):
         try:
             return FeedbackType(candidate)
@@ -47,64 +70,95 @@ def _parse_type(raw: str) -> FeedbackType | None:
 
 def _parse_submitted_at(raw: str, config: FeedbackSourceConfig) -> datetime | None:
     """
-    Read the form timestamp with the source's configured format and timezone, and return it in UTC.
+    Read the form timestamp and return it in UTC.
 
-    The column carries no timezone and its layout follows the spreadsheet locale, so both come from configuration.
+    The column has no timezone, and the spreadsheet locale sets its format. The source configuration gives both.
     """
     try:
         naive = datetime.strptime(raw.strip(), config.timestamp_format)  # noqa: DTZ007 — tz comes from config below
-    except ValueError:
+        return naive.replace(tzinfo=_timezone(config.timezone)).astimezone(UTC)
+    except (ValueError, OverflowError):
         logger.warning("Unparseable feedback timestamp %r for format %r", raw, config.timestamp_format)
         return None
 
-    try:
-        tz = ZoneInfo(config.timezone)
-    except (ZoneInfoNotFoundError, ValueError):
-        logger.warning("Unknown feedback source timezone %r, reading timestamps as UTC", config.timezone)
-        tz = UTC
 
-    return naive.replace(tzinfo=tz).astimezone(UTC)
+@cache
+def _timezone(name: str) -> tzinfo:
+    """Return the timezone with this name. For an unknown name, log one warning and return UTC."""
+    try:
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        logger.warning("Unknown feedback source timezone %r, reading timestamps as UTC", name)
+        return UTC
+
+
+def _parse_page_url(raw: str) -> str | None:
+    """
+    Return the page URL without its query, fragment and user credentials.
+
+    These parts can identify the reader, so remove them from all URLs, also from relative URLs. The URL signature
+    identifies the article. Return None when the URL does not parse, because then the parts cannot be removed safely.
+    """
+    try:
+        parts = urlsplit(raw.strip())
+    except ValueError:
+        return None
+    return parts._replace(netloc=parts.netloc.rpartition("@")[2], query="", fragment="").geturl()
+
+
+def _parse_database_updated(raw: str) -> datetime | None:
+    """Read the generation time of the dataset that the reader's extension used, and return it in UTC."""
+    value = raw.strip()
+    if value.lower() in _NO_DATE:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+        return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+    except (ValueError, OverflowError):
+        logger.warning("Unparseable dataset generation time in a feedback row")
+        return None
+
+
+def _parse_row(row: Mapping[str, str | None], config: FeedbackSourceConfig) -> Feedback | None:
+    """
+    Parse one spreadsheet row into a :class:`Feedback` item.
+
+    Return None when the row has no URL signature or no known feedback type, because Luotsi cannot match it to an
+    article. Return None also when the row does not validate. A value that does not parse becomes None, and the row
+    stays.
+    """
+    cells = _map_headers(row)
+    url_sign = cells.get("url_sign")
+    if not url_sign:
+        return None
+    feedback_type = _optional(_parse_type, cells.get("type"))
+    if feedback_type is None:
+        return None
+
+    parse_time = partial(_parse_submitted_at, config=config)
+    try:
+        return Feedback(
+            type=feedback_type,
+            message=cells.get("message", ""),
+            url_sign=url_sign,
+            submitted_at=_optional(parse_time, cells.get("submitted_at")),
+            page_url=_optional(_parse_page_url, cells.get("page_url")),
+            original_title=cells.get("original_title"),
+            converted_title=cells.get("converted_title"),
+            clickbait_level=cells.get("clickbait_level"),
+            database_updated=_optional(_parse_database_updated, cells.get("database_updated")),
+        )
+    except ValidationError as e:
+        logger.warning("Failed to validate feedback row: %s", e)
+        return None
 
 
 def parse_rows(rows: Iterable[Mapping[str, str | None]], config: FeedbackSourceConfig) -> list[Feedback]:
     """
     Convert raw spreadsheet rows into validated :class:`Feedback` items.
 
-    Rows without a URL signature or with an unknown feedback type are dropped — they cannot be matched to an
-    article or acted on.
-
-    :param rows: Row mappings as produced by :class:`csv.DictReader`.
-    :param config: The source configuration, for timestamp format and timezone.
-    :return: Validated feedback items.
+    :param rows: Row mappings, as :class:`csv.DictReader` makes them.
+    :param config: The source configuration. It gives the timestamp format and timezone.
+    :return: Validated feedback items. Rows that :func:`_parse_row` rejects are not included.
     """
-    feedbacks: list[Feedback] = []
-
-    for row in rows:
-        fields: dict[str, object] = {}
-        for header, value in row.items():
-            if header is None or value is None:
-                continue
-            field = _HEADER_TO_FIELD.get(_normalize_header(header))
-            if field:
-                fields[field] = value
-
-        if not fields.get("url_sign"):
-            continue
-
-        raw_type = fields.pop("type", None)
-        feedback_type = _parse_type(str(raw_type)) if raw_type else None
-        if feedback_type is None:
-            continue
-        fields["type"] = feedback_type
-
-        raw_timestamp = fields.pop("timestamp", None)
-        fields["submitted_at"] = _parse_submitted_at(str(raw_timestamp), config) if raw_timestamp else None
-
-        fields.setdefault("message", "")
-
-        try:
-            feedbacks.append(Feedback(**fields))  # type: ignore[arg-type]
-        except Exception as e:  # noqa: BLE001
-            logger.warning("Failed to validate feedback row: %s", e)
-
-    return feedbacks
+    return [feedback for row in rows if (feedback := _parse_row(row, config))]

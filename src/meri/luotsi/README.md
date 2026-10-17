@@ -194,9 +194,18 @@ Deployments never translate.
 
 ## Personal data
 
-Luotsi holds feedback in memory only. It does not write comment text to logs and does not persist it. The
-spreadsheet behind the feedback form is the system of record — retention and erasure requests are handled there,
-not in this package.
+Luotsi keeps feedback in memory only. It does not write comment text to logs, and it does not store it. The
+spreadsheet of the feedback form is the system of record. Do retention and erasure requests there, not in this
+package.
+
+Luotsi keeps only the values that identify the article and the dataset:
+
+- The page URL has its origin and path only. Luotsi removes the query, the fragment and the user credentials.
+- `database_updated` is the generation time of the dataset. It is the same for all readers of that dataset.
+
+Known limit: rows from before Paatti's feedback hardening contain the time when one install fetched the dataset.
+That value is specific to the install, and Luotsi cannot tell it apart from a generation time. Clear the
+`databaseUpdated` column of these rows in the spreadsheet.
 
 ## Future work
 
