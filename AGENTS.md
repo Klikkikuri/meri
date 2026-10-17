@@ -6,34 +6,46 @@
 
 ## Agent Instructions
 
-- Use responsibility-driven design to separate concerns and encapsulate functionality.
-- Development is done in the dev container
-- If unclear how to proceed, ASK the user. Provide options and explain trade-offs. Do not make assumptions about user intent.
-- If you notice user made changes, don't overwrite them. Instead, ask the user if they want to keep their changes if they are contrary to the generated code.
-- Unless it adds a significant amount of complexity or is necessary for performance, keep the code generalizable.
-- Keep code clean, modular and DRY. Prefer simplicity.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- Do NOT read sensitive files like `.env` – if information related to them is needed, ask.
-- Keep the documentation up to date.
-- Do not overly rely on comments to explain code. Verify. Code should be self-explanatory.
-- When responding or writing in English, use ASD-STE100 Simplified Technical English
+- Do development in the dev container.
+- If a request is not clear, or if it has more than one interpretation, ASK. Give the options and their trade-offs. Do not select one silently.
+- If a simpler approach exists, say so. If the request has a problem, tell the user.
+- If the user changed code, do not overwrite it. If their change conflicts with yours, ask the user which change to keep.
+- Do NOT read sensitive files such as `.env`. If you need information from them, ask.
+- Before you show a change, read your diff as a senior reviewer.
+- Use ASD-STE100 Simplified Technical English in all English text that you write: replies, plans, code comments, docstrings, documentation, commit messages and PR descriptions. STE is a tool for clarity. Put one thought in one sentence. You can use a "because" or "so that" clause.
 
-### Code comments:
-- Keep inline comments concise (usually 1-2 lines)
-- Use rst documentation format. Document intention, design, but avoid unnecessary verbosity.
-- Use inline code comments to explain complex logic, non-obvious decisions, and intention.
+### Python style
+
+Write idiomatic Python 3.12, as *Fluent Python* (2nd ed.) teaches. Do not write Java in Python.
+
+- Use responsibility-driven design to keep concerns separate. Use composition, not inheritance. Use an ABC only for an extension point that has more than one implementation (for example `FeedbackSource`, `Outlet`).
+- Parse and normalize raw input one time, at the boundary, into typed models. Make models with explicit keyword arguments, not with `**dict`. Do not use `# type: ignore` or `cast` if a change in structure makes them unnecessary.
+- Use the correct data structure. Use Pydantic at I/O and settings boundaries, `dataclass` or `NamedTuple` for internal records, and `Enum` for closed sets of values. Use `Counter`, `defaultdict` and sets, not loops that do the same work. Make module constants immutable (`frozenset`, tuple). Make value objects `frozen=True`.
+- Keep code general. Give parameters the most general `collections.abc` type (`Iterable`, `Mapping`, `Callable`). Return concrete types. Use `typing.Protocol` for a structural interface that has no shared code.
+- Functions are objects. Use `functools.partial` and small higher-order helpers, not one-method classes or flag arguments. Use `functools.cache` for pure lookups that are slow or that write to the log.
+- For parsing and I/O, try the operation and catch the specific exception (EAFP). Catch `Exception` only at a fail-soft boundary, and give the reason in a comment.
+- Use the API of the type: `NamedTuple._replace`, unpacking, `enumerate`, `zip(strict=True)`, `match`, f-strings, and comprehensions of one or two lines. Use a property, not getter and setter methods. Do not use mutable default arguments.
+- Keep each function at one level of abstraction. Return early for input that the function rejects. A name must agree with the names of similar functions (`_parse_type`, `_parse_page_url`), must tell exactly what the value contains, and must use the spelling that the code already uses (`normalize`).
+- When you change an area, refactor it if this removes duplication or makes the flow clearer. Do not change behavior. The existing tests are the regression check.
+
+### Code comments and documentation
+
+- Code must be clear without comments. Comments give the intention, the design and the decisions that are not obvious. They do not repeat what the code does.
+- Keep inline comments short (usually 1–2 lines). Use rst format for docstrings.
+- Comments and docstrings describe the code as it is now. Put history in the commit message.
+- Write a fact in one place (module README, docstring or `config.example.yaml`). In other places, refer to it. Keep that place up to date.
+- A docstring must be true for all the cases that it describes.
 - Avoid hard-wrapping it to a fixed column width - that hurts readability
 - Line length should be 120, but can be exceeded for long URLs, paths, or other cases where breaking the line would reduce readability.
 - Note: Remind yourself of this point regularly, as it often gets lost between context compactions
 
 ### Simplicity First
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
+- Do not add features that the user did not ask for.
+- Do not make abstractions for code that has only one use. When a pattern occurs three or more times, use a small typed helper (PEP 695 generics). Do not use a dispatch table that stops type checks.
+- Do not add flexibility or configuration that the user did not ask for.
+- Do not add error handling for conditions that cannot occur.
+- If you write 200 lines and 50 lines can do the same work, write it again.
 
 ## Tooling
 
@@ -45,7 +57,7 @@ The dev container provides `git`, `docker` / `docker compose`, `make`, `curl`, `
 - This project uses `uv`. Use `uv run`, `uv add` etc to run and manage the project.
 - Use `uv run black` to format code, `uv run ruff check` to lint code, and `uv run pyright` to check type hints.
     -> Do NOT use formatters for the code you did not write. For code you did not write, use `uv run ruff check --fix` to fix formatting issues.
-- Run tests with `uv run pytest`.
+- Run tests with `uv run pytest`. Test through the public API. Use `pytest.mark.parametrize` for input cases, and named constants for shared fixtures.
 - Prefer `rg` over `grep` and `fd` over `find`. Both respect `.gitignore`, which matters in a tree carrying
   submodules, notebooks and `.venv`.
 - Use `jq` for JSON and `yq` for YAML config files.
