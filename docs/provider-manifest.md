@@ -178,8 +178,13 @@ agrees with the user interface language, or else the first link.
 - `origins` are match patterns. The default is `https://<key>/*`. A pattern must have an exact host: `*` is not
   permitted in the host.
 - `description` on a site gives notes about the site. On a selector rule, it tells why the rule exists.
-- For the bundled sites, `enabled: true` means that the site is on. For a site from a provider, it means that the
-  site is offered: the site is off until the user turns it on.
+- The meaning of `enabled` depends on the source of the site:
+  - For a bundled site, and for a site from a default provider (a provider that the consumer ships as its
+    default), `enabled: true` means that the site is on by default. `enabled: false` means that the site is off by
+    default. It does not withdraw the site: the site stays available, and the user can turn it on.
+  - For a site from a different provider, `enabled: true` means that the site is offered: the site is off until the
+    user turns it on. `enabled: false` withdraws the site: the consumer does not show it.
+- A site operates only when the browser also grants its origins.
 
 ## Identity
 
