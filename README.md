@@ -17,7 +17,9 @@ git submodule update --init --recursive
 ```
 
 Note that `suola` is installed from a released wheel (see `[tool.uv.sources]` in `pyproject.toml`), not from the
-`packages/suola` checkout.
+`packages/suola` checkout. uv cannot update a URL source, so move Suola with `scripts/sync-suola.sh [<tag>]`
+(default: the latest `v*` tag). It points the wheel URL, `uv.lock` and the `packages/suola` submodule at one
+release. `tests/test_suola_pin.py` fails when the three, or the installed package, differ.
 
 Of those submodules only `packages/niitti` is a **uv workspace member**. `packages/sulku` is deliberately not
 one: meri talks to Sulku over HTTP (`meri.sulku.service`), never by importing it, and Sulku is its own uv
