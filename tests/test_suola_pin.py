@@ -44,7 +44,8 @@ def test_installed_suola_is_the_pinned_release(pinned_version):
 
 def test_submodule_points_at_the_pinned_release(pinned_version):
     try:
-        pointer = git("ls-tree", "HEAD", SUBMODULE).split()[2]
+        # The index, not HEAD: after `scripts/sync-suola.sh` and `git add`, the test checks what the commit will hold.
+        pointer = git("ls-files", "--stage", SUBMODULE).split()[1]
         tag = git("-C", SUBMODULE, "rev-parse", "--verify", f"refs/tags/v{pinned_version}^{{commit}}")
     except (OSError, subprocess.CalledProcessError, IndexError):
         pytest.skip(f"{SUBMODULE} or its tags are not available")
