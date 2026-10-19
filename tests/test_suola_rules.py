@@ -110,3 +110,45 @@ def test_download_failure_falls_back_to_stale_cache(cache):
 def test_download_failure_without_cache_uses_builtin_rules(cache):
     with patch("meri.suola.requests.get", side_effect=OSError("network down")):
         assert resolve_rules("https://example.com/rules.json") is None
+
+
+ARTICLE_URL = "https://www.iltalehti.fi/ulkomaat/a/51495a62-a494-4474-a234-ddedae3e112b"
+
+
+@pytest.fixture
+def builtin_suola():
+    """A Suola instance with the built-in rules, independent of the configured rule location."""
+    from meri.suola import _suola_var, init_suola
+
+    token = _suola_var.set(None)
+    init_suola(None)
+    yield
+    _suola_var.reset(token)
+
+
+# Suola refuses a URL that has no host and a URL that is not valid Unicode.
+@pytest.mark.parametrize("url", ["mailto:someone@example.com", "https://example.com/\udcff"])
+def test_hash_url_returns_none_for_url_that_suola_cannot_sign(builtin_suola, url):
+    from meri.suola import hash_url
+
+    assert hash_url(url) is None
+
+
+def test_hash_url_signs_article(builtin_suola):
+    from meri.suola import hash_url
+
+    sign = hash_url(ARTICLE_URL)
+    assert sign is not None and len(sign) == 64
+
+
+def test_hash_url_drops_failed_instance(builtin_suola):
+    from suola import SuolaRuntimeError
+
+    from meri.suola import _suola_var, hash_url
+
+    failing = MagicMock(side_effect=SuolaRuntimeError("trapped"))
+    _suola_var.set(failing)
+
+    with pytest.raises(SuolaRuntimeError):
+        hash_url(ARTICLE_URL)
+    assert _suola_var.get() is None

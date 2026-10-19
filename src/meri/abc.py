@@ -290,7 +290,8 @@ class ArticleUrl(DataModel):
         if isinstance(other, str):
             return str(self.href) == other
         elif isinstance(other, ArticleUrl):
-            return self.href == other.href or self.signature == other.signature
+            # An empty signature means that Suola cannot sign the URL, so it does not identify the article.
+            return self.href == other.href or (bool(self.signature) and self.signature == other.signature)
         return super().__eq__(other)
 
 

@@ -16,7 +16,7 @@ import requests
 from niitti import get_logger
 from niitti.paths import cache_dir
 from pydantic import AnyHttpUrl, HttpUrl
-from suola import Suola
+from suola import InvalidURLError, Suola, SuolaRuntimeError
 
 # replace eager default with lazy-initialized per-context singleton
 _suola_var: ContextVar[Suola | None] = ContextVar(f"{__name__}.suola", default=None)
@@ -35,6 +35,10 @@ logger = get_logger(__name__)
 def hash_url(url: Url) -> str | None:
     """
     Hash the given URL using :class:`Suola`.
+
+    :return: The signature, or `None` if Suola cannot sign the URL.
+    :raises SuolaRuntimeError: If the Suola module fails. The next call in this context creates a new instance.
+    :raises SuolaError: From :func:`init_suola`, if the first call in a context cannot create the instance.
     """
     url = str(url)
     url = url.strip()
@@ -47,14 +51,15 @@ def hash_url(url: Url) -> str | None:
             inst = init_suola(settings.suola_rules)
 
         try:
-            sign = inst(url)
-
-            if not sign:
-                logger.debug("Suola returned no signature for URL", url=url)
-
-            return sign
-        except Exception as e:
-            logger.exception("Error hashing URL", url=url, error=str(e))
+            return inst(url)
+        except InvalidURLError as e:
+            logger.debug("Suola cannot sign URL", url=url, error=str(e))
+            return None
+        except SuolaRuntimeError as e:
+            # The instance can be broken after a runtime error, and a trapped instance refuses all later calls.
+            # Runtime errors are rare, so creating a new instance for the next call costs little.
+            _suola_var.set(None)
+            logger.exception("Suola failed to hash URL", url=url, error=str(e))
             raise
 
 
