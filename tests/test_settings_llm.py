@@ -132,3 +132,42 @@ def test_detection_asks_the_native_api_at_the_same_root(monkeypatch: pytest.Monk
 
     assert asked == ["http://box:11434"]
     assert str(detected["ollama"].api_base_url) == "http://box:11434/v1"
+
+
+@pytest.mark.parametrize(
+    ("name", "variable"),
+    [
+        ("LiteLLM", "LLM_LITELLM_API_KEY"),
+        ("OpenAI GPT-4o-mini", "LLM_OPENAI_GPT_4O_MINI_API_KEY"),
+        (" fast / cheap ", "LLM_FAST_CHEAP_API_KEY"),
+    ],
+)
+def test_each_entry_reads_the_key_named_after_it(monkeypatch: pytest.MonkeyPatch, name: str, variable: str):
+    """Entries of one provider need separate keys, so the entry name picks the variable."""
+    monkeypatch.setenv(variable, "named-key")
+
+    (llm,) = Settings(llm=[{"name": name, "provider": "openai", "model": "m"}]).llm
+
+    assert llm.api_key.get_secret_value() == "named-key"  # type: ignore[union-attr]
+
+
+def test_entries_of_one_provider_get_different_keys(monkeypatch: pytest.MonkeyPatch):
+    """The point of the per-entry variable: two LiteLLM models, two keys."""
+    monkeypatch.setenv("LLM_FAST_API_KEY", "fast-key")
+    monkeypatch.setenv("LLM_SLOW_API_KEY", "slow-key")
+    monkeypatch.setenv("API_KEY", "shared-key")
+
+    fast, slow, other = Settings(
+        llm=[{"name": name, "provider": "openai", "model": "m"} for name in ("fast", "slow", "other")]
+    ).llm
+
+    assert [e.api_key.get_secret_value() for e in (fast, slow, other)] == ["fast-key", "slow-key", "shared-key"]  # type: ignore[union-attr]
+
+
+def test_a_configured_key_wins_over_the_named_variable(monkeypatch: pytest.MonkeyPatch):
+    """Configuration is more specific than the environment."""
+    monkeypatch.setenv("LLM_FAST_API_KEY", "from-the-environment")
+
+    (llm,) = Settings(llm=[{"name": "fast", "provider": "openai", "model": "m", "api_key": "from-the-config"}]).llm
+
+    assert llm.api_key.get_secret_value() == "from-the-config"  # type: ignore[union-attr]

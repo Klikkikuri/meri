@@ -12,7 +12,7 @@ from meri.settings import settings
 from meri.settings.llms import GeneratorSettings
 from meri.settings.pipelines import PipelineSettings
 
-from ..llm import get_generator, resolve_llms
+from ..llm import get_generator, request_slot, resolve_llms
 
 logger = get_logger(__name__)
 
@@ -204,9 +204,10 @@ class StructuredPipeline:
                     attempt=attempt,
                     continuation=bool(messages),
                 ) as span:
-                    results = pipeline.run({
-                        "prompt_builder": inputs,
-                    })
+                    with request_slot(llm, settings):
+                        results = pipeline.run({
+                            "prompt_builder": inputs,
+                        })
 
                     match results:
                         case {"llm": {"replies": [reply, *_]}}:

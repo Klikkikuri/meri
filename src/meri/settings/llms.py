@@ -1,4 +1,5 @@
 import os
+import re
 from abc import ABC
 from typing import Annotated, Literal, Self, TypedDict
 
@@ -12,7 +13,11 @@ from pydantic import (
     TypeAdapter,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+)
 
 logger = get_logger(__name__)
 
@@ -34,10 +39,25 @@ type OpenAICompatibleUrl = Annotated[
 _openai_url_alias = AliasChoices('api_base_url', 'base_url', 'url')
 
 
+def api_key_variable(name: str) -> str:
+    """
+    Name the environment variable that holds the API key of the LLM called `name`.
+
+    Every run of characters that is not a letter or a digit becomes one underscore, so "GPT-4o mini" gives
+    `LLM_GPT_4O_MINI_API_KEY`.
+    """
+    return f"LLM_{re.sub(r'[^A-Z0-9]+', '_', name.upper()).strip('_')}_API_KEY"
+
+
 class GeneratorSettings(BaseSettings, ABC):
     model_config = SettingsConfigDict(extra="ignore", populate_by_name=True)
 
     name: str = Field(..., description="Name of the generator.")
+    max_concurrency: int | None = Field(
+        None,
+        ge=1,
+        description="Most simultaneous requests to this LLM, across all pipelines. Defaults to `MAX_WORKERS`.",
+    )
 
     _generator: str
     """ Generator class to use. """
@@ -70,6 +90,27 @@ class GeneratorSettings(BaseSettings, ABC):
             return False
 
 
+class _NamedApiKeySource(PydanticBaseSettingsSource):
+    """
+    Settings source that reads `LLM_<NAME>_API_KEY` for the entry called `<NAME>`.
+
+    It ranks below the values given to the entry and above the generic environment, so that entries of one
+    provider can have separate keys while a key in the configuration still wins.
+    """
+
+    def __init__(self, settings_cls, init_settings: PydanticBaseSettingsSource):
+        super().__init__(settings_cls)
+        self._init_settings = init_settings
+
+    def __call__(self) -> dict:
+        name = self._init_settings().get("name")
+        key = os.getenv(api_key_variable(name)) if name else None
+        return {"api_key": key} if key else {}
+
+    def get_field_value(self, field, field_name):
+        return None, field_name, False
+
+
 class _OpenAISettingsBase(GeneratorSettings):
     """
     Base class for OpenAI API compatible providers.
@@ -82,6 +123,13 @@ class _OpenAISettingsBase(GeneratorSettings):
     }, description="generation arguments.")
 
     _generator:  str = "haystack.components.generators.chat.OpenAIChatGenerator"
+
+    @classmethod
+    def settings_customise_sources(
+        cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings
+    ):
+        named_key = _NamedApiKeySource(settings_cls, init_settings)
+        return init_settings, named_key, env_settings, dotenv_settings, file_secret_settings
 
 
 class OpenAISettings(_OpenAISettingsBase):

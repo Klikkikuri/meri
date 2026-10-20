@@ -222,6 +222,13 @@ rahti:
 #     similarity_threshold: 0.8
 
 # --- LLM (Language Model) settings ---
+# An `openai`, `ollama` or `gemini` entry without `api_key` reads it from the environment variable `LLM_<NAME>_API_KEY`,
+# where <NAME> is the entry name in capitals with each run of other characters replaced by one `_`. "LiteLLM fast"
+# gives `LLM_LITELLM_FAST_API_KEY`. This lets entries of one provider have separate keys in `.env`.
+#
+# Any entry can set `max_concurrency`: the most requests in flight to that LLM at one time, shared by all pipelines.
+# It defaults to MAX_WORKERS. A worker thread makes one request at a time, so a value above MAX_WORKERS changes
+# nothing. Use it to keep a rate-limited provider below the number of workers.
 llm:
 
   - name: "Google Gemini"

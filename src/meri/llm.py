@@ -1,4 +1,7 @@
 import inspect
+import threading
+from contextlib import AbstractContextManager
+from functools import cache
 from typing import Any
 
 from haystack.utils.auth import Secret as HaystackSecret
@@ -41,6 +44,31 @@ def resolve_llms(pipeline: str, settings: Settings = settings) -> list[LLMSettin
     return chain
 
 
+@cache
+def _request_slots(llm_name: str, limit: int) -> threading.Semaphore:
+    """
+    Get the semaphore that counts the requests in flight to one LLM.
+
+    Cached so that every pipeline, and every thread, that uses the LLM waits on the same one. The limit is part
+    of the key because a configuration reload can change it, and a changed limit needs a new semaphore.
+    """
+    return threading.Semaphore(limit)
+
+
+def request_slot(llm: GeneratorSettings, settings: Settings = settings) -> AbstractContextManager:
+    """
+    Hold a place among the simultaneous requests to one LLM.
+
+    The limit is `max_concurrency` of the LLM. Without it, the limit is `MAX_WORKERS`, so a deployment that
+    sets neither is bounded by its worker threads as before.
+
+    :param llm: The LLM that the request goes to.
+    :param settings: Settings to read the default limit from.
+    :return: A context manager that blocks while the LLM is at its limit.
+    """
+    return _request_slots(llm.name, llm.max_concurrency or settings.MAX_WORKERS)
+
+
 def get_generator(llm: GeneratorSettings, **kwargs) -> Any:
     """
     Build the Haystack generator for one resolved LLM setting.
@@ -53,7 +81,7 @@ def get_generator(llm: GeneratorSettings, **kwargs) -> Any:
     module, class_name = llm._generator.rsplit(".", 1)
     # Create the generator instance
     generator_class = getattr(__import__(module, fromlist=[class_name]), class_name)
-    generator_args = llm.model_dump(exclude={"provider", "_generator", "name"})
+    generator_args = llm.model_dump(exclude={"provider", "_generator", "name", "max_concurrency"})
 
     # Convert SecretStr to string for Haystack compatibility
     for key, value in generator_args.items():
