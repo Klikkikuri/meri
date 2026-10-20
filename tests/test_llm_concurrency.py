@@ -65,3 +65,22 @@ def test_the_limit_is_not_passed_to_the_generator():
     generator = get_generator(llm)
 
     assert not hasattr(generator, "max_concurrency")
+
+
+@pytest.mark.parametrize("provider", ["openai", "ollama", "gemini"])
+def test_the_client_gets_the_timeout_and_no_retries_of_its_own(provider: str):
+    """
+    A request that times out and is retried by the client keeps running on a server that never cancels it.
+
+    The retries would stack up behind the concurrency limit, so the client makes none unless told to.
+    """
+    settings = Settings(llm=[{"name": "L", "provider": provider, "model": "m", "api_key": "k", "timeout": 600}])
+
+    generator = get_generator(settings.llm[0])
+
+    assert (generator.timeout, generator.max_retries) == (600, 0)
+
+
+def test_the_timeout_must_be_positive():
+    with pytest.raises(ValidationError):
+        make_settings(timeout=0)

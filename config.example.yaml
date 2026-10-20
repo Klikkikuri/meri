@@ -229,6 +229,12 @@ rahti:
 # Any entry can set `max_concurrency`: the most requests in flight to that LLM at one time, shared by all pipelines.
 # It defaults to MAX_WORKERS. A worker thread makes one request at a time, so a value above MAX_WORKERS changes
 # nothing. Use it to keep a rate-limited provider below the number of workers.
+#
+# An `openai`, `ollama` or `gemini` entry also takes `timeout` (seconds) and `max_retries`. Without `timeout` the
+# client gives up after 30 seconds, or `OPENAI_TIMEOUT`. Set it above the longest answer a slow model needs: a
+# request that times out is sent again, and a server that does not cancel it keeps generating the abandoned
+# answer, so the retries pile up. `max_retries` is the client's own retry count and defaults to 0, because Meri
+# retries across the LLM chain (see `pipelines:`).
 llm:
 
   - name: "Google Gemini"

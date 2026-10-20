@@ -118,6 +118,16 @@ class _OpenAISettingsBase(GeneratorSettings):
     model: str = Field(..., description="model.")
     api_key: SecretStr = Field(description="API key.")
     api_base_url: OpenAICompatibleUrl = Field("https://api.openai.com/v1", description="OpenAI API base URL.")
+    timeout: float | None = Field(
+        None,
+        gt=0,
+        description="Seconds before a request times out. Without it, `OPENAI_TIMEOUT` or the client's 30 applies.",
+    )
+    max_retries: int = Field(
+        0,
+        ge=0,
+        description="Retries that the client makes by itself. Meri retries across the LLM chain, so the default is 0.",
+    )
     generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="generation arguments.")
@@ -166,7 +176,6 @@ class OllamaSettings(_OpenAISettingsBase):
         default=SecretStr("ollama"),
         description="Unused by Ollama; a placeholder keeps the OpenAI client happy.",
     )
-    timeout: int | None = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
     generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
