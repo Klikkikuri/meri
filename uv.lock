@@ -1554,15 +1554,24 @@ all = [
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "sentry-sdk" },
     { name = "structlog" },
 ]
 logging = [
+    { name = "pydantic" },
+    { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
     { name = "structlog" },
 ]
 settings = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "structlog" },
 ]
 tracing = [
     { name = "opentelemetry-instrumentation-logging" },
@@ -1573,13 +1582,17 @@ tracing = [
 [package.metadata]
 requires-dist = [
     { name = "niitti", extras = ["logging", "settings", "tracing"], marker = "extra == 'all'", editable = "packages/niitti" },
+    { name = "niitti", extras = ["settings"], marker = "extra == 'logging'", editable = "packages/niitti" },
     { name = "opentelemetry-instrumentation-logging", marker = "extra == 'tracing'", specifier = ">=0.50b0" },
     { name = "opentelemetry-sdk", marker = "extra == 'tracing'", specifier = ">=1.29.0" },
     { name = "platformdirs", specifier = ">=4.3.6" },
     { name = "pydantic", marker = "extra == 'settings'", specifier = ">=2.10.5" },
     { name = "pydantic-settings", marker = "extra == 'settings'", specifier = ">=2.7.1" },
+    { name = "python-dotenv", marker = "extra == 'settings'", specifier = ">=1.2.2" },
+    { name = "pyyaml", marker = "extra == 'settings'", specifier = ">=6.0.3" },
     { name = "sentry-sdk", marker = "extra == 'tracing'", specifier = ">=2.48.0" },
     { name = "structlog", marker = "extra == 'logging'", specifier = ">=25.1.0" },
+    { name = "structlog", marker = "extra == 'settings'", specifier = ">=25.1.0" },
 ]
 
 [[package]]
