@@ -12,9 +12,11 @@ import threading
 from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from haystack.core.errors import PipelineRuntimeError
 from haystack.dataclasses import ChatMessage
+from openai import BadRequestError
 from pydantic import BaseModel
 
 from meri.pipelines.common import StructuredPipeline
@@ -35,6 +37,23 @@ class DummyPipeline(StructuredPipeline):
 
 def reply(title: str) -> ChatMessage:
     return ChatMessage.from_assistant(f'{{"title": "{title}"}}', meta={"model": "test-model"})
+
+
+def bad_request(message: str) -> BadRequestError:
+    """An OpenAI client 400 with the provider's JSON body, as the SDK raises it."""
+    request = httpx.Request("POST", "https://opencode.ai/zen/go/v1/chat/completions")
+    body = {"error": {"message": message, "type": "invalid_request_error"}}
+    response = httpx.Response(400, request=request, json=body)
+    return BadRequestError("Error code: 400", response=response, body=body)
+
+
+def wrapped_bad_request(message: str) -> PipelineRuntimeError:
+    """The client error as Haystack raises it: wrapped, with the 400 as the cause."""
+    error = bad_request(message)
+    try:
+        raise PipelineRuntimeError.from_exception("llm", type(error), error) from error
+    except PipelineRuntimeError as wrapped:
+        return wrapped
 
 
 def stub(dummy: StructuredPipeline, *, per_llm=None, shared=None):
@@ -110,6 +129,111 @@ def test_pipeline_retry_exhausted_raises():
 
     assert mock_pipeline.run.call_count == 3
     assert mock_sleep.call_count == 2
+
+
+def test_a_rejected_response_format_is_retried_as_a_json_object():
+    """
+    OpenCode Go in front of DeepSeek sometimes rejects `json_schema` with a 400 that says the type is unavailable.
+
+    The provider still serves `json_object`, so the request is sent again with that format and with the schema in
+    the prompt. The answer still goes through `model_validate_json`.
+    """
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = [
+        bad_request("This response_format type is unavailable now"),
+        {"llm": {"replies": [reply("Recovered")]}},
+    ]
+    stub_with_template(dummy, pipeline)
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        result = dummy.run({"var1": "val1"}, max_retries=1)
+
+    assert result.title == "Recovered"  # type: ignore[attr-defined]
+    assert pipeline.run.call_count == 2
+    fallback = pipeline.run.call_args_list[1][0][0]
+    assert fallback["llm"]["generation_kwargs"]["response_format"] == {"type": "json_object"}
+    assert fallback["prompt_builder"]["template"][-1].role == "user"
+    assert "JSON schema" in fallback["prompt_builder"]["template"][-1].text
+    assert "title" in fallback["prompt_builder"]["template_variables"]["json_schema"]
+
+
+def test_a_wrapped_response_format_error_is_retried_as_a_json_object():
+    """
+    A real pipeline wraps a component error in `PipelineRuntimeError`, so the 400 is on the cause.
+
+    The fallback and the log have to find the response there.
+    """
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = [
+        wrapped_bad_request("This response_format type is unavailable now"),
+        {"llm": {"replies": [reply("Recovered")]}},
+    ]
+    stub_with_template(dummy, pipeline)
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        result = dummy.run({"var1": "val1"}, max_retries=1)
+
+    assert result.title == "Recovered"  # type: ignore[attr-defined]
+    assert pipeline.run.call_count == 2
+    fallback = pipeline.run.call_args_list[1][0][0]
+    assert fallback["llm"]["generation_kwargs"]["response_format"] == {"type": "json_object"}
+
+
+def test_the_fallback_message_carries_the_rendered_schema():
+    """The schema goes in through a variable, so Jinja cannot treat its braces as template syntax."""
+
+    class SchemaPipeline(DummyPipeline):
+        prompt_templates: ClassVar[dict[str, str]] = {"only": "Write about {{ var1 }}."}
+
+    dummy = SchemaPipeline()
+    builder = dummy._prompt_builder()
+    inputs = {"var1": "v", "template_variables": {"var1": "v"}}
+
+    rendered = builder.run(**dummy._fallback_inputs(builder, inputs))["prompt"]
+
+    assert "JSON schema" in rendered[-1].text
+    assert '"title"' in rendered[-1].text
+
+
+def test_an_unrelated_bad_request_gets_no_json_object_retry():
+    """Only a refusal that names `response_format` is a reason to weaken the schema."""
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = [
+        bad_request("model not found"),
+        {"llm": {"replies": [reply("Recovered")]}},
+    ]
+    stub_with_template(dummy, pipeline)
+
+    with patch("meri.pipelines.common.settings", one_llm()):
+        result = dummy.run({"var1": "val1"}, max_retries=2, initial_delay=0)
+
+    assert result.title == "Recovered"  # type: ignore[attr-defined]
+    assert pipeline.run.call_count == 2
+    second = pipeline.run.call_args_list[1][0][0]
+    assert "response_format" not in second.get("llm", {}).get("generation_kwargs", {})
+    assert "template" not in second["prompt_builder"]
+
+
+def test_a_failed_attempt_logs_the_response_body(caplog: pytest.LogCaptureFixture):
+    """The provider's JSON body names the cause, so the error log has to carry it."""
+    dummy = DummyPipeline()
+    pipeline = MagicMock()
+    pipeline.run.side_effect = wrapped_bad_request("model not found")
+    stub_with_template(dummy, pipeline)
+
+    with (
+        patch("meri.pipelines.common.settings", one_llm()),
+        caplog.at_level("ERROR", logger="meri.pipelines.common"),
+        pytest.raises(PipelineRuntimeError),
+    ):
+        dummy.run({"var1": "val1"}, max_retries=1)
+
+    assert "model not found" in caplog.text
+    assert "status_code" in caplog.text
+    assert "body" in caplog.text
 
 
 def test_a_single_llm_chain_behaves_exactly_as_before():

@@ -61,6 +61,76 @@ def new_session_id() -> str:
     return f"ses_{uuid4().hex}"
 
 
+MAX_RESPONSE_BODY = 4000
+"""Longest non-JSON response body to put in a log. HTML error pages can be very long."""
+
+
+def _carries_http_details(exc: BaseException) -> bool:
+    """Tell whether the client error holds an HTTP response, a status code or a response body."""
+    return any(getattr(exc, name, None) is not None for name in ("response", "status_code", "body"))
+
+
+def _http_error(exc: BaseException) -> BaseException:
+    """
+    Find the exception in the `__cause__` chain that carries the HTTP response.
+
+    Haystack wraps a component error in `PipelineRuntimeError`, so the client error is a cause, not the top.
+
+    :param exc: The exception that the generation raised.
+    :return: The first exception in the chain that has HTTP details, or the last one.
+    """
+    while exc.__cause__ is not None and not _carries_http_details(exc):
+        exc = exc.__cause__
+    return exc
+
+
+def response_details(exc: BaseException) -> dict[str, Any]:
+    """
+    Read the HTTP response that an LLM client error carries, for the log.
+
+    The OpenAI client keeps the decoded JSON body in `body`. The provider's message in that body names the cause
+    of a 400, but the client's own exception text usually does not.
+
+    :param exc: The exception that the generation raised.
+    :return: The status code, request ID and body that the exception has, as log keys.
+    """
+    exc = _http_error(exc)
+    details: dict[str, Any] = {}
+    response = getattr(exc, "response", None)
+    status_code = getattr(exc, "status_code", None) or (response.status_code if response is not None else None)
+    if status_code is not None:
+        details["status_code"] = status_code
+    if response is not None:
+        request_id = response.headers.get("x-request-id") or response.headers.get("x-opencode-log-id")
+        if request_id:
+            details["request_id"] = request_id
+
+    body = getattr(exc, "body", None)
+    if isinstance(body, (dict, list)):
+        details["body"] = body
+    elif body is not None:
+        details["body"] = str(body)[:MAX_RESPONSE_BODY]
+    elif response is not None and response.text:
+        details["body"] = response.text[:MAX_RESPONSE_BODY]
+    return details
+
+
+def structured_output_rejected(exc: BaseException) -> bool:
+    """
+    Tell whether a provider refused the request because `response_format` is unavailable.
+
+    OpenCode Go in front of DeepSeek answers a `json_schema` request with a 400 whose body says
+    "This response_format type is unavailable now". The client's own exception text does not carry that message.
+
+    :param exc: The exception that the generation raised.
+    :return: True when the response names `response_format` as the problem.
+    """
+    exc = _http_error(exc)
+    if getattr(exc, "status_code", None) not in (None, 400):
+        return False
+    return "response_format" in f"{exc} {getattr(exc, 'body', '')}".lower()
+
+
 def request_headers(llm: GeneratorSettings, session_id: str, settings: Settings = settings) -> dict[str, str]:
     """
     Build the extra request headers for one LLM call.

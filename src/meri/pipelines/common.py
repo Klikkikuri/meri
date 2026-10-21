@@ -1,6 +1,7 @@
+import json
 import threading
 import time
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from haystack import Pipeline
 from haystack.components.builders import ChatPromptBuilder
@@ -18,6 +19,8 @@ from ..llm import (
     request_headers,
     request_slot,
     resolve_llms,
+    response_details,
+    structured_output_rejected,
 )
 
 logger = get_logger(__name__)
@@ -151,6 +154,68 @@ class StructuredPipeline:
         """
         return model
 
+    def _parse_results(self, results: dict, llm: GeneratorSettings, span: Any, prompt_vars: dict) -> BaseModel:
+        """
+        Read the answer of one generation and parse it into the output model.
+
+        :param results: What `Pipeline.run` returned.
+        :param llm: The LLM that answered.
+        :param span: The span of the request, for the model that answered.
+        :param prompt_vars: The variables the prompt was rendered with.
+        :return: The validated output.
+        :raises ValueError: When the answer is empty or the pipeline returned another shape.
+        """
+        match results:
+            case {"llm": {"replies": [reply, *_]}}:
+                content = reply.text
+                if not content:
+                    raise ValueError("Empty response from LLM")
+
+                model_name = reply.meta.get("model", "unknown") if reply.meta else "unknown"
+                span.set_attribute("model", model_name)
+                # The configured name and the model the provider reports answer different questions
+                # once a chain is in play, so log both.
+                logger.debug(
+                    "Pipeline output from LLM '%s' on model: %s",
+                    llm.name,
+                    model_name,
+                    extra=dict(reply.meta) if reply.meta else {},
+                )
+
+                # Parse the response using the output_model
+                model_output = self.output_model.model_validate_json(content)
+                return self._validate_output(model_output, prompt_vars)
+            case _:
+                logger.error("Invalid pipeline output", extra={"pipeline": self.PIPELINE_NAME, "results": results})
+                raise ValueError(f"Invalid pipeline output: {results!r}")
+
+    def _fallback_inputs(self, prompt: ChatPromptBuilder, inputs: dict) -> dict:
+        """
+        Add a user message that asks for JSON and carries the output schema.
+
+        A provider that rejects `response_format` cannot enforce the schema. The prompt still has to ask for the
+        object, and `model_validate_json` still checks it.
+
+        :param prompt: The prompt builder that the pipeline uses.
+        :param inputs: The inputs of the failed request.
+        :return: Inputs for a retry without native structured output.
+        """
+        template = list(inputs.get("template", prompt.template or []))
+        template.append(
+            ChatMessage.from_user(
+                "Respond with one JSON object and nothing else. It must conform to this JSON schema:\n"
+                "{{ json_schema }}"
+            )
+        )
+        return {
+            **inputs,
+            "template": template,
+            "template_variables": {
+                **inputs["template_variables"],
+                "json_schema": json.dumps(self.output_model.model_json_schema()),
+            },
+        }
+
     def run(
         self,
         prompt_vars: dict,
@@ -206,6 +271,7 @@ class StructuredPipeline:
                 rendered = prompt.run(**inputs)["prompt"]
                 logger.debug("Prompt for pipeline", pipeline=self.PIPELINE_NAME, messages=[m.text for m in rendered])
 
+            headers = request_headers(llm, session_id, settings)
             try:
                 with logger.span(
                     "pipeline_attempt",
@@ -215,37 +281,47 @@ class StructuredPipeline:
                     continuation=bool(messages),
                     session=session_id,
                 ) as span:
-                    headers = request_headers(llm, session_id, settings)
                     with request_slot(llm, settings):
-                        results = pipeline.run({
-                            "prompt_builder": inputs,
-                            **({"llm": {"generation_kwargs": {"extra_headers": headers}}} if headers else {}),
-                        })
+                        results = pipeline.run(
+                            {
+                                "prompt_builder": inputs,
+                                **({"llm": {"generation_kwargs": {"extra_headers": headers}}} if headers else {}),
+                            }
+                        )
 
-                    match results:
-                        case {"llm": {"replies": [reply, *_]}}:
-                            content = reply.text
-                            if not content:
-                                raise ValueError("Empty response from LLM")
-
-                            model_name = reply.meta.get("model", "unknown") if reply.meta else "unknown"
-                            span.set_attribute("model", model_name)
-                            # The configured name and the model the provider reports answer different questions
-                            # once a chain is in play, so log both.
-                            logger.debug(
-                                "Pipeline output from LLM '%s' on model: %s",
-                                llm.name,
-                                model_name,
-                                extra=dict(reply.meta) if reply.meta else {},
-                            )
-
-                            # Parse the response using the output_model
-                            model_output = self.output_model.model_validate_json(content)
-                            return self._validate_output(model_output, prompt_vars)
-                        case _:
-                            logger.error("Invalid pipeline output", extra={"pipeline": pipeline, "results": results})
-                            raise ValueError(f"Invalid pipeline output: {results!r}")
+                    return self._parse_results(results, llm, span, prompt_vars)
             except Exception as exc:
+                error = exc
+                if structured_output_rejected(exc):
+                    logger.warning(
+                        "LLM '%s' rejected structured output; retrying as a JSON object",
+                        llm.name,
+                        **response_details(exc),
+                    )
+                    try:
+                        with logger.span(
+                            "structured_output_fallback",
+                            pipeline=self.PIPELINE_NAME,
+                            llm=llm.name,
+                            attempt=attempt,
+                        ) as fallback_span:
+                            with request_slot(llm, settings):
+                                results = pipeline.run(
+                                    {
+                                        "prompt_builder": self._fallback_inputs(prompt, inputs),
+                                        "llm": {
+                                            "generation_kwargs": {
+                                                **({"extra_headers": headers} if headers else {}),
+                                                "response_format": {"type": "json_object"},
+                                            }
+                                        },
+                                    }
+                                )
+                            return self._parse_results(results, llm, fallback_span, prompt_vars)
+                    except Exception as fallback_exc:  # noqa: BLE001 - the retry loop below reports it
+                        error = fallback_exc
+
+                details = response_details(error)
                 if attempt < max_retries:
                     logger.warning(
                         "Pipeline '%s' attempt %d/%d on LLM '%s' failed with %s: %s. Retrying in %.1fs...",
@@ -253,19 +329,22 @@ class StructuredPipeline:
                         attempt,
                         max_retries,
                         llm.name,
-                        type(exc).__name__,
-                        exc,
+                        type(error).__name__,
+                        error,
                         delay,
+                        **details,
                     )
                     time.sleep(delay)
                     delay *= backoff_factor
                 else:
-                    logger.exception(
+                    logger.error(
                         "Pipeline '%s' failed after %d attempts, last on LLM '%s'",
                         self.PIPELINE_NAME,
                         max_retries,
                         llm.name,
+                        exc_info=error,
+                        **details,
                     )
-                    raise
+                    raise error
 
         raise RuntimeError(f"Pipeline '{self.PIPELINE_NAME}' ran no attempts; max_retries was {max_retries}.")
