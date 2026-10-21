@@ -156,6 +156,21 @@ def test_one_location_is_read_once():
     assert calls == [url("rules.json")]
 
 
+def test_a_failed_location_is_read_once_and_does_not_spend_the_budget(monkeypatch):
+    monkeypatch.setattr(loader, "MAX_FETCHES", 2)
+    read, calls = reader({url("rules.json"): RULES})
+    parsed = manifest(
+        *({"type": "suola-rules", "href": "./absent.json"} for _ in range(3)),
+        {"type": "suola-rules", "href": "./rules.json"},
+    )
+
+    loaded = load_resources(parsed, BASE, read=read)
+
+    assert calls == [url("absent.json"), url("rules.json")]
+    assert all(isinstance(item.errors[url("absent.json")], BlobNotFoundError) for item in loaded[:3])
+    assert loaded[-1].errors == {}
+
+
 @pytest.mark.parametrize(
     "base, href, expected",
     [

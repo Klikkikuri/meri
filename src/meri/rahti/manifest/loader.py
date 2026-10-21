@@ -85,21 +85,28 @@ def load_resources(
         return drivers.setdefault(type(driver), driver).read(location)
 
     read = read or read_with_driver
-    cache: dict[str, StoredBlob] = {}
+    # A failure is kept too, so a location that fails is not read again and does not spend more of the budget.
+    cache: dict[str, StoredBlob | OSError | ValueError] = {}
     fetches = 0
 
     def fetch(location: str) -> StoredBlob:
         nonlocal fetches
         if location in cache:
-            return cache[location]
+            if isinstance(cached := cache[location], StoredBlob):
+                return cached
+            raise cached
         if is_local(location) and not is_local(base):
             raise ValueError(f"A remote manifest cannot link a local file: {location}")
         if fetches >= MAX_FETCHES:
             raise ValueError(f"The manifest has used all of its {MAX_FETCHES} fetches")
         fetches += 1
-        blob = read(location)
-        if len(blob.content) > MAX_DOCUMENT_SIZE:
-            raise ValueError(f"Document is larger than {MAX_DOCUMENT_SIZE} bytes: {location}")
+        try:
+            blob = read(location)
+            if len(blob.content) > MAX_DOCUMENT_SIZE:
+                raise ValueError(f"Document is larger than {MAX_DOCUMENT_SIZE} bytes: {location}")
+        except (OSError, ValueError) as e:
+            cache[location] = e
+            raise
         cache[location] = blob
         return blob
 
