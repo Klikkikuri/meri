@@ -30,8 +30,7 @@ from dotenv import load_dotenv
 from niitti import SettingsProxy, get_logger
 from niitti.settings.logging import LoggingSettings
 from niitti.settings.sentry import SentrySettings
-from niitti.settings.settings import Settings as NiittiSettings
-from niitti.settings.settings import lint_yaml_settings_files
+from niitti.settings.settings import ServiceSettings, lint_yaml_settings_files
 from niitti.settings.telemetry import TelemetrySettings
 from platformdirs import user_config_dir
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -90,7 +89,7 @@ class SkipProcessingSettings(BaseModel):
         return v
 
 
-class Settings(NiittiSettings):
+class Settings(ServiceSettings):
     logging: LoggingSettings = Field(
         default_factory=LoggingSettings,
         description="Logging settings.",

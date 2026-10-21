@@ -23,10 +23,6 @@ def app_context(request, monkeypatch, tmp_path):
     monkeypatch.setitem(Settings.model_config, "env_file", None)
     monkeypatch.setitem(Settings.model_config, "secrets_dir", None)
 
-    # Niitti also loads the discovered `.env` into `os.environ` from `Settings.__init__`, which puts the file
-    # back after this fixture has cleared it. Give it nothing to discover.
-    monkeypatch.setattr("niitti.settings.settings.find_dotenv", lambda *args, **kwargs: "")
-
     fields = {name.lower() for name in Settings.model_fields}
     for variable in list(os.environ):
         # Nested values arrive as `FIELD__SUBFIELD`, so the root names the field either way.
