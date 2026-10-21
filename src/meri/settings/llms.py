@@ -220,7 +220,6 @@ class _OpenRouterProviderSettings(TypedDict, total=False):
     "Prefer providers sorted by latency, quality, or price."
     zdr: bool | None
     "Use Zero Data Retention providers only."
-    plugins: list[dict[str, str]] | None
 
 
 class _OpenRouterReasoningEffort(TypedDict):
@@ -239,10 +238,9 @@ class OpenRouterSettings(GeneratorSettings):
             zdr=True,  # Zero Data Retention providers only
             service_tier="flex",  # Use the flexible service tier
             preferred_min_throughput=10,  # Prefer providers with at least 1 request per second throughput
-            plugins=[{
-                "id": "response-healing"
-            }]
         ),
+        # A request field, not a provider preference. Haystack sends `generation_kwargs` in the request body.
+        "plugins": [{"id": "response-healing"}],
         "reasoning": _OpenRouterReasoningEffort(
             effort="minimal",
             exclude=False,

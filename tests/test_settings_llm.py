@@ -171,3 +171,17 @@ def test_a_configured_key_wins_over_the_named_variable(monkeypatch: pytest.Monke
     (llm,) = Settings(llm=[{"name": "fast", "provider": "openai", "model": "m", "api_key": "from-the-config"}]).llm
 
     assert llm.api_key.get_secret_value() == "from-the-config"  # type: ignore[union-attr]
+
+
+def test_openrouter_sends_the_plugins_as_a_request_field():
+    """OpenRouter reads `plugins` at the top level of the request. Inside `provider`, it ignores them."""
+    from haystack.dataclasses import ChatMessage
+
+    from meri.llm import get_generator
+
+    (llm,) = Settings(llm=[{"name": "R", "provider": "openrouter", "api_key": "k"}]).llm
+
+    request = get_generator(llm)._prepare_api_call(messages=[ChatMessage.from_user("hi")])
+
+    assert request["extra_body"]["plugins"] == [{"id": "response-healing"}]
+    assert "plugins" not in request["extra_body"]["provider"]
