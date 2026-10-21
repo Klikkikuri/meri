@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, ClassVar, NamedTuple
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit
 
 import requests
+import urllib3
 from niitti import get_logger
 from requests.adapters import HTTPAdapter
 from urllib3.util import Retry
@@ -147,7 +148,8 @@ class Driver:
         The `requests` timeout limits each wait for data, not the whole transfer, so the deadline is checked here.
 
         :return: The response, whose body is already read and closed, and the body.
-        :raises OSError: If `url` redirects, or the transfer does not end within :attr:`timeout` seconds.
+        :raises OSError: If `url` redirects, the connection fails, or the transfer does not end within :attr:`timeout`
+            seconds.
         :raises ValueError: If the body is larger than :data:`MAX_DOCUMENT_SIZE`.
         """
         deadline = time.monotonic() + self.timeout
@@ -163,6 +165,9 @@ class Driver:
                 if time.monotonic() > deadline:
                     raise TimeoutError(f"Reading {url} took longer than {self.timeout} seconds")
             return response, bytes(body)
+        except urllib3.exceptions.HTTPError as e:
+            # A read from `raw` bypasses the error translation of `requests`, and callers catch `OSError` only.
+            raise OSError(f"Reading {url} failed: {e}") from e
         finally:
             response.close()
 

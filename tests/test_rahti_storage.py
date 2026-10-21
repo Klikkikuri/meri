@@ -10,6 +10,7 @@ from unittest.mock import MagicMock
 
 import pytest
 import requests
+import urllib3
 from pydantic import SecretStr
 from requests.adapters import HTTPAdapter
 from urllib3 import HTTPResponse
@@ -328,3 +329,22 @@ def test_a_retry_after_header_does_not_hold_a_read_past_the_timeout(monkeypatch)
         retry.sleep(throttled)
 
     assert sum(sleeps) < DEFAULT_TIMEOUT
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        urllib3.exceptions.ProtocolError("connection broken"),
+        urllib3.exceptions.ReadTimeoutError(MagicMock(), "/data.json", "timed out"),
+    ],
+)
+def test_a_transport_error_while_the_body_downloads_is_an_os_error(error):
+    driver = https()
+    streamed = response()
+    streamed.raw.read1.side_effect = error
+    driver.session.get.return_value = streamed
+
+    with pytest.raises(OSError, match="failed"):
+        driver.read("https://meri.example/data.json")
+
+    streamed.close.assert_called_once()
