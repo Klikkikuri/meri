@@ -7,6 +7,7 @@
 # DEBUG: false  # Enable debug mode, more verbose logging for selected components
 # BOT_ID: "Klikkikuri-Meri-Bot"  # Bot identifier
 # BOT_USER_AGENT: "Mozilla/5.0 (compatible; {BOT_ID}/{Version}; +{Home-page})"  # User agent string
+# LLM_USER_AGENT: "{BOT_ID}/{Version} (+{Home-page})"  # Defaults to BOT_USER_AGENT. Used for LLM requests.
 # LOG_LEVEL: INFO  # Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL.
 # REQUESTS_CACHE: true  # Enable HTTP requests cache (auto-detected if available)
 # MAX_WORKERS: 3  # Maximum number of worker threads for article processing
@@ -228,17 +229,18 @@ rahti:
 #     similarity_threshold: 0.8
 
 # --- LLM (Language Model) settings ---
-# An `openai`, `ollama` or `gemini` entry without `api_key` reads it from the environment variable `LLM_<NAME>_API_KEY`,
-# where <NAME> is the entry name in capitals with each run of other characters replaced by one `_`. "LiteLLM fast"
-# gives `LLM_LITELLM_FAST_API_KEY`. This lets entries of one provider have separate keys in `.env`.
+# An `openai`, `ollama`, `gemini` or `opencode` entry without `api_key` reads it from the environment variable
+# `LLM_<NAME>_API_KEY`, where <NAME> is the entry name in capitals with each run of other characters replaced by
+# one `_`. "LiteLLM fast" gives `LLM_LITELLM_FAST_API_KEY`. This lets entries of one provider have separate keys
+# in `.env`.
 #
 # Any entry can set `max_concurrency`: the most requests in flight to that LLM at one time, shared by all pipelines.
 # It defaults to MAX_WORKERS. A worker thread makes one request at a time, so a value above MAX_WORKERS changes
 # nothing. Use it to keep a rate-limited provider below the number of workers.
 #
-# An `openai`, `ollama` or `gemini` entry also takes `timeout` (seconds) and `max_retries`. Without `timeout` the
-# client gives up after 30 seconds, or `OPENAI_TIMEOUT`. Set it above the longest answer a slow model needs: a
-# request that times out is sent again, and a server that does not cancel it keeps generating the abandoned
+# An `openai`, `ollama`, `gemini` or `opencode` entry also takes `timeout` (seconds) and `max_retries`. Without
+# `timeout` the client gives up after 30 seconds, or `OPENAI_TIMEOUT`. Set it above the longest answer a slow model
+# needs: a request that times out is sent again, and a server that does not cancel it keeps generating the abandoned
 # answer, so the retries pile up. `max_retries` is the client's own retry count and defaults to 0, because Meri
 # retries across the LLM chain (see `pipelines:`).
 llm:
@@ -276,6 +278,17 @@ llm:
     provider: openai
     api_key: "sk-..."
     model: "gpt-4o-mini"
+    generation_kwargs:
+      temperature: 0.0
+
+  # OpenCode Go. The provider reads a stable conversation ID from the `x-opencode-session` header, so use this
+  # provider for OpenCode requests. Only models served through `/openai/v1/chat/completions` work here.
+  # See: https://opencode.ai/v2/docs/console/go/#where-can-i-use-it
+  - name: "OpenCode Go DeepSeek V4.1 Flash"
+    provider: opencode
+    api_key: "..."  # Use LLM_OPENCODE_GO_DEEPSEEK_V4_1_FLASH_API_KEY
+    model: "deepseek-v4.1-flash"
+    # api_base_url: "https://opencode.ai/inference/go/openai/v1"  # This is the default.
     generation_kwargs:
       temperature: 0.0
 

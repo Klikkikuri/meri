@@ -25,7 +25,7 @@ def test_unknown_provider_is_rejected_naming_the_valid_ones():
 
     message = str(exc.value)
     assert "bogus" in message
-    for provider in ("openai", "ollama", "gemini", "openrouter"):
+    for provider in ("openai", "ollama", "gemini", "openrouter", "opencode"):
         assert provider in message
 
 
@@ -185,3 +185,42 @@ def test_openrouter_sends_the_plugins_as_a_request_field():
 
     assert request["extra_body"]["plugins"] == [{"id": "response-healing"}]
     assert "plugins" not in request["extra_body"]["provider"]
+
+
+def test_opencode_go_uses_its_own_endpoint_and_session_header():
+    """OpenCode Go is a first-class provider, not an OpenAI entry with a rewritten URL."""
+    (llm,) = Settings(
+        llm=[{"name": "Go", "provider": "opencode", "model": "deepseek-v4.1-flash", "api_key": "k"}]
+    ).llm
+
+    assert type(llm).__name__ == "OpenCodeSettings"
+    assert str(llm.api_base_url) == "https://opencode.ai/inference/go/openai/v1"
+    assert llm.session_header == "x-opencode-session"
+
+
+def test_opencode_settings_do_not_leak_into_the_generator():
+    """The session header is behavior of the client, not an argument of the Haystack generator."""
+    from meri.llm import get_generator
+
+    (llm,) = Settings(
+        llm=[{"name": "Go", "provider": "opencode", "model": "deepseek-v4.1-flash", "api_key": "k"}]
+    ).llm
+
+    generator = get_generator(llm)
+
+    assert generator.api_base_url == "https://opencode.ai/inference/go/openai/v1"
+    assert generator.model == "deepseek-v4.1-flash"
+
+
+def test_the_llm_user_agent_defaults_to_the_bot_user_agent():
+    """One identity is enough unless the operator asks for a separate LLM identity."""
+    settings = Settings(BOT_USER_AGENT="Meri-Bot/1.0")
+
+    assert settings.LLM_USER_AGENT == "Meri-Bot/1.0"
+
+
+def test_a_separate_llm_user_agent_wins():
+    """LLM traffic can identify itself differently from the scraper."""
+    settings = Settings(BOT_USER_AGENT="Meri-Bot/1.0", LLM_USER_AGENT="Meri-LLM/2.0")
+
+    assert settings.LLM_USER_AGENT == "Meri-LLM/2.0"

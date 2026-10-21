@@ -12,7 +12,13 @@ from meri.settings import settings
 from meri.settings.llms import GeneratorSettings
 from meri.settings.pipelines import PipelineSettings
 
-from ..llm import get_generator, request_slot, resolve_llms
+from ..llm import (
+    get_generator,
+    new_session_id,
+    request_headers,
+    request_slot,
+    resolve_llms,
+)
 
 logger = get_logger(__name__)
 
@@ -152,6 +158,7 @@ class StructuredPipeline:
         initial_delay: float | None = None,
         backoff_factor: float | None = None,
         messages: list[ChatMessage] | None = None,
+        session_id: str | None = None,
         **kwargs,
     ) -> BaseModel:
         """Run the Haystack pipeline, falling over between the configured LLMs.
@@ -167,12 +174,15 @@ class StructuredPipeline:
             model's previous answer as an assistant message and the request that follows it as a user message.
             User and system messages are Jinja templates rendered with `prompt_vars`; assistant messages are
             passed through as they are.
+        :param session_id: ID of the conversation. A caller that makes several calls for one conversation passes
+            the same ID to each. Without it, every call starts a new conversation.
         :return: Validated output Pydantic model.
         """
         definition = self._definition()
         max_retries = definition.max_retries if max_retries is None else max_retries
         initial_delay = definition.initial_delay if initial_delay is None else initial_delay
         backoff_factor = definition.backoff_factor if backoff_factor is None else backoff_factor
+        session_id = session_id or new_session_id()
 
         chain = resolve_llms(self.PIPELINE_NAME, settings)
 
@@ -203,10 +213,13 @@ class StructuredPipeline:
                     llm=llm.name,
                     attempt=attempt,
                     continuation=bool(messages),
+                    session=session_id,
                 ) as span:
+                    headers = request_headers(llm, session_id, settings)
                     with request_slot(llm, settings):
                         results = pipeline.run({
                             "prompt_builder": inputs,
+                            **({"llm": {"generation_kwargs": {"extra_headers": headers}}} if headers else {}),
                         })
 
                     match results:

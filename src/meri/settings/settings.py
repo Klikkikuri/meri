@@ -108,6 +108,11 @@ class Settings(ServiceSettings):
         description="User agent as f-string template for requests. Can be formatted with "
         "package metadata, and `BOT_ID`.",
     )
+    LLM_USER_AGENT: str | None = Field(
+        None,
+        description="User agent as f-string template for LLM requests. Defaults to `BOT_USER_AGENT`. "
+        "Can be formatted with package metadata, and `BOT_ID`.",
+    )
     REQUESTS_CACHE: bool = Field(_requests_cache_available, description="Enable requests cache.")
     MAX_WORKERS: int = Field(3, description="Maximum number of worker threads for processing articles.")
 
@@ -241,6 +246,10 @@ class Settings(ServiceSettings):
         bot_info.setdefault("BOT_ID", self.BOT_ID)
 
         self.BOT_USER_AGENT = str(self.BOT_USER_AGENT).format(**bot_info)
+        # One identity is enough. An operator who does not need a separate LLM user agent gets the bot's.
+        self.LLM_USER_AGENT = (
+            str(self.LLM_USER_AGENT).format(**bot_info) if self.LLM_USER_AGENT else self.BOT_USER_AGENT
+        )
         return self
 
     @model_validator(mode="after")

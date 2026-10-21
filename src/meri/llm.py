@@ -3,6 +3,7 @@ import threading
 from contextlib import AbstractContextManager
 from functools import cache
 from typing import Any
+from uuid import uuid4
 
 from haystack.utils.auth import Secret as HaystackSecret
 from niitti import get_logger
@@ -53,6 +54,32 @@ def _request_slots(llm_name: str, limit: int) -> threading.Semaphore:
     of the key because a configuration reload can change it, and a changed limit needs a new semaphore.
     """
     return threading.Semaphore(limit)
+
+
+def new_session_id() -> str:
+    """Make an ID for one conversation with an LLM provider."""
+    return f"ses_{uuid4().hex}"
+
+
+def request_headers(llm: GeneratorSettings, session_id: str, settings: Settings = settings) -> dict[str, str]:
+    """
+    Build the extra request headers for one LLM call.
+
+    Only a generator that accepts per-request headers gets these headers. OpenRouter sends every extra generation
+    argument in the request body, so an empty result keeps its body clean.
+
+    :param llm: The LLM that the request goes to.
+    :param session_id: The ID of the conversation that this call continues.
+    :param settings: Settings to read the user agent from.
+    :return: Headers to add to the request, or an empty dict when the provider reads none.
+    """
+    if not llm.uses_request_headers:
+        return {}
+
+    headers = {"User-Agent": settings.LLM_USER_AGENT or settings.BOT_USER_AGENT}
+    if llm.session_header:
+        headers[llm.session_header] = session_id
+    return headers
 
 
 def request_slot(llm: GeneratorSettings, settings: Settings = settings) -> AbstractContextManager:

@@ -1,7 +1,7 @@
 import os
 import re
 from abc import ABC
-from typing import Annotated, Literal, Self, TypedDict
+from typing import Annotated, ClassVar, Literal, Self, TypedDict
 
 from niitti import get_logger
 from pydantic import (
@@ -62,6 +62,12 @@ class GeneratorSettings(BaseSettings, ABC):
     _generator: str
     """ Generator class to use. """
 
+    session_header: ClassVar[str | None] = None
+    """Header that carries the conversation ID, when the provider reads one. Not a configuration field."""
+
+    uses_request_headers: ClassVar[bool] = False
+    """Whether the generator accepts per-request headers through `generation_kwargs`."""
+
     @classmethod
     def check_generator_class(cls) -> bool:
         """
@@ -115,6 +121,8 @@ class _OpenAISettingsBase(GeneratorSettings):
     """
     Base class for OpenAI API compatible providers.
     """
+    uses_request_headers: ClassVar[bool] = True
+
     model: str = Field(..., description="model.")
     api_key: SecretStr = Field(description="API key.")
     api_base_url: OpenAICompatibleUrl = Field("https://api.openai.com/v1", description="OpenAI API base URL.")
@@ -250,7 +258,30 @@ class OpenRouterSettings(GeneratorSettings):
     _generator: str = "haystack_integrations.components.generators.openrouter.OpenRouterChatGenerator"
 
 
-LLMSetting = Annotated[OpenAISettings | OllamaSettings | GoogleGeminiSettings | OpenRouterSettings, Field(discriminator="provider")]
+class OpenCodeSettings(_OpenAISettingsBase):
+    """
+    OpenCode Go settings.
+
+    OpenCode Go reads a stable conversation ID from `x-opencode-session`, and asks clients to send their own
+    user agent. The generator sends both as per-request headers.
+
+    ..seealso:: https://opencode.ai/v2/docs/console/go/#where-can-i-use-it
+    """
+
+    provider: Literal["opencode"] = "opencode"
+    api_base_url: OpenAICompatibleUrl = Field(
+        "https://opencode.ai/inference/go/openai/v1",
+        description="OpenCode Go OpenAI-compatible API base URL.",
+    )
+    model: str = Field(..., description="OpenCode Go model ID, such as `deepseek-v4.1-flash`.")
+
+    session_header: ClassVar[str | None] = "x-opencode-session"
+
+
+LLMSetting = Annotated[
+    OpenAISettings | OllamaSettings | GoogleGeminiSettings | OpenRouterSettings | OpenCodeSettings,
+    Field(discriminator="provider"),
+]
 
 
 def detect_generators(values: dict):

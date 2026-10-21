@@ -19,6 +19,7 @@ from meri.abc import ArticleLabels, ArticleTitleResponse
 from meri.article import Article
 from meri.embedding import Embedder, get_embedder
 from meri.exceptions import HeadlineRejected
+from meri.llm import new_session_id
 from meri.luotsi.cluster import cosine
 from meri.prompts import (
     PROMPT_TEMPLATE_ARTICLE,
@@ -222,7 +223,13 @@ class TitlePredictor(StructuredPipeline):
             span.set_attribute("issues", ",".join(issues))
             return {"title": result.title, **issues} if issues else None
 
-    def run(self, article: Article, context: list[Document] | None = None, **kwargs) -> ArticleTitleResponse:
+    def run(
+        self,
+        article: Article,
+        context: list[Document] | None = None,
+        session_id: str | None = None,
+        **kwargs,
+    ) -> ArticleTitleResponse:
 
         prompt_vars = kwargs.copy()
         prompt_vars.update(article.model_dump())
@@ -231,7 +238,9 @@ class TitlePredictor(StructuredPipeline):
         prompt_vars["article"] = article
         prompt_vars["settings"] = settings
 
-        result = cast(ArticleTitleResponse, super().run(prompt_vars))
+        # The revision turn continues this conversation, so both calls must name the same session.
+        session_id = session_id or new_session_id()
+        result = cast(ArticleTitleResponse, super().run(prompt_vars, session_id=session_id))
 
         revision = self._review(result, article)
         if revision is None:
@@ -248,7 +257,12 @@ class TitlePredictor(StructuredPipeline):
             ChatMessage.from_user(self.revision_template),
         ]
         with logger.span("revise_title", url=url, issues=issues) as span:
-            result = cast(ArticleTitleResponse, super().run({**prompt_vars, "revision": revision}, messages=messages))
+            result = cast(
+                ArticleTitleResponse,
+                super().run(
+                    {**prompt_vars, "revision": revision}, messages=messages, session_id=session_id
+                ),
+            )
 
             remaining = self._review(result, article) or {}
             span.set_attribute("accepted", "language" not in remaining)

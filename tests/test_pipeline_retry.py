@@ -380,7 +380,7 @@ def test_a_real_haystack_pipeline_accepts_the_inputs_with_and_without_a_continua
     @component
     class EchoGenerator:
         @component.output_types(replies=list[ChatMessage])
-        def run(self, messages: list[ChatMessage]):
+        def run(self, messages: list[ChatMessage], generation_kwargs: dict | None = None):
             return {"replies": [reply(messages[-1].text or "")]}
 
     class Strict(DummyPipeline):
