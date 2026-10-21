@@ -216,7 +216,11 @@ class RahtiDocument(BaseModel):
 
 
 def _signs(entry: dict[str, Any]) -> set[str]:
-    return {url["sign"] for url in entry.get("urls", []) if isinstance(url, dict) and "sign" in url}
+    # The envelope does not check entries, so a malformed one has no signature here; full validation reports it.
+    urls = entry.get("urls")
+    if not isinstance(urls, list):
+        return set()
+    return {url["sign"] for url in urls if isinstance(url, dict) and isinstance(url.get("sign"), str)}
 
 
 def merge_rahti(first: RahtiDocument, second: RahtiDocument) -> RahtiDocument:

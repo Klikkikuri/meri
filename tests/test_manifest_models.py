@@ -180,6 +180,16 @@ def test_merge_rahti_last_wins_per_signature():
     assert [e["title"] for e in merge_rahti(first, second).entries] == ["kept", "new"]
 
 
+# Full validation reports these entries; the merge must not stop on them.
+@pytest.mark.parametrize("urls", [None, "s1", [{"sign": ["s1"]}], [{"sign": None}]])
+def test_merge_rahti_keeps_entries_with_malformed_signatures(urls):
+    malformed = {"title": "malformed", "urls": urls}
+    first = RahtiDocument.model_validate({"schema_version": "0.1.0", "entries": [malformed]})
+    second = RahtiDocument.model_validate({"schema_version": "0.1.0", "entries": [malformed, {"title": "new"}]})
+
+    assert [e["title"] for e in merge_rahti(first, second).entries] == ["malformed", "malformed", "new"]
+
+
 def test_combine_merges_fetched_documents_in_order_and_inline_last():
     resource = SuolaRulesResource.model_validate(
         {"type": "suola-rules", "href": ["./a.json", "./b.json"], "rules": {"sites": [{"domain": "inline.fi"}]}}
