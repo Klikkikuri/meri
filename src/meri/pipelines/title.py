@@ -232,11 +232,12 @@ class TitlePredictor(StructuredPipeline):
     ) -> ArticleTitleResponse:
 
         prompt_vars = kwargs.copy()
-        prompt_vars.update(article.model_dump())
+        # JSON mode turns URLs and datetimes into strings, because Haystack serializes these inputs into a JSON
+        # snapshot when a component fails.
+        prompt_vars.update(article.model_dump(mode="json"))
 
         prompt_vars["context"] = context or []
-        prompt_vars["article"] = article
-        prompt_vars["settings"] = settings
+        prompt_vars["article"] = article.model_dump(mode="json")
 
         # The revision turn continues this conversation, so both calls must name the same session.
         session_id = session_id or new_session_id()

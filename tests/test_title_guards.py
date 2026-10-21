@@ -101,6 +101,24 @@ def test_a_headline_in_the_expected_language_is_returned_after_one_call(settings
     assert len(rendered[0]) == 2, "the base conversation is a system prompt and one user message"
 
 
+def test_the_inputs_handed_to_haystack_are_snapshot_serializable(settings):
+    """
+    Haystack saves a JSON snapshot of the pipeline inputs when a component fails.
+
+    The settings and the article used to go in as pydantic models, whose Path, URL and datetime values break that
+    snapshot. The snapshot is only a debug aid, but its failure fills the log with errors.
+    """
+    from haystack.utils.base_serialization import _serialize_value_with_schema
+
+    predictor = TitlePredictor()
+    _, pipeline = stub(predictor, [title_reply(FINNISH)])
+
+    predictor.run(make_article("fi"))
+
+    inputs = pipeline.run.call_args[0][0]
+    json.dumps(_serialize_value_with_schema(inputs))
+
+
 def test_a_headline_in_the_wrong_language_is_sent_back_for_revision(settings):
     """
     The correction is a continuation: the model sees its own answer, then the request to fix it.

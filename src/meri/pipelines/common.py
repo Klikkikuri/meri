@@ -252,7 +252,9 @@ class StructuredPipeline:
         chain = resolve_llms(self.PIPELINE_NAME, settings)
 
         prompt_vars = {**prompt_vars, **kwargs}
-        prompt_vars.setdefault("settings", settings)
+        # Haystack saves a JSON snapshot of the inputs when a component fails. A Path or a pydantic model breaks
+        # that snapshot, so the template gets the settings as JSON data. A Jinja attribute lookup reads a dict key.
+        prompt_vars.setdefault("settings", settings.model_dump(mode="json"))
 
         delay = initial_delay
         for attempt in range(1, max_retries + 1):
