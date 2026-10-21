@@ -100,6 +100,32 @@
       "type": "object"
     },
     "RahtiResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "data": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "data"
+          ]
+        }
+      ],
       "description": "The headline data set. Several resources merge per signature, last wins.",
       "properties": {
         "type": {
@@ -284,6 +310,32 @@
       "type": "object"
     },
     "SitesResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "sites": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "sites"
+          ]
+        }
+      ],
       "description": "Site configurations. Several resources merge per site key.",
       "properties": {
         "type": {
@@ -371,6 +423,32 @@
       "type": "object"
     },
     "SuolaRulesResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "rules": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "rules"
+          ]
+        }
+      ],
       "description": "URL normalization rules for Suola. Several resources append in precedence order.",
       "properties": {
         "type": {

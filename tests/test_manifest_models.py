@@ -1,8 +1,10 @@
 """Tests for the manifest models and merge rules. Pure: no drivers, no mocks."""
 
+import json
 from pathlib import Path
 
 import pytest
+from jsonschema import Draft202012Validator
 from pydantic import ValidationError
 
 from meri.cli.manifest import render, render_schema
@@ -211,6 +213,30 @@ def test_inline_sites_default_their_origins():
 
 def test_the_committed_schema_matches_the_models():
     assert Path("docs/manifest.schema.json").read_text(encoding="utf-8") == render_schema() + "\n"
+
+
+@pytest.mark.parametrize(
+    "resource, valid",
+    [
+        ({"type": "rahti-data"}, False),
+        ({"type": "suola-rules", "href": None}, False),
+        ({"type": "site-configs", "sites": None}, False),
+        ({"type": "rahti-data", "href": "./data.json"}, True),
+        ({"type": "suola-rules", "rules": {"sites": []}}, True),
+        ({"type": "site-configs", "href": "./sites.json", "sites": {}}, True),
+        ({"type": "x-private"}, True),
+    ],
+)
+def test_the_schema_requires_content_as_the_models_do(resource, valid):
+    document = {**MANIFEST, "resources": [resource]}
+    schema_errors = list(Draft202012Validator(json.loads(render_schema())).iter_errors(document))
+    try:
+        Manifest.model_validate(document)
+        model_valid = True
+    except ValidationError:
+        model_valid = False
+
+    assert (not schema_errors, model_valid) == (valid, valid)
 
 
 def test_a_rendered_manifest_round_trips():

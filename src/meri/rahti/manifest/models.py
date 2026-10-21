@@ -29,6 +29,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.config import JsonDict
 
 SCHEMA_URL = "https://raw.githubusercontent.com/Klikkikuri/meri/refs/heads/main/docs/manifest.schema.json"
 #: The version of the manifest and `sites.json` formats. Major version 0: the formats are in initial development.
@@ -234,6 +235,14 @@ def merge_rahti(first: RahtiDocument, second: RahtiDocument) -> RahtiDocument:
 DocumentModel = type[BaseModel]
 
 
+def _content_schema(schema: JsonDict, cls: type) -> None:
+    """Put the rule of :meth:`Resource._has_content` in the JSON schema: `href`, the inline key, or both, not null."""
+    if key := getattr(cls, "inline_key", None):
+        schema["anyOf"] = [
+            {"required": [field], "properties": {field: {"not": {"type": "null"}}}} for field in ("href", key)
+        ]
+
+
 class Resource(BaseModel):
     """
     The envelope that all resources share.
@@ -241,6 +250,8 @@ class Resource(BaseModel):
     Content comes from `href`, from the inline key of the type, or from both. The fetched document comes first and
     the inline content last, combined by the merge rule of the type.
     """
+
+    model_config = ConfigDict(json_schema_extra=_content_schema)
 
     type: str
     href: str | Annotated[list[str], Field(min_length=1)] | None = Field(
