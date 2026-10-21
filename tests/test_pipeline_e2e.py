@@ -19,7 +19,7 @@ from meri.lautta import (
     convert_for_rahti,
     generate_titles,
 )
-from meri.rahti import COMMIT_MESSAGE, RahtiData
+from meri.rahti.data import COMMIT_MESSAGE, RahtiData
 from meri.settings.newssources import NewsSource
 from meri.settings.settings import SkipProcessingSettings
 

@@ -79,7 +79,6 @@ def test_settings_loading_with_rahti_config_yaml():
     """Verify loading Settings using rahti/config.yaml succeeds even without GITHUB_TOKEN."""
     from pathlib import Path
     import yaml
-    from meri.settings.rahti import RahtiGithubSettings
 
     config_path = Path("packages/rahti/config.yaml")
     assert config_path.exists(), "packages/rahti/config.yaml should exist"
@@ -88,7 +87,7 @@ def test_settings_loading_with_rahti_config_yaml():
         data = yaml.safe_load(f)
 
     s = Settings(**data)
-    assert isinstance(s.rahti, RahtiGithubSettings)
+    assert s.rahti.url == "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"
     assert s.rahti.auth_token is None
 
 

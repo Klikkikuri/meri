@@ -19,7 +19,7 @@ from meri.feedback import (
 from meri.lautta import RahtiCleaner
 from meri.luotsi import Feedback, FeedbackType
 from meri.luotsi.cluster import MessageClusterer, MessageGroup
-from meri.rahti import RahtiData, RahtiEntry, RahtiUrl
+from meri.rahti.data import RahtiData, RahtiEntry, RahtiUrl
 
 NOON = datetime(2026, 7, 14, 12, 0, tzinfo=UTC)
 
