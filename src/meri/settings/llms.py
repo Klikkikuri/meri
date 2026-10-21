@@ -118,6 +118,16 @@ class _OpenAISettingsBase(GeneratorSettings):
     model: str = Field(..., description="model.")
     api_key: SecretStr = Field(description="API key.")
     api_base_url: OpenAICompatibleUrl = Field("https://api.openai.com/v1", description="OpenAI API base URL.")
+    timeout: float | None = Field(
+        None,
+        gt=0,
+        description="Seconds before a request times out. Without it, `OPENAI_TIMEOUT` or the client's 30 applies.",
+    )
+    max_retries: int = Field(
+        0,
+        ge=0,
+        description="Retries that the client makes by itself. Meri retries across the LLM chain, so the default is 0.",
+    )
     generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="generation arguments.")
@@ -166,7 +176,6 @@ class OllamaSettings(_OpenAISettingsBase):
         default=SecretStr("ollama"),
         description="Unused by Ollama; a placeholder keeps the OpenAI client happy.",
     )
-    timeout: int | None = Field(None, description="The number of seconds before throwing a timeout error from the Ollama API.")
     generation_kwargs: dict | None = Field({
         "temperature": 0.0,
     }, description="Ollama generation kwargs.")
@@ -204,11 +213,14 @@ class GoogleGeminiSettings(_OpenAISettingsBase):
     # https://github.com/google-gemini/deprecated-generative-ai-python/blob/main/docs/api/google/generativeai/types/GenerationConfig.md
 
 
-class _OpenRouterProviderSettings(TypedDict):
-    sort: Literal["latency", "quality", "price"]
+class _OpenRouterProviderSettings(TypedDict, total=False):
+    sort: Literal["latency", "quality", "price"] | None
+    service_tier: Literal["flex", "priority", "fast"] | None
+    preferred_min_throughput: int | None
     "Prefer providers sorted by latency, quality, or price."
-    zdr: bool
+    zdr: bool | None
     "Use Zero Data Retention providers only."
+
 
 class _OpenRouterReasoningEffort(TypedDict):
     effort: Literal["xhigh", "high", "medium", "low", "minimal", "none"]
@@ -224,7 +236,11 @@ class OpenRouterSettings(GeneratorSettings):
         "provider": _OpenRouterProviderSettings(
             sort="price",  # Prefer cheaper providers
             zdr=True,  # Zero Data Retention providers only
+            service_tier="flex",  # Use the flexible service tier
+            preferred_min_throughput=10,  # Prefer providers with at least 1 request per second throughput
         ),
+        # A request field, not a provider preference. Haystack sends `generation_kwargs` in the request body.
+        "plugins": [{"id": "response-healing"}],
         "reasoning": _OpenRouterReasoningEffort(
             effort="minimal",
             exclude=False,

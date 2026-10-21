@@ -20,6 +20,7 @@ Order of precedence:
     The merge is shallow: a file that defines `llm:` replaces the whole list, it does not extend it.
 
 """
+import os
 from importlib.util import find_spec
 from pathlib import Path
 from typing import cast
@@ -50,7 +51,7 @@ from .llms import (
 )
 from .newssources import NewsSource
 from .pipelines import PipelineSettings, UnknownLLMError
-from .rahti import RahtiFileSettings, RahtiSettings
+from .rahti import RahtiSettings
 from .sulku import SulkuSettings
 
 load_dotenv()
@@ -62,11 +63,11 @@ _requests_cache_available: bool = find_spec("requests_cache") is not None
 
 _otel_available: bool = find_spec("opentelemetry.exporter") is not None
 
-# Compiled Suola rules from the monorepo, built by `make rules` in the suola checkout.
-_suola_rules = Path("packages/suola/build/rules.json").resolve()
-
 # Default sources, LLMs and blacklist shipped with the Rahti submodule. Lowest-precedence config file.
 _BUNDLED_CONFIG = Path("packages/rahti/config.yaml").resolve()
+
+# The official provider manifest in the Rahti submodule. It links the Suola rules and the Rahti data.
+_BUNDLED_MANIFEST = Path("packages/rahti/manifest.json").resolve()
 
 
 class SkipProcessingSettings(BaseModel):
@@ -121,10 +122,10 @@ class Settings(NiittiSettings):
 
     sources: list[NewsSource] = Field(default_factory=list, description="List of news sources to scrape.")
 
-    suola_rules: str | None = Field(
-        str(_suola_rules) if _suola_rules.exists() else None,
-        description="Location of the compiled Suola JSON rules: an `http(s)://` URL, a `file://` URL or a "
-        "filesystem path. If empty, the rules built into the Suola module are used.",
+    manifest: str | None = Field(
+        str(_BUNDLED_MANIFEST) if _BUNDLED_MANIFEST.exists() else None,
+        description="Location of the provider manifest: a path, a `file://` URL, a GitHub URL or an `https://` "
+        "URL. Meri reads its Suola rules from it. If empty, the rules built into the Suola module are used.",
     )
 
     @classmethod
@@ -139,18 +140,26 @@ class Settings(NiittiSettings):
         """
         return lint_yaml_settings_files([_BUNDLED_CONFIG]) + super().get_default_config_locations()
 
-    @field_validator("suola_rules")
+    @field_validator("manifest")
     @classmethod
-    def validate_suola_rules(cls, v: str | None) -> str | None:
-        from meri.suola import assert_json_rules
+    def _empty_manifest(cls, v: str | None) -> str | None:
+        return v.strip() or None if v else None
 
-        v = v.strip() if v else ""
-        if not v:
-            return None
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_suola_rules(cls, values):
+        """
+        Refuse the removed `suola_rules` setting.
 
-        # Fail here rather than deep in the Wasm module, so a stale YAML location names the setting it came from.
-        assert_json_rules(v)
-        return v
+        Extra keys are ignored, so the old key would be dropped silently and signatures would change with no error.
+        The environment is checked on its own, because the environment source reads declared fields only.
+        """
+        if any(key.lower() == "suola_rules" for key in [*values, *os.environ]):
+            raise ValueError(
+                "The `suola_rules` setting is removed. Set `manifest` to a provider manifest that links the rules "
+                "as a `suola-rules` resource, or leave `manifest` empty to use the built-in rules."
+            )
+        return values
 
     url_blacklist: list[str] = Field(default_factory=list, description="List of URL patterns to ignore.")
     """
@@ -165,7 +174,7 @@ class Settings(NiittiSettings):
     )
 
     rahti: RahtiSettings = Field(
-        default_factory=lambda: RahtiFileSettings(),  # type: ignore
+        default_factory=lambda: RahtiSettings(),  # type: ignore
         description="Rahti storage settings.",
     )
 

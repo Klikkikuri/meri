@@ -34,7 +34,7 @@ def app_context(request, monkeypatch, tmp_path):
             monkeypatch.delenv(variable)
 
     # Use the rules built into the Suola module, so signatures are deterministic and no test hits the network.
-    monkeypatch.setenv("SUOLA_RULES", "")
+    monkeypatch.setenv("MANIFEST", "")
 
     # The container points `MERI_DATA_DIR` at `/app/instance`, which is a bind mount of the working copy. Clear it
     # along with the XDG roots, so a test that writes stays out of the working copy.

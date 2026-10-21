@@ -11,10 +11,11 @@
 # REQUESTS_CACHE: true  # Enable HTTP requests cache (auto-detected if available)
 # MAX_WORKERS: 3  # Maximum number of worker threads for article processing
 # PROMPT_DIR: "/app/prompts"  # Directory for prompt templates
-## Location of the compiled Suola JSON rules: an `http(s)://` URL, a `file://` URL or a filesystem path.
-## Defaults to `packages/suola/build/rules.json` when present (`make rules` in the suola checkout), otherwise
-## the rules built into the Suola module. Leave empty to always use the built-in rules.
-# suola_rules: "https://raw.githubusercontent.com/Klikkikuri/rahti/refs/heads/main/rules.json"  # Published rules
+## Location of the provider manifest: a path, a `file://` URL, a GitHub URL or an `https://` URL. Meri reads its
+## Suola rules from the `suola-rules` resources of the manifest.
+## Defaults to `packages/rahti/manifest.json` when present. Leave empty to use the rules built into the Suola module.
+## See docs/provider-manifest.md. The removed `suola_rules` setting is refused at startup.
+# manifest: "https://raw.githubusercontent.com/Klikkikuri/rahti/refs/heads/main/manifest.json"  # Published manifest
 
 ## Telemetry / OpenTelemetry settings
 # telemetry:
@@ -138,13 +139,18 @@ sources:
   #     - https://www.svt.se/rss.xml
 
 rahti:
-  # File mode, writes to a local file:
+  # Location of the Rahti data.json that Meri pulls and pushes. Empty means "file:///app/instance/rahti/data.json".
+  # The manifest never sets it. The location must be writable. Accepted forms:
+  #   - a path or a `file://` URL
+  #   - a GitHub Contents API URL: https://api.github.com/repos/<owner>/<repo>/contents/<path>[?ref=<ref>]
+  #   - a GitHub raw URL: https://raw.githubusercontent.com/<owner>/<repo>/refs/heads/<branch>/<path>, or the short
+  #     https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>
+  # Both GitHub forms are read and written through the Contents API. A branch name that contains `/` needs the
+  # Contents API form with `?ref=`.
   # url: "file:///app/instance/rahti/data.json"
-
-  # GitHub mode example:
   url: "https://api.github.com/repos/Klikkikuri/rahti/contents/data.json"
   # auth_token: "ghp_..."  # Use GITHUB_TOKEN env variable for security
-  # timeout: 30
+  # timeout: 30  # Seconds, for every request to the storage host
   committer:
     name: "[🤖 bot] Klikkikuri harbormaster"
     email: "klikkikuri+satamamestari@protonmail.com"
@@ -229,6 +235,12 @@ rahti:
 # Any entry can set `max_concurrency`: the most requests in flight to that LLM at one time, shared by all pipelines.
 # It defaults to MAX_WORKERS. A worker thread makes one request at a time, so a value above MAX_WORKERS changes
 # nothing. Use it to keep a rate-limited provider below the number of workers.
+#
+# An `openai`, `ollama` or `gemini` entry also takes `timeout` (seconds) and `max_retries`. Without `timeout` the
+# client gives up after 30 seconds, or `OPENAI_TIMEOUT`. Set it above the longest answer a slow model needs: a
+# request that times out is sent again, and a server that does not cancel it keeps generating the abandoned
+# answer, so the retries pile up. `max_retries` is the client's own retry count and defaults to 0, because Meri
+# retries across the LLM chain (see `pipelines:`).
 llm:
 
   - name: "Google Gemini"

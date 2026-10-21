@@ -14,7 +14,7 @@ from meri.lautta import (
     fetch_latest,
     generate_titles,
 )
-from meri.rahti import RahtiData
+from meri.rahti.data import RahtiData
 from meri.settings.newssources import NewsSource
 
 

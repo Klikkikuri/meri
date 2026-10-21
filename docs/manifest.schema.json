@@ -1,0 +1,643 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/Klikkikuri/meri/refs/heads/main/docs/manifest.schema.json",
+  "$defs": {
+    "Link": {
+      "description": "A typed link, as in Atom and WebFinger. Consumers ignore a `rel` they do not know.",
+      "properties": {
+        "rel": {
+          "anyOf": [
+            {
+              "enum": [
+                "about",
+                "privacy-policy",
+                "terms-of-service",
+                "license",
+                "icon",
+                "x-publisher-policy"
+              ]
+            },
+            {
+              "pattern": "^x-",
+              "type": "string"
+            }
+          ],
+          "title": "Rel"
+        },
+        "href": {
+          "pattern": "^https?://[^/]",
+          "title": "Href",
+          "type": "string"
+        },
+        "hreflang": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hreflang"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Media type of the link target.",
+          "title": "Type"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Label, used only for a `rel` the consumer has no label for.",
+          "title": "Title"
+        }
+      },
+      "required": [
+        "rel",
+        "href"
+      ],
+      "title": "Link",
+      "type": "object"
+    },
+    "RahtiDocument": {
+      "additionalProperties": true,
+      "description": "`data.json`, the headline data. Only the envelope is checked here; `meri.rahti.data.RahtiData` is the full model.",
+      "properties": {
+        "schema_version": {
+          "title": "Schema Version",
+          "type": "string"
+        },
+        "entries": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Entries",
+          "type": "array"
+        }
+      },
+      "required": [
+        "schema_version",
+        "entries"
+      ],
+      "title": "RahtiDocument",
+      "type": "object"
+    },
+    "RahtiResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "data": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "data"
+          ]
+        }
+      ],
+      "description": "The headline data set. Several resources merge per signature, last wins.",
+      "properties": {
+        "type": {
+          "const": "rahti-data",
+          "title": "Type",
+          "type": "string"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Location of the document, relative to the containing document. A list names several documents, merged in list order.",
+          "title": "Href"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "weight": {
+          "default": 0,
+          "description": "Precedence: lower weights apply first, equal weights in document order, and later wins.",
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        },
+        "data": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RahtiDocument"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "RahtiResource",
+      "type": "object"
+    },
+    "RulesDocument": {
+      "additionalProperties": true,
+      "description": "`rules.json`, Suola's compiled rules. Only the shape is checked here; Suola validates the rules themselves.\n\nIt has no `schema_version`: Suola's schema does not allow one. An incompatible document is found by the error\nSuola returns for it.",
+      "properties": {
+        "sites": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Sites",
+          "type": "array"
+        }
+      },
+      "required": [
+        "sites"
+      ],
+      "title": "RulesDocument",
+      "type": "object"
+    },
+    "Site": {
+      "description": "The configuration of one site, keyed by its host in :attr:`SitesDocument.sites`.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Notes about the site and its configuration.",
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "origins": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^https?://[^/*]+/",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Match patterns. Defaults to `https://<key>/*`.",
+          "title": "Origins"
+        },
+        "links": {
+          "items": {
+            "$ref": "#/$defs/Link"
+          },
+          "title": "Links",
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "$ref": "#/$defs/SiteRule"
+          },
+          "title": "Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Site",
+      "type": "object"
+    },
+    "SiteRule": {
+      "description": "One headline selector rule.",
+      "properties": {
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What the rule matches, and why.",
+          "title": "Description"
+        },
+        "container": {
+          "title": "Container",
+          "type": "string"
+        },
+        "link": {
+          "title": "Link",
+          "type": "string"
+        },
+        "title": {
+          "title": "Title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "container",
+        "link",
+        "title"
+      ],
+      "title": "SiteRule",
+      "type": "object"
+    },
+    "SitesResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "sites": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "sites"
+          ]
+        }
+      ],
+      "description": "Site configurations. Several resources merge per site key.",
+      "properties": {
+        "type": {
+          "const": "site-configs",
+          "title": "Type",
+          "type": "string"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Location of the document, relative to the containing document. A list names several documents, merged in list order.",
+          "title": "Href"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "weight": {
+          "default": 0,
+          "description": "Precedence: lower weights apply first, equal weights in document order, and later wins.",
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        },
+        "sites": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/Site"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inline site configurations, keyed by host.",
+          "title": "Sites"
+        },
+        "origins": {
+          "anyOf": [
+            {
+              "items": {
+                "pattern": "^https?://[^/*]+/",
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The site origins that a cross-origin `href` may contribute. Required for a cross-origin `href`, and not allowed otherwise.",
+          "title": "Origins"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "SitesResource",
+      "type": "object"
+    },
+    "SuolaRulesResource": {
+      "anyOf": [
+        {
+          "properties": {
+            "href": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "href"
+          ]
+        },
+        {
+          "properties": {
+            "rules": {
+              "not": {
+                "type": "null"
+              }
+            }
+          },
+          "required": [
+            "rules"
+          ]
+        }
+      ],
+      "description": "URL normalization rules for Suola. Several resources append in precedence order.",
+      "properties": {
+        "type": {
+          "const": "suola-rules",
+          "title": "Type",
+          "type": "string"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Location of the document, relative to the containing document. A list names several documents, merged in list order.",
+          "title": "Href"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "weight": {
+          "default": 0,
+          "description": "Precedence: lower weights apply first, equal weights in document order, and later wins.",
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        },
+        "rules": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RulesDocument"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "SuolaRulesResource",
+      "type": "object"
+    },
+    "UnknownResource": {
+      "additionalProperties": true,
+      "description": "A resource of a type that this version does not know, or of a private `x-` type. It is never read.",
+      "properties": {
+        "type": {
+          "pattern": "^x-",
+          "title": "Type",
+          "type": "string"
+        },
+        "href": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1,
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Location of the document, relative to the containing document. A list names several documents, merged in list order.",
+          "title": "Href"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "weight": {
+          "default": 0,
+          "description": "Precedence: lower weights apply first, equal weights in document order, and later wins.",
+          "minimum": 0,
+          "title": "Weight",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "type"
+      ],
+      "title": "UnknownResource",
+      "type": "object"
+    }
+  },
+  "description": "`manifest.json`: the name of a provider, its links and its resources.",
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "URL of the JSON schema of this document.",
+      "title": "$Schema"
+    },
+    "schema_version": {
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "updated": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Updated"
+    },
+    "links": {
+      "items": {
+        "$ref": "#/$defs/Link"
+      },
+      "title": "Links",
+      "type": "array"
+    },
+    "resources": {
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/SuolaRulesResource"
+          },
+          {
+            "$ref": "#/$defs/RahtiResource"
+          },
+          {
+            "$ref": "#/$defs/SitesResource"
+          },
+          {
+            "$ref": "#/$defs/UnknownResource"
+          }
+        ]
+      },
+      "maxItems": 32,
+      "title": "Resources",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema_version",
+    "name"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}
