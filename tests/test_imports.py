@@ -52,7 +52,9 @@ def test_the_modules_import_in_any_order():
         )
         for order in orders
     ]
-    failures = {order: p.communicate()[1].decode()[-800:] for order, p in zip(orders, processes) if p.returncode}
+    # `returncode` is set only after `communicate()` waits for the child.
+    errors = [p.communicate()[1].decode()[-800:] for p in processes]
+    failures = {order: error for order, error, p in zip(orders, errors, processes, strict=True) if p.returncode}
 
     assert not failures
 
