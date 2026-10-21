@@ -126,7 +126,15 @@ class Driver:
     @cached_property
     def session(self) -> requests.Session:
         session = requests.Session()
-        retry = Retry(total=3, backoff_factor=1, status_forcelist=(429, 500, 502, 503, 504), allowed_methods=("GET",))
+        # A `Retry-After` from the server could hold a read for hours, past :attr:`timeout`. The backoff waits a
+        # few seconds in total.
+        retry = Retry(
+            total=3,
+            backoff_factor=1,
+            status_forcelist=(429, 500, 502, 503, 504),
+            allowed_methods=("GET",),
+            respect_retry_after_header=False,
+        )
         session.mount("https://", HTTPAdapter(max_retries=retry))
         # A compressed body could expand past the size limit inside a single read.
         session.headers["Accept-Encoding"] = "identity"

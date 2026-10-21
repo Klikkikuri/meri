@@ -11,9 +11,12 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 from pydantic import SecretStr
+from requests.adapters import HTTPAdapter
+from urllib3 import HTTPResponse
 
 from meri.rahti import storage
 from meri.rahti.storage import (
+    DEFAULT_TIMEOUT,
     BlobNotFoundError,
     Driver,
     FileDriver,
@@ -309,3 +312,19 @@ def test_a_slow_transfer_stops_at_the_total_timeout(monkeypatch):
     with pytest.raises(TimeoutError, match="longer than 30 seconds"):
         driver.read("https://meri.example/slow.json")
     assert streamed.raw.read1.call_count == 2
+
+
+def test_a_retry_after_header_does_not_hold_a_read_past_the_timeout(monkeypatch):
+    sleeps = []
+    monkeypatch.setattr("urllib3.util.retry.time.sleep", sleeps.append)
+    adapter = HttpsDriver().session.get_adapter("https://meri.example/")
+    assert isinstance(adapter, HTTPAdapter)
+    retry = adapter.max_retries
+    assert isinstance(retry.total, int)
+    throttled = HTTPResponse(status=429, headers={"Retry-After": "3600"})
+
+    for _ in range(retry.total):
+        retry = retry.increment("GET", "/data.json", response=throttled)
+        retry.sleep(throttled)
+
+    assert sum(sleeps) < DEFAULT_TIMEOUT
