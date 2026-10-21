@@ -109,8 +109,19 @@ def test_check_reports_linked_documents_that_fail_their_own_format(provider):
     )
 
     assert any("not valid Rahti data" in p for p in found)
-    assert any("Suola cannot use these rules" in p for p in found)
+    assert any("Suola cannot use the rules" in p for p in found)
     assert any("cannot load" in p for p in found)
+
+
+def test_check_reports_an_invalid_entry_that_a_later_document_replaces(provider):
+    url = {"sign": "s1", "labels": []}
+    entry = {"title": "t", "urls": [url], "updated": "2026-09-12T09:12:00Z"}
+    write(provider.parent, "bad-data.json", {**DATA, "entries": [{"title": "no update time", "urls": [url]}]})
+    write(provider.parent, "good-data.json", {**DATA, "entries": [entry]})
+
+    [problem] = problems(provider, {"type": "rahti-data", "href": ["./bad-data.json", "./good-data.json"]})
+
+    assert "bad-data.json is not valid Rahti data" in problem
 
 
 def test_validate_passes_a_valid_manifest(provider):

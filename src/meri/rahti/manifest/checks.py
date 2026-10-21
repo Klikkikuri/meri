@@ -16,10 +16,10 @@ from .loader import LoadedResource, is_cross_origin
 from .models import (
     RESOURCE_TYPES,
     Manifest,
-    RahtiDocument,
-    RulesDocument,
+    RahtiResource,
     SitesDocument,
     SitesResource,
+    SuolaRulesResource,
     describe,
 )
 
@@ -52,23 +52,34 @@ def check(
         for location, error in item.errors.items():
             problems.append(Problem(subject, f"cannot load {location}: {error}"))
 
-        match item.content:
-            case RahtiDocument():
-                # Imported here: `meri.rahti.data` imports `meri.abc`, which imports `meri.suola`, which imports this.
-                from ..data import RahtiData
+        # Each document is checked as it is written: a merge can hide an invalid entry or drop a field.
+        for source, content in _documents(item):
+            match item.resource:
+                case RahtiResource():
+                    # Imported here: `meri.rahti.data` imports `meri.abc`, which imports `meri.suola`, which imports
+                    # this module.
+                    from ..data import RahtiData
 
-                try:
-                    RahtiData.model_validate_json(item.content.model_dump_json())
-                except ValidationError as e:
-                    problems.append(Problem(subject, f"not valid Rahti data: {e}"))
-            case RulesDocument():
-                # Suola is the only authority on its rules: a document it cannot compile is incompatible with it.
-                suola = suola or Suola()
-                try:
-                    suola.append_rules(item.content.model_dump_json(by_alias=True).encode())
-                except (RuntimeError, ValueError) as e:
-                    problems.append(Problem(subject, f"Suola cannot use these rules: {e}"))
+                    try:
+                        RahtiData.model_validate_json(content)
+                    except ValidationError as e:
+                        problems.append(Problem(subject, f"{source} is not valid Rahti data: {e}"))
+                case SuolaRulesResource():
+                    # Suola is the only authority on its rules: a document it cannot compile is incompatible with it.
+                    suola = suola or Suola()
+                    try:
+                        suola.append_rules(content)
+                    except (RuntimeError, ValueError) as e:
+                        problems.append(Problem(subject, f"Suola cannot use the rules of {source}: {e}"))
     return problems
+
+
+def _documents(item: LoadedResource) -> Iterator[tuple[str, bytes]]:
+    """The linked documents of a resource as fetched, and then its inline content, each with the place it is from."""
+    for location, blob in item.blobs.items():
+        yield location, blob.content
+    if (inline := item.resource.inline()) is not None:
+        yield "the inline content", inline.model_dump_json(by_alias=True).encode()
 
 
 def _unknown_types(manifest: Manifest) -> Iterator[Problem]:
