@@ -7,6 +7,7 @@ three axis words let a test state how close a headline is to an article.
 """
 
 import json
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -256,6 +257,17 @@ def test_a_headline_that_still_drifts_after_revision_is_accepted(settings, embed
 
     assert result.title == "unrelated"
     assert pipeline.run.call_count == 2
+
+
+def test_the_drift_guard_logs_the_original_headline_it_compared_against(settings, embedder, caplog):
+    """The similarities alone do not say which headline they describe, and that is what tuning needs."""
+    predictor = TitlePredictor()
+    stub(predictor, [title_reply("unrelated"), title_reply("unrelated")])
+
+    with caplog.at_level(logging.DEBUG, logger="meri.pipelines.title"):
+        predictor.run(make_article(None, title="the outlet's own headline", text="ordinary " * 20))
+
+    assert "the outlet's own headline" in caplog.text
 
 
 def test_the_drift_guard_is_off_without_an_embedding_model(settings):

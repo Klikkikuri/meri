@@ -112,10 +112,12 @@ gives the original headline a low similarity.
 The numbers above are correct for the default embedding model, and for Finnish, Swedish and English news. A
 different model gives different similarities.
 
-Set `DEBUG=true` and do a run. The pipeline writes both similarities for each article to the log:
+Set `DEBUG=true` and do a run. The pipeline writes both similarities and the original headline for each article to
+the log:
 
 ```json
-{"event": "Headline similarity to the article", "original": 0.49, "generated": 0.64, "margin": 0.1, "floor": 0.4}
+{"event": "Headline similarity to the article", "original": 0.49, "generated": 0.64, "margin": 0.1, "floor": 0.4,
+ "original_title": "Näin presidentti kommentoi kiistaa"}
 ```
 
 Collect these lines for approximately 50 articles. Then:

@@ -216,9 +216,10 @@ class TitlePredictor(StructuredPipeline):
                 for name in ("margin", "floor"):
                     if getattr(drift, name) is not None:
                         span.set_attribute(f"drift.{name}", getattr(drift, name))
-                logger.debug("Headline similarity to the article", url=url, **drift._asdict())
+                logger.debug("Headline similarity to the article", url=url, original_title=original, **drift._asdict())
                 if drift.drifted:
-                    issues["drift"] = drift._asdict()
+                    # The warning in `run` logs this record, so the headline travels with its two numbers.
+                    issues["drift"] = {"original_title": original, **drift._asdict()}
 
             span.set_attribute("issues", ",".join(issues))
             return {"title": result.title, **issues} if issues else None
