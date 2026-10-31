@@ -1,7 +1,12 @@
 ARG PYTHON_VERSION=3.12
 ARG PYTHON_BASE_IMAGE=python:${PYTHON_VERSION}-bookworm
+ARG UV_VERSION=0.13.6
 
 ARG VIRTUAL_ENV="/app/.venv"
+
+
+# `COPY --from` does not expand variables, so the uv image is a stage of its own.
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
 
 FROM ${PYTHON_BASE_IMAGE} AS build
@@ -11,8 +16,9 @@ LABEL org.opencontainers.image.authors="klikkikuri@protonmail.com" \
     org.opencontainers.image.url="https://github.com/Klikkikuri"
 
 ARG VIRTUAL_ENV
+ARG UV_VERSION
 
-ENV UV_VERSION="0.5.20" \
+ENV UV_VERSION=${UV_VERSION} \
     UV_COMPILE_BYTECODE=1 \
     # Copy from the cache instead of linking since it's a mounted volume
     UV_LINK_MODE=copy
@@ -40,7 +46,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 # Install UV
 VOLUME [ "${VIRTUAL_ENV}" ]
 
-COPY --from=ghcr.io/astral-sh/uv:0.5.20 /uv /uvx ${VIRTUAL_ENV}/bin/
+COPY --from=uv /uv /uvx ${VIRTUAL_ENV}/bin/
 
 WORKDIR /app
 

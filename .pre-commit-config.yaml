@@ -3,7 +3,7 @@ default_language_version:
 
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v5.0.0
+  rev: v6.0.0
   hooks:
     - id: check-merge-conflict
     - id: check-yaml
@@ -17,21 +17,31 @@ repos:
     - id: trailing-whitespace
 
 # Security checks
-- repo: https://github.com/PyCQA/bandit
-  rev: 1.8.3
+#
+# bandit, ruff and uv are the binaries in the project virtual environment (see the dev dependencies
+# in pyproject.toml) and in the Dockerfile. pre-commit does not build an isolated environment for
+# them, so a hook and `uv run <tool>` always use the same version.
+- repo: local
   hooks:
     - id: bandit
+      name: bandit
+      entry: bandit
+      language: system
+      types: [python]
       args: ["--skip=B101"]  # Skip assert statement check
 
-- repo: https://github.com/astral-sh/uv-pre-commit
-  # uv version.
-  rev: 0.6.17
-  hooks:
-    - id: uv-lock
-
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  # Ruff version.
-  rev: v0.14.14
-  hooks:
     # Run the linter.
     - id: ruff-check
+      name: ruff check
+      entry: ruff check --force-exclude
+      language: system
+      types_or: [python, pyi, jupyter]
+      require_serial: true
+
+    - id: uv-lock
+      name: uv-lock
+      entry: uv lock
+      language: system
+      files: ^(uv\.lock|pyproject\.toml|uv\.toml)$
+      pass_filenames: false
+      require_serial: true
